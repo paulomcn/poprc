@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Contratos from './pages/Contratos'
 import Projetos from './pages/Projetos'
 import Funcionarios from './pages/Funcionarios'
+import GestaoOrdensServico from './pages/GestaoOrdensServico'
 
 function App() {
   const userName = 'Paulo Silva' // TODO: Get from session/JWT
@@ -40,6 +41,14 @@ function App() {
           element={
             <Layout userName={userName}>
               <Funcionarios />
+            </Layout>
+          }
+        />
+        <Route
+          path="/ordens-servico"
+          element={
+            <Layout userName={userName}>
+              <GestaoOrdensServico />
             </Layout>
           }
         />
