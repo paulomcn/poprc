@@ -1,14 +1,18 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
+import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.service.EstoqueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/estoque")
@@ -16,6 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class EstoqueController {
 
     private final EstoqueService estoqueService;
+    private final MaterialRepository materialRepository;
+
+    @GetMapping("/materiais")
+    public ResponseEntity<List<Material>> listarMateriais() {
+        List<Material> materiais = materialRepository.findAll();
+        return ResponseEntity.ok(materiais);
+    }
 
     @PostMapping("/entrada")
     public ResponseEntity<MovimentacaoEstoque> registrarEntrada(@RequestBody EntradaRequest request) {

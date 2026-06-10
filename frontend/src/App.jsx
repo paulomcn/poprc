@@ -5,6 +5,8 @@ import Contratos from './pages/Contratos'
 import Projetos from './pages/Projetos'
 import Funcionarios from './pages/Funcionarios'
 import GestaoOrdensServico from './pages/GestaoOrdensServico'
+import GestaoComarcas from './pages/GestaoComarcas'
+import PainelEstoque from './pages/PainelEstoque'
 
 function App() {
   const userName = 'Paulo Silva' // TODO: Get from session/JWT
@@ -49,6 +51,22 @@ function App() {
           element={
             <Layout userName={userName}>
               <GestaoOrdensServico />
+            </Layout>
+          }
+        />
+        <Route
+          path="/comarcas"
+          element={
+            <Layout userName={userName}>
+              <GestaoComarcas />
+            </Layout>
+          }
+        />
+        <Route
+          path="/estoque"
+          element={
+            <Layout userName={userName}>
+              <PainelEstoque />
             </Layout>
           }
         />

@@ -5,6 +5,8 @@ import {
   FileText,
   Briefcase,
   Users,
+  Building2,
+  Package,
   LogOut,
   Menu,
   X
@@ -19,6 +21,8 @@ export default function Sidebar() {
     { path: '/contratos', icon: FileText, label: 'Contratos' },
     { path: '/projetos', icon: Briefcase, label: 'Projetos' },
     { path: '/funcionarios', icon: Users, label: 'Funcionários' },
+    { path: '/comarcas', icon: Building2, label: 'Gestão de Comarcas' },
+    { path: '/estoque', icon: Package, label: 'Estoque de Materiais' },
   ]
 
   const isActive = (path) => location.pathname === path
