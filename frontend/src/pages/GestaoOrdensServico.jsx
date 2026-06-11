@@ -8,9 +8,9 @@ import {
   Search,
   ChevronDown,
 } from 'lucide-react'
-import api from '../services/api'
-import OrdensServicoCard from './OrdensServicoCard'
-import StatusModal from './StatusModal'
+import api from "../services/api";
+import OrdensServicoCard from "../components/OrdensServicoCard";
+import StatusModal from "../components/StatusModal"; // Alterado de ./ para ../components/
 
 const STATUS_COLUMNS = [
   { value: 'ABERTA', label: 'Aberta', color: 'bg-blue-50', borderColor: 'border-blue-200' },
