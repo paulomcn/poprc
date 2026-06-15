@@ -9,7 +9,8 @@ import {
   Package,
   LogOut,
   Menu,
-  X
+  X,
+  Smartphone
 } from 'lucide-react'
 
 export default function Sidebar() {
@@ -23,6 +24,7 @@ export default function Sidebar() {
     { path: '/funcionarios', icon: Users, label: 'Funcionários' },
     { path: '/comarcas', icon: Building2, label: 'Gestão de Comarcas' },
     { path: '/estoque', icon: Package, label: 'Estoque de Materiais' },
+    { path: '/tecnico', icon: Smartphone, label: 'Área do Técnico' },
   ]
 
   const isActive = (path) => location.pathname === path

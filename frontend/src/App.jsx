@@ -7,6 +7,8 @@ import Funcionarios from './pages/Funcionarios'
 import GestaoOrdensServico from './pages/GestaoOrdensServico'
 import GestaoComarcas from './pages/GestaoComarcas'
 import PainelEstoque from './pages/PainelEstoque'
+import PortalTecnicoDashboard from './pages/PortalTecnicoDashboard'
+import ExecutarOrdemServico from './pages/ExecutarOrdemServico'
 
 function App() {
   const userName = 'Paulo Silva' // TODO: Get from session/JWT
@@ -69,6 +71,14 @@ function App() {
               <PainelEstoque />
             </Layout>
           }
+        />
+        <Route
+          path="/tecnico"
+          element={<PortalTecnicoDashboard />}
+        />
+        <Route
+          path="/tecnico/os/:id"
+          element={<ExecutarOrdemServico />}
         />
       </Routes>
     </Router>
