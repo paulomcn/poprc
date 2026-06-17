@@ -2,9 +2,12 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.RegistroPonto;
-import com.poprc.demo.service.EvidenciaFotoService;
-import com.poprc.demo.service.RegistroPontoService;
+import com.poprc.demo.model.TipoRegistro;
+import com.poprc.demo.service.FotoService;
+import com.poprc.demo.service.PontoService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,21 +17,45 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class MobilidadeController {
 
-    private final RegistroPontoService pontoService;
-    private final EvidenciaFotoService fotoService;
+    // Injetando os novos serviços da Parte 2
+    private final PontoService pontoService;
+    private final FotoService fotoService;
 
     @PostMapping("/ponto")
-    public ResponseEntity<RegistroPonto> registrarPonto(@RequestBody RegistroPonto ponto) {
-        RegistroPonto salvo = pontoService.salvarPonto(ponto);
-        return ResponseEntity.ok(salvo);
+    public ResponseEntity<RegistroPonto> registrarPonto(@RequestBody PontoRequestDTO request) {
+        RegistroPonto novoPonto = pontoService.salvarPonto(
+                request.getFuncionarioId(),
+                request.getTipo(),
+                request.getLatitude(),
+                request.getLongitude()
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(novoPonto);
     }
 
     @PostMapping("/upload-foto")
     public ResponseEntity<EvidenciaFoto> uploadFoto(
-            @RequestParam("arquivo") MultipartFile arquivo,
-            @ModelAttribute EvidenciaFoto evidenciaDados) {
-            
-        EvidenciaFoto salva = fotoService.salvarEvidencia(arquivo, evidenciaDados);
-        return ResponseEntity.ok(salva);
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("ordemServicoId") Long ordemServicoId,
+            @RequestParam("funcionarioId") Long funcionarioId,
+            @RequestParam("latitude") String latitude,
+            @RequestParam("longitude") String longitude) {
+
+        EvidenciaFoto novaEvidencia = fotoService.salvarEvidencia(
+                file,
+                ordemServicoId,
+                funcionarioId,
+                latitude,
+                longitude
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(novaEvidencia);
+    }
+
+    // DTO necessário para o React mandar os dados do ponto num JSON limpo
+    @Data
+    public static class PontoRequestDTO {
+        private Long funcionarioId;
+        private TipoRegistro tipo; 
+        private String latitude;
+        private String longitude;
     }
 }

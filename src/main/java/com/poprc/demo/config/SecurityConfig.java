@@ -62,6 +62,7 @@ public class SecurityConfig {
                 
                 // Se vier aquela lista aninhada bizarra da Zoho, a gente arruma
                 if (attributes.containsKey("users")) {
+                    @SuppressWarnings("unchecked")
                     List<Map<String, Object>> users = (List<Map<String, Object>>) attributes.get("users");
                     if (users != null && !users.isEmpty()) {
                         Map<String, Object> zohoUser = users.get(0);
