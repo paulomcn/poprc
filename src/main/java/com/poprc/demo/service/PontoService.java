@@ -2,7 +2,7 @@ package com.poprc.demo.service;
 
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.RegistroPonto;
-import com.poprc.demo.model.TipoRegistro;
+import com.poprc.demo.model.TipoPonto; // Mudou aqui
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.repository.RegistroPontoRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ public class PontoService {
     private final FuncionarioRepository funcionarioRepository;
 
     @Transactional
-    public RegistroPonto salvarPonto(Long funcionarioId, TipoRegistro tipo, String lat, String lon) {
+    public RegistroPonto salvarPonto(Long funcionarioId, TipoPonto tipo, String lat, String lon) { // Mudou aqui
         Funcionario funcionario = funcionarioRepository.findById(funcionarioId)
                 .orElseThrow(() -> new RuntimeException("Funcionário não encontrado com o ID: " + funcionarioId));
 

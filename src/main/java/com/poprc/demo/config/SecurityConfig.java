@@ -11,6 +11,9 @@ import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Collections;
 import java.util.List;
@@ -23,8 +26,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // Força autenticação em todas as requisições
+            // 1. ATIVANDO O CORS NA FILTRAÇÃO DO SPRING SECURITY
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            
+            // 2. DESATIVANDO O CSRF PARA COLEGAS EXTERNOS (COMO O REST CLIENT) CONSEGUIREM DAR POST
+            .csrf(csrf -> csrf.disable())
+            
+            // 3. REGRAS DE PERMISSÃO
             .authorizeHttpRequests(authorize -> authorize
+                // Liberando a rota de campo pros testes e a rota /error pra ver os logs reais do Java
+                .requestMatchers("/api/campo/**", "/error").permitAll() 
                 .anyRequest().authenticated()
             )
             // Configuração OAuth2 Login com Zoho + Nosso Hack do UserInfo
@@ -32,7 +43,7 @@ public class SecurityConfig {
                 .defaultSuccessUrl("/", true)
                 .failureUrl("/login?error")
                 .userInfoEndpoint(userInfo -> userInfo
-                    .userService(zohoUserService()) // Injetando a gambiarra do bem aqui
+                    .userService(zohoUserService()) 
                 )
             )
             // Logout
@@ -41,8 +52,6 @@ public class SecurityConfig {
                 .logoutSuccessUrl("/login?logout")
                 .permitAll()
             )
-            // CSRF padrão 
-            .csrf(csrf -> csrf.disable())
             // Session management
             .sessionManagement(session -> session
                 .sessionFixation(sessionFixation -> sessionFixation.migrateSession())
@@ -51,16 +60,36 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // O BEAN QUE CONFIGURA O QUE O CORS VAI LIBERAR
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        
+        // Permite qualquer origem usando padrões (essencial para testar no celular usando o IP da rede local)
+        configuration.setAllowedOriginPatterns(List.of("*")); 
+        
+        // Libera os métodos HTTP que o seu front vai usar
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        
+        // Libera todos os headers (Content-Type, Authorization, etc.)
+        configuration.setAllowedHeaders(List.of("*"));
+        
+        // Permite o envio de cookies e headers de autenticação
+        configuration.setAllowCredentials(true); 
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
     // O método que bota a Zoho no bolso
     private OAuth2UserService<OAuth2UserRequest, OAuth2User> zohoUserService() {
         DefaultOAuth2UserService delegate = new DefaultOAuth2UserService();
         return request -> {
             try {
-                // Tenta buscar o usuário normalmente
                 OAuth2User user = delegate.loadUser(request);
                 Map<String, Object> attributes = user.getAttributes();
                 
-                // Se vier aquela lista aninhada bizarra da Zoho, a gente arruma
                 if (attributes.containsKey("users")) {
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> users = (List<Map<String, Object>>) attributes.get("users");
@@ -75,8 +104,6 @@ public class SecurityConfig {
                 }
                 return user;
             } catch (Exception e) {
-                // Se der erro 401 de OAUTH_SCOPE_MISMATCH, a gente ignora e finge que deu tudo certo
-                // pra você conseguir usar o token no backend sem o Spring surtar.
                 return new DefaultOAuth2User(
                     Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")),
                     Map.of("id", "zoho_authenticated_user"),

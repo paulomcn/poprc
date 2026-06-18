@@ -1,0 +1,46 @@
+### Variável de ambiente para facilitar a vida
+@baseUrl = http://localhost:8085/api/campo
+
+### 1. TESTAR REGISTRO DE PONTO (Módulo 9)
+POST {{baseUrl}}/ponto
+Content-Type: application/json
+
+{
+    "funcionarioId": 1,
+    "tipo": "ENTRADA",
+    "latitude": "-15.7938",
+    "longitude": "-47.8827"
+}
+
+
+### -----------------------------------------------------------
+### As três hashtags acima servem para separar as requisições
+### -----------------------------------------------------------
+
+
+### 2. TESTAR UPLOAD DE FOTO (Módulo 12)
+POST {{baseUrl}}/upload-foto
+Content-Type: multipart/form-data; boundary=MeuBoundaryMagico
+
+--MeuBoundaryMagico
+Content-Disposition: form-data; name="ordemServicoId"
+
+1
+--MeuBoundaryMagico
+Content-Disposition: form-data; name="funcionarioId"
+
+1
+--MeuBoundaryMagico
+Content-Disposition: form-data; name="latitude"
+
+-15.7938
+--MeuBoundaryMagico
+Content-Disposition: form-data; name="longitude"
+
+-47.8827
+--MeuBoundaryMagico
+Content-Disposition: form-data; name="file"; filename="foto.jpg"
+Content-Type: image/jpeg
+
+< ./foto.jpg
+--MeuBoundaryMagico--

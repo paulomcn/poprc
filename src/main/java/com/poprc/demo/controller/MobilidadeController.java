@@ -2,7 +2,7 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.RegistroPonto;
-import com.poprc.demo.model.TipoRegistro;
+import com.poprc.demo.model.TipoPonto; // Mudou aqui
 import com.poprc.demo.service.FotoService;
 import com.poprc.demo.service.PontoService;
 import lombok.Data;
@@ -17,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class MobilidadeController {
 
-    // Injetando os novos serviços da Parte 2
     private final PontoService pontoService;
     private final FotoService fotoService;
 
@@ -50,11 +49,10 @@ public class MobilidadeController {
         return ResponseEntity.status(HttpStatus.CREATED).body(novaEvidencia);
     }
 
-    // DTO necessário para o React mandar os dados do ponto num JSON limpo
     @Data
     public static class PontoRequestDTO {
         private Long funcionarioId;
-        private TipoRegistro tipo; 
+        private TipoPonto tipo; // Mudou aqui
         private String latitude;
         private String longitude;
     }
