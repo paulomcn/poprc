@@ -1,506 +1,315 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
-  Camera,
   MapPin,
-  CheckCircle,
-  Clock,
-  Compass,
-  AlertTriangle,
-  Loader2,
-  Smartphone,
+  Briefcase,
+  Calendar,
+  AlertCircle,
+  CheckCircle2,
   Navigation,
-  Check,
   CheckSquare,
-  FileText,
-  Image as ImageIcon
+  Camera,
+  RefreshCw
 } from 'lucide-react'
 import api from '../services/api'
 
-// Mock de OSs padrão (mesmas do Dashboard para consistência)
-const OS_MOCK_DATA = [
-  {
-    id: 1,
-    numeroOs: 'OS-2026-042',
+export default function ExecutarOrdemServico() {
+  const { id } = useParams() // Pega o ID da OS vindo da URL (ex: /tecnico/os/1)
+  const navigate = useNavigate()
+
+  // Estados da Página
+  const [os, setOs] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [uploadingFoto, setUploadingFoto] = useState(false)
+  const [feedbackMsg, setFeedbackMsg] = useState({ tipo: '', texto: '' })
+
+  // Dados mocados idênticos aos da lista para caso o banco não tenha essa OS ainda
+  const osFallback = {
+    id: parseInt(id) || 1,
+    numeroOs: `OS-2026-04${id || '2'}`,
     cliente: 'Tribunal de Justiça - Comarca Centro',
-    status: 'ABERTA',
+    status: 'EM_EXECUCAO',
     descricao: 'Instalação de racks de telecomunicação, cabeamento estruturado Cat6 e certificação de 24 pontos de rede.',
     endereco: 'Praça D. Pedro II, s/n - Centro, Salvador - BA',
     prioridade: 'Alta',
     dataExecucao: '2026-06-15',
-    contato: 'Carlos Souza (Coordenador de TI) - (71) 99888-7766'
-  },
-  {
-    id: 2,
-    numeroOs: 'OS-2026-043',
-    cliente: 'Comarca de Camaçari - Fórum Regional',
-    status: 'EM_EXECUCAO',
-    descricao: 'Substituição de Switch core danificado após oscilação elétrica e reconfiguração de VLANs corporativas.',
-    endereco: 'Centro Administrativo, Lote 4 - Centro, Camaçari - BA',
-    prioridade: 'Crítica',
-    dataExecucao: '2026-06-15',
-    contato: 'Marcos Bahia (Administrador) - (71) 98765-4321'
-  },
-  {
-    id: 3,
-    numeroOs: 'OS-2026-044',
-    cliente: 'Ministério Público - Anexo Administrativo',
-    status: 'CONCLUIDA',
-    descricao: 'Manutenção preventiva geral no banco de baterias do No-Break principal e testes de autonomia.',
-    endereco: 'Av. Joana Angélica, 1422 - Nazaré, Salvador - BA',
-    prioridade: 'Média',
-    dataExecucao: '2026-06-15',
-    contato: 'Dra. Márcia Albuquerque - (71) 99111-2233'
+    contato: 'Carlos Souza (Coordenador de TI) - (71) 99888-7766',
+    tarefas: [
+      { id: 1, texto: 'Vistoria técnica do local e infraestrutura', concluida: true },
+      { id: 2, texto: 'Instalação física do Rack de rede de 19"', concluida: false },
+      { id: 3, texto: 'Lançamento e crimpagem de cabos Cat6', concluida: false },
+      { id: 4, texto: 'Certificação e testes de conectividade', concluida: false }
+    ]
   }
-]
 
-export default function ExecutarOrdemServico() {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const fileInputRef = useRef(null)
-
-  // Estados principais
-  const [os, setOs] = useState(null)
-  const [loadingPage, setLoadingPage] = useState(true)
-  const [checklist, setChecklist] = useState([
-    { id: 1, texto: 'Efetuar vistoria de segurança no local e rede', concluido: false },
-    { id: 2, texto: 'Verificar fiação e conectores físicos', concluido: false },
-    { id: 3, texto: 'Testar voltagem e aterramento elétrico', concluido: false },
-    { id: 4, texto: 'Realizar testes finais de conectividade de rede', concluido: false }
-  ])
-
-  // Evidências fotográficas
-  const [fotos, setFotos] = useState([])
-  const [loadingUpload, setLoadingUpload] = useState(false)
-  const [loadingGps, setLoadingGps] = useState(false)
-
-  // Status de finalização
-  const [loadingFinalizar, setLoadingFinalizar] = useState(false)
-  
-  // Mensagens e feedback
-  const [erroMsg, setErroMsg] = useState(null)
-  const [sucessoMsg, setSucessoMsg] = useState(null)
-
-  // Carrega os dados da OS (real da API ou fallback de mock)
   useEffect(() => {
-    async function carregarOrdemServico() {
+    async function puxarDetalhesOS() {
       try {
-        setLoadingPage(true)
+        setLoading(true)
         const response = await api.get(`/ordens-servico/${id}`)
-        if (response.data) {
-          setOs(response.data)
-        } else {
-          carregarFallbackMock()
-        }
+        setOs(response.data)
       } catch (err) {
-        console.warn('Erro ao obter OS da API, utilizando fallback mockado para visualização:', err)
-        carregarFallbackMock()
+        console.warn('OS não encontrada no banco, aplicando mock de segurança para testes na UI.')
+        setOs(osFallback)
       } finally {
-        setLoadingPage(false)
+        setLoading(false)
       }
     }
-
-    function carregarFallbackMock() {
-      const osId = parseInt(id, 10)
-      const foundOs = OS_MOCK_DATA.find(o => o.id === osId) || OS_MOCK_DATA[0]
-      setOs(foundOs)
-    }
-
-    carregarOrdemServico()
+    puxarDetalhesOS()
   }, [id])
 
-  // Lógica para alternar itens do checklist
-  const handleToggleChecklist = (itemId) => {
-    setChecklist(prev =>
-      prev.map(item =>
-        item.id === itemId ? { ...item, concluido: !item.concluido } : item
-      )
-    )
+  // Alternar a conclusão de uma tarefa localmente
+  const handleToggleTarefa = (tarefaId) => {
+    setOs(prev => ({
+      ...prev,
+      tarefas: prev.tarefas.map(t => t.id === tarefaId ? { ...t, concluida: !t.concluida } : t)
+    }))
   }
 
-  // Aciona o input de arquivo oculto para tirar foto
-  const handleTriggerCamera = () => {
-    setErrorMsg(null)
-    setSuccessMsg(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+  // Mudar status da OS direto no backend
+  const handleMudarStatus = async (novoStatus) => {
+    try {
+      await api.put(`/ordens-servico/${id}/status`, { status: novoStatus })
+      setOs(prev => ({ ...prev, status: novoStatus }))
+      mostrarFeedback('sucesso', `Status da OS alterado para ${novoStatus.replace('_', ' ')}!`)
+    } catch (err) {
+      setOs(prev => ({ ...prev, status: novoStatus }))
+      mostrarFeedback('sucesso', `[Simulado] Status alterado para ${novoStatus.replace('_', ' ')}`)
     }
   }
 
-  // Processa a foto tirada pelo celular
-  const handleFotoCapturada = async (e) => {
-    const arquivo = e.target.files[0]
-    if (!arquivo) return
+  // 💥 CONEXÃO REAL COM O BACKEND JAVA (Módulo 12 - Evidências Fotográficas)
+  const handleUploadFotoEvidencia = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
 
-    setLoadingGps(true)
-    setLoadingUpload(true)
+    setUploadingFoto(true)
+    setFeedbackMsg({ tipo: '', texto: '' })
 
-    if (!navigator.geolocation) {
-      setErroMsg('Geolocalização não é suportada neste dispositivo.')
-      setLoadingGps(false)
-      setLoadingUpload(false)
-      return
-    }
-
-    // Obtém coordenadas GPS de alta precisão
+    // Captura o GPS na hora exata do upload para enviar ao Java
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const lat = position.coords.latitude.toFixed(6)
-        const lng = position.coords.longitude.toFixed(6)
-        setLoadingGps(false)
+        const lon = position.coords.longitude.toFixed(6)
 
-        // Cria o FormData para upload
+        // Monta o FormData exatamente como o nosso 'MobilidadeController.java' espera!
         const formData = new FormData()
-        formData.append('arquivo', arquivo)
+        formData.append('file', file)
+        formData.append('ordemServicoId', os.id)
+        formData.append('funcionarioId', 1) // Usando ID 1 do funcionário que criamos no pgAdmin
         formData.append('latitude', lat)
-        formData.append('longitude', lng)
-        formData.append('osId', id)
-        formData.append('timestamp', new Date().toISOString())
+        formData.append('longitude', lon)
 
         try {
-          console.log('Realizando upload da foto com geolocalização:', { lat, lng })
-          
-          // Chamada real ao endpoint
+          console.log('Disparando foto real para o backend Spring Boot...')
           const response = await api.post('/campo/upload-foto', formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
           })
-          console.log('Foto gravada com sucesso no backend:', response.data)
-
-          // Adiciona foto ao estado
-          const urlPreview = URL.createObjectURL(arquivo)
-          setFotos(prev => [
-            ...prev,
-            {
-              id: Date.now(),
-              url: urlPreview,
-              latitude: lat,
-              longitude: lng,
-              timestamp: new Date().toLocaleTimeString('pt-BR')
-            }
-          ])
-          setSucessoMsg('Evidência fotográfica enviada com sucesso!')
-        } catch (uploadError) {
-          console.warn('Erro na chamada da API de upload. Mockando sucesso local para validação da interface:', uploadError)
-          
-          // Mock local se a API estiver indisponível
-          const urlPreview = URL.createObjectURL(arquivo)
-          setFotos(prev => [
-            ...prev,
-            {
-              id: Date.now(),
-              url: urlPreview,
-              latitude: lat,
-              longitude: lng,
-              timestamp: new Date().toLocaleTimeString('pt-BR')
-            }
-          ])
-          setSucessoMsg('[Simulado] Evidência fotográfica salva localmente!')
+          console.log('Resposta do Java:', response.data)
+          mostrarFeedback('sucesso', 'Evidência fotográfica salva com sucesso no servidor!')
+        } catch (err) {
+          console.error(err)
+          mostrarFeedback('erro', 'Falha ao enviar arquivo para o servidor. Verifique a API Java.')
         } finally {
-          setLoadingUpload(false)
-          // Limpa campo de input para novas fotos
-          if (fileInputRef.current) fileInputRef.current.value = ''
+          setUploadingFoto(false)
         }
       },
       (error) => {
-        console.error('Erro ao buscar localização para foto:', error)
-        setLoadingGps(false)
-        setLoadingUpload(false)
-        
-        let msg = 'Erro ao obter localização. A geolocalização é obrigatória para anexar a evidência.'
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = 'Permissão de GPS negada. Por favor, ative a localização para anexar fotos de evidência.'
-        }
-        setErroMsg(msg)
+        setUploadingFoto(false)
+        mostrarFeedback('erro', 'Obrigatório ativar o GPS para registrar a evidência fotográfica da OS.')
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 8000 }
     )
   }
 
-  // Finalização do serviço
-  const handleFinalizarServico = async () => {
-    // Valida se todas as tarefas do checklist foram concluídas
-    const tarefasPendentes = checklist.filter(item => !item.concluido)
-    if (tarefasPendentes.length > 0) {
-      setErroMsg('Por favor, conclua todas as tarefas do checklist operacional antes de finalizar a OS.')
-      return
-    }
-
-    // Valida se foi tirada pelo menos uma foto de evidência
-    if (fotos.length === 0) {
-      setErroMsg('É obrigatório anexar pelo menos uma evidência fotográfica do local de trabalho.')
-      return
-    }
-
-    setLoadingFinalizar(true)
-    setErroMsg(null)
-    setSuccessMsg(null)
-
-    const novoStatus = 'AGUARDANDO_VALIDACAO'
-
-    try {
-      console.log(`Atualizando status da OS ${id} para ${novoStatus}...`)
-      
-      // Chamada PUT real para atualizar o status
-      await api.put(`/ordens-servico/${id}/status`, { status: novoStatus })
-      
-      setSucessoMsg('Ordem de serviço concluída e enviada para validação com sucesso!')
-      
-      // Retorna para o dashboard após 3 segundos
-      setTimeout(() => {
-        navigate('/tecnico')
-      }, 3000)
-    } catch (err) {
-      console.warn('Erro ao atualizar status na API. Simulação de sucesso local aplicada:', err)
-      
-      setSucessoMsg('[Simulado] Ordem de serviço finalizada com sucesso! Redirecionando...');
-      setTimeout(() => {
-        navigate('/tecnico')
-      }, 3000)
-    } finally {
-      setLoadingFinalizar(false)
-    }
+  const mostrarFeedback = (tipo, texto) => {
+    setFeedbackMsg({ tipo, texto })
+    setTimeout(() => setFeedbackMsg({ tipo: '', texto: '' }), 5000)
   }
 
   const abrirNoMaps = (endereco) => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`
-    window.open(url, '_blank')
+    window.open(`https://maps.google.com/?q=${encodeURIComponent(endereco)}`, '_blank')
   }
 
-  if (loadingPage) {
+  if (loading) {
     return (
-      <div className="bg-slate-950 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm font-semibold">Carregando detalhes da OS...</p>
-        </div>
+      <div className="bg-slate-950 min-h-screen flex flex-col items-center justify-center text-slate-400">
+        <RefreshCw className="w-10 h-10 animate-spin text-indigo-500 mb-2" />
+        <p className="text-sm font-semibold">Carregando dados da Ordem de Serviço...</p>
       </div>
     )
   }
 
   return (
-    <div className="bg-slate-950 min-h-screen py-0 md:py-8 flex justify-center items-start">
-      {/* Mobile Device Frame Container */}
-      <div className="w-full max-w-md bg-slate-900 min-h-screen md:min-h-[850px] shadow-2xl border-0 md:border-8 md:border-slate-800 md:rounded-[40px] overflow-hidden relative flex flex-col font-sans text-slate-100">
+    <div className="bg-slate-950 min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8 font-sans antialiased">
+      <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* App Status Bar */}
-        <div className="bg-slate-950 text-slate-400 px-6 py-2 flex justify-between items-center text-xs font-semibold select-none">
-          <span>RC Mobile OS</span>
-          <div className="flex items-center gap-1.5">
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>4G Lte</span>
-            <div className="w-5 h-2.5 bg-slate-700 rounded-sm border border-slate-500 flex items-center p-px">
-              <div className="w-3.5 h-full bg-emerald-500 rounded-2xs" />
+        {/* Botão de Voltar Volante */}
+        <button 
+          onClick={() => navigate('/tecnico')}
+          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white transition group"
+        >
+          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+          Voltar para o Painel
+        </button>
+
+        {/* Header Principal da OS */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+          <div>
+            <span className="text-indigo-400 text-xs font-black tracking-widest uppercase">{os.numeroOs}</span>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">{os.cliente}</h1>
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <span>Agendado para: {new Date(os.dataExecucao).toLocaleDateString('pt-BR')}</span>
             </div>
           </div>
+          <span className={`text-xs font-black px-3 py-1 rounded-full border ${
+            os.status === 'CONCLUIDA' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+            os.status === 'EM_EXECUCAO' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 
+            'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+          }`}>
+            {os.status.replace('_', ' ')}
+          </span>
         </div>
 
-        {/* Top Header Navigation */}
-        <header className="p-4 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-800 sticky top-0 z-40 flex items-center gap-3">
-          <button 
-            onClick={() => navigate('/tecnico')}
-            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-300 hover:text-white transition active:scale-95"
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
-              {os?.numeroOs || 'OS-DETALHES'}
-            </span>
-            <h1 className="text-base font-extrabold tracking-tight mt-px">Execução de OS</h1>
+        {/* Toasts de Notificação */}
+        {feedbackMsg.texto && (
+          <div className={`border p-4 rounded-xl flex gap-3 animate-fadeIn text-xs ${
+            feedbackMsg.tipo === 'sucesso' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' : 'bg-rose-950/40 border-rose-500/30 text-rose-200'
+          }`}>
+            {feedbackMsg.tipo === 'sucesso' ? <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />}
+            <p className="font-semibold">{feedbackMsg.texto}</p>
           </div>
-        </header>
+        )}
 
-        {/* Corpo principal scrollable */}
-        <main className="flex-1 overflow-y-auto px-5 py-5 space-y-6 pb-28">
-
-          {/* Dados Gerais da OS */}
-          <section className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-4">
-            <div>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cliente</p>
-              <h3 className="text-base font-extrabold text-white mt-0.5">{os?.cliente}</h3>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between items-center">
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Local do Serviço</p>
-                <button 
-                  onClick={() => abrirNoMaps(os?.endereco)}
-                  className="text-[10px] text-indigo-400 font-bold hover:underline flex items-center gap-1"
-                >
-                  <Navigation className="w-3 h-3" />
-                  Ver Rota
-                </button>
-              </div>
-              <div className="flex gap-2 text-xs text-slate-300">
-                <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                <span>{os?.endereco}</span>
-              </div>
-            </div>
-
-            <div className="space-y-1 pt-2 border-t border-slate-800/80">
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Instruções de Trabalho</p>
-              <p className="text-xs text-slate-400 leading-relaxed italic">
-                "{os?.descricao}"
+        {/* Corpo em Grid Duplo Responsivo (Fica 1 coluna no celular e 2 colunas no PC) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          {/* LADO ESQUERDO: Informações e Metadados (Ocupa 2 colunas no PC) */}
+          <div className="md:col-span-2 space-y-6">
+            
+            {/* Box de Descrição */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-md">
+              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-indigo-400" /> Instruções do Serviço
+              </h3>
+              <p className="text-sm text-slate-300 leading-relaxed bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
+                {os.descricao}
               </p>
             </div>
-          </section>
 
-          {/* Checklist Operacional */}
-          <section className="space-y-3">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-indigo-400" />
-              Checklist Operacional
-            </h4>
-            <div className="space-y-3 bg-slate-950/25 border border-slate-800/80 rounded-2xl p-4">
-              {checklist.map(item => (
-                <label 
-                  key={item.id}
-                  onClick={() => handleToggleChecklist(item.id)}
-                  className="flex items-center gap-3.5 py-2.5 px-3 rounded-xl border border-transparent hover:border-slate-800 cursor-pointer transition select-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <div className="flex-shrink-0">
-                    {item.concluido ? (
-                      <CheckSquare className="w-6 h-6 text-emerald-400" />
-                    ) : (
-                      <div className="w-6 h-6 border-2 border-slate-600 rounded-md transition duration-200" />
-                    )}
-                  </div>
-                  <span className={`text-xs font-medium leading-tight ${
-                    item.concluido ? 'line-through text-slate-500' : 'text-slate-200'
-                  }`}>
-                    {item.texto}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </section>
-
-          {/* Relatório Fotográfico */}
-          <section className="space-y-3">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              <Camera className="w-4 h-4 text-indigo-400" />
-              Evidências Fotográficas
-            </h4>
-
-            {/* Input nativo mobile encapsulado */}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              ref={fileInputRef}
-              onChange={handleFotoCapturada}
-            />
-
-            <button
-              onClick={handleTriggerCamera}
-              disabled={loadingUpload}
-              className="w-full py-4 bg-slate-800 hover:bg-slate-700 active:scale-98 rounded-2xl border border-slate-700/80 font-bold text-xs flex items-center justify-center gap-2 text-indigo-300 transition-all select-none"
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              {loadingUpload ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{loadingGps ? 'Acessando GPS...' : 'Enviando Foto...'}</span>
-                </>
-              ) : (
-                <>
-                  <Camera className="w-4 h-4" />
-                  <span>Tirar Foto da Evidência</span>
-                </>
-              )}
-            </button>
-
-            {/* Grid de Thumbnails */}
-            {fotos.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                {fotos.map(foto => (
+            {/* Checklist de Atividades */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
+              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Checklist de Atividades</h3>
+              <div className="space-y-2 bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
+                {os.tarefas.map(tarefa => (
                   <div 
-                    key={foto.id} 
-                    className="bg-slate-950/45 border border-slate-800 rounded-xl overflow-hidden relative group"
+                    key={tarefa.id}
+                    onClick={() => handleToggleTarefa(tarefa.id)}
+                    className="flex items-start gap-3 py-2.5 cursor-pointer select-none transition hover:bg-slate-900/40 px-2 rounded-lg"
                   >
-                    <img 
-                      src={foto.url} 
-                      alt="Evidência" 
-                      className="w-full h-28 object-cover"
-                    />
-                    <div className="p-2 bg-slate-950/80 space-y-0.5 text-[9px] text-slate-400 border-t border-slate-800">
-                      <div className="flex items-center gap-1 font-bold text-emerald-400">
-                        <MapPin className="w-2.5 h-2.5 text-rose-500" />
-                        <span>Lat: {foto.latitude}</span>
-                      </div>
-                      <div className="pl-3.5">
-                        <span>Lng: {foto.longitude}</span>
-                      </div>
-                      <div className="flex justify-between items-center pt-1 mt-1 border-t border-slate-800/60">
-                        <span>Hora: {foto.timestamp}</span>
-                      </div>
+                    <div className="mt-0.5">
+                      {tarefa.concluida ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <div className="w-4 h-4 border border-slate-600 rounded-sm" />
+                      )}
                     </div>
+                    <span className={`text-sm ${tarefa.concluida ? 'line-through text-slate-500' : 'text-slate-300'}`}>
+                      {tarefa.texto}
+                    </span>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="text-center py-6 bg-slate-950/20 border border-slate-800/80 border-dashed rounded-2xl flex flex-col items-center justify-center gap-2">
-                <ImageIcon className="w-8 h-8 text-slate-600" />
-                <p className="text-[10px] text-slate-500 font-medium">Nenhuma foto adicionada ainda.</p>
-              </div>
-            )}
-          </section>
+            </div>
+          </div>
 
-          {/* Alertas e Mensagens de Feedback */}
-          {erroMsg && (
-            <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 rounded-xl p-3.5 flex gap-2.5 text-xs animate-fadeIn">
-              <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-bold">Atenção</p>
-                <p className="text-rose-300/80 mt-0.5">{erroMsg}</p>
+          {/* LADO DIREITO: Endereço, Contato e Upload da Câmera */}
+          <div className="md:col-span-1 space-y-6">
+            
+            {/* Box de Endereço */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
+              <div className="flex justify-between items-center">
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Localização</h4>
                 <button 
-                  onClick={() => setErroMsg(null)}
-                  className="mt-1.5 underline hover:no-underline font-semibold"
+                  onClick={() => abrirNoMaps(os.endereco)}
+                  className="text-[10px] text-indigo-400 font-bold hover:underline flex items-center gap-1"
                 >
-                  OK
+                  <Navigation className="w-3 h-3" /> Rota GPS
                 </button>
               </div>
-            </div>
-          )}
-
-          {sucessoMsg && (
-            <div className="bg-emerald-950/50 border border-emerald-500/30 text-emerald-200 rounded-xl p-3.5 flex gap-2.5 text-xs animate-fadeIn">
-              <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-bold">Concluído</p>
-                <p className="text-emerald-200/80 mt-0.5">{sucessoMsg}</p>
+              <div className="bg-slate-950/40 p-3.5 border border-slate-800 rounded-xl flex items-start gap-2.5">
+                <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                <span className="text-xs text-slate-300 leading-normal">{os.endereco}</span>
+              </div>
+              <div className="bg-slate-950/20 p-3 border border-slate-800/60 rounded-xl text-xs text-slate-400">
+                <span className="font-bold text-slate-300 block mb-1">Contato Responsável:</span>
+                {os.contato}
               </div>
             </div>
-          )}
 
-        </main>
+            {/* Upload de Relatório Fotográfico */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
+              <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Relatório Fotográfico</h4>
+              <div className="bg-slate-950/40 p-4 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-3 text-center">
+                {uploadingFoto ? (
+                  <div className="flex flex-col items-center gap-2 text-xs text-slate-400 py-4">
+                    <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
+                    <span>Enviando foto ao servidor...</span>
+                  </div>
+                ) : (
+                  <>
+                    <Camera className="w-8 h-8 text-slate-500" />
+                    <span className="text-[11px] text-slate-400 leading-normal">
+                      Tire a foto de conclusão para salvar a evidência no banco.
+                    </span>
+                    <label className="w-full text-center py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl cursor-pointer border border-slate-700 transition active:scale-95">
+                      Capturar Câmera
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment" // 💥 Força os navegadores mobile a abrirem direto a câmera do celular
+                        className="hidden" 
+                        onChange={handleUploadFotoEvidencia}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+            </div>
 
-        {/* Rodapé Fixo com Botão de Finalização */}
-        <footer className="p-4 bg-slate-950/95 border-t border-slate-800 sticky bottom-0 z-40 flex items-center justify-center">
-          <button
-            onClick={handleFinalizarServico}
-            disabled={loadingFinalizar}
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-extrabold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg transition-all select-none"
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-          >
-            {loadingFinalizar ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Finalizando Ordem...</span>
-              </>
-            ) : (
-              <>
-                <Check className="w-5 h-5" />
-                <span>Finalizar OS</span>
-              </>
-            )}
-          </button>
-        </footer>
+            {/* Ações de Status da OS */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2 shadow-md">
+              {os.status === 'ABERTA' && (
+                <button
+                  onClick={() => handleMudarStatus('EM_EXECUCAO')}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-md shadow-indigo-600/10"
+                >
+                  Iniciar Atendimento
+                </button>
+              )}
+              
+              {os.status === 'EM_EXECUCAO' && (
+                <button
+                  onClick={() => handleMudarStatus('CONCLUIDA')}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/10"
+                >
+                  Concluir Atendimento
+                </button>
+              )}
 
+              {os.status === 'CONCLUIDA' && (
+                <div className="w-full text-center py-2.5 text-xs font-bold text-emerald-400 flex items-center justify-center gap-1.5 bg-emerald-950/20 rounded-xl border border-emerald-900/30">
+                  <CheckCircle2 className="w-4 h-4" />
+                  OS Finalizada com Sucesso!
+                </div>
+              )}
+            </div>
+
+          </div>
+
+        </div>
       </div>
     </div>
   )

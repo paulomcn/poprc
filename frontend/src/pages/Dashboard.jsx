@@ -53,10 +53,10 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold text-slate-800 mb-4">Informações do Sistema</h2>
           <div className="space-y-3 text-sm text-slate-600">
             <p>
-              <span className="font-medium">Versão:</span> 1.0.0
+              <span className="font-medium">Versão:</span> 0.1.5
             </p>
             <p>
-              <span className="font-medium">Ambiente:</span> Produção
+              <span className="font-medium">Ambiente:</span> Desenvolvimento
             </p>
             <p>
               <span className="font-medium">API:</span> Online

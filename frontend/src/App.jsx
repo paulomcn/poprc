@@ -11,7 +11,7 @@ import PortalTecnicoDashboard from './pages/PortalTecnicoDashboard'
 import ExecutarOrdemServico from './pages/ExecutarOrdemServico'
 
 function App() {
-  const userName = 'Paulo Silva' // TODO: Get from session/JWT
+  const userName = 'Paulo Morais' // TODO: Get from session/JWT
 
   return (
     <Router>
