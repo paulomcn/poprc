@@ -44,3 +44,46 @@ Content-Type: image/jpeg
 
 < ./foto.jpg
 --MeuBoundaryMagico--
+
+### ===========================================================
+### ETAPA 4 - PARTE 2: MATERIAIS POR PROJETO E AS-BUILT
+### ===========================================================
+
+### 1. VINCULAR MATERIAL AO PROJETO (Planejar quantidades)
+POST http://localhost:8085/api/materiais-projeto
+Content-Type: application/json
+
+{
+    "quantidadePrevista": 50,
+    "quantidadeUtilizada": 35,
+    "projeto": { "id": 1 },
+    "material": { "id": 1 }
+}
+
+
+### 2. BUSCAR MÉTRICAS E CUSTO ACUMULADO DO MATERIAL
+# (Troque o /1/ pelo ID que o banco gerou no POST acima, se necessário)
+GET http://localhost:8085/api/materiais-projeto/1/metricas
+
+
+### 3. CRIAR UM ARQUIVO AS-BUILT (Versão 1 inicial)
+POST http://localhost:8085/api/as-built
+Content-Type: application/json
+
+{
+    "nomeArquivo": "diagrama_comarca_centro.vsdx",
+    "tipoArquivo": "VISIO",
+    "urlArquivo": "https://s3.poprc.com/arquivos/v1/diagrama.vsdx",
+    "projeto": { "id": 1 }
+}
+
+
+### 4. ATUALIZAR VERSÃO DO AS-BUILT (Avançar versão + Histórico TEXT)
+# (Troque o /1/ pelo ID do As-Built gerado no passo 3)
+PATCH http://localhost:8085/api/as-built/1/nova-versao
+Content-Type: application/json
+
+{
+    "novaUrl": "https://s3.poprc.com/arquivos/v2/diagrama_finalizado.vsdx",
+    "usuario": "Paulo Morais"
+}
