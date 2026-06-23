@@ -79,7 +79,7 @@ export default function ExecutarOrdemServico() {
     }
   }
 
-  // 💥 CONEXÃO REAL COM O BACKEND JAVA (Módulo 12 - Evidências Fotográficas)
+  //  CONEXÃO REAL COM O BACKEND JAVA (Módulo 12 - Evidências Fotográficas)
   const handleUploadFotoEvidencia = async (e) => {
     const file = e.target.files[0]
     if (!file) return
@@ -269,7 +269,7 @@ export default function ExecutarOrdemServico() {
                       <input 
                         type="file" 
                         accept="image/*" 
-                        capture="environment" // 💥 Força os navegadores mobile a abrirem direto a câmera do celular
+                        capture="environment" //  Força os navegadores mobile a abrirem direto a câmera do celular
                         className="hidden" 
                         onChange={handleUploadFotoEvidencia}
                       />

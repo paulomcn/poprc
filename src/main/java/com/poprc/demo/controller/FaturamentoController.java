@@ -2,6 +2,7 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Faturamento;
 import com.poprc.demo.service.FaturamentoService;
+import java.util.List;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,7 +30,7 @@ public class FaturamentoController {
 
     @PutMapping("/{id}/emitir-nf")
     public ResponseEntity<Faturamento> emitirNF(
-            @PathVariable Long id, 
+            @PathVariable Long id,
             @RequestBody EmitirNfDTO dto) {
         Faturamento atualizado = service.emitirNotaFiscal(id, dto.getNumeroNotaFiscal(), dto.getDataVencimento());
         return ResponseEntity.ok(atualizado);
@@ -58,5 +59,10 @@ public class FaturamentoController {
     public static class EmitirNfDTO {
         private String numeroNotaFiscal;
         private LocalDate dataVencimento;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Faturamento>> listar() {
+        return ResponseEntity.ok(service.listarTodos());
     }
 }

@@ -10,6 +10,12 @@ import PainelEstoque from './pages/PainelEstoque'
 import PortalTecnicoDashboard from './pages/PortalTecnicoDashboard'
 import ExecutarOrdemServico from './pages/ExecutarOrdemServico'
 
+//  NOVOS IMPORTS DA ETAPA 4
+import PainelFinanceiro from './pages/PainelFinanceiro'
+import GestaoFaturamento from './pages/GestaoFaturamento'
+import PainelViagensEReembolso from './pages/PainelViagensEReembolso'
+import AuditoriaMateriaisEAsBuilt from './pages/AuditoriaMateriaisEAsBuilt'
+
 function App() {
   const userName = 'Paulo Morais' // TODO: Get from session/JWT
 
@@ -72,6 +78,42 @@ function App() {
             </Layout>
           }
         />
+
+        {/*  NOVAS ROTAS DA ETAPA 4 (DENTRO DO LAYOUT GERENCIAL) */}
+        <Route
+          path="/financeiro/lucratividade"
+          element={
+            <Layout userName={userName}>
+              <PainelFinanceiro />
+            </Layout>
+          }
+        />
+        <Route
+          path="/financeiro/faturamento"
+          element={
+            <Layout userName={userName}>
+              <GestaoFaturamento />
+            </Layout>
+          }
+        />
+        <Route
+          path="/logistica/viagens"
+          element={
+            <Layout userName={userName}>
+              <PainelViagensEReembolso />
+            </Layout>
+          }
+        />
+        <Route
+          path="/auditoria/tecnica"
+          element={
+            <Layout userName={userName}>
+              <AuditoriaMateriaisEAsBuilt />
+            </Layout>
+          }
+        />
+
+        {/* ROTAS DO PORTAL DO TÉCNICO (FORA DO LAYOUT PADRÃO) */}
         <Route
           path="/tecnico"
           element={<PortalTecnicoDashboard />}

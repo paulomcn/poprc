@@ -34,9 +34,16 @@ export default function Projetos() {
   const fetchProjetos = async () => {
     try {
       const response = await api.get('/projetos')
-      setProjetos(response.data)
+      
+      // 💥 TRAVA DE SEGURANÇA
+      const dadosTratados = Array.isArray(response.data)
+        ? response.data
+        : (response.data && Array.isArray(response.data.content) ? response.data.content : [])
+
+      setProjetos(dadosTratados)
     } catch (err) {
-      setError('Erro ao carregar projetos')
+      setError('Erro ao carregar projetos no servidor')
+      setProjetos([])
       console.error(err)
     } finally {
       setLoading(false)
@@ -46,7 +53,13 @@ export default function Projetos() {
   const fetchContratos = async () => {
     try {
       const response = await api.get('/contratos')
-      setContratos(response.data)
+      
+      // 💥 TRAVA DE SEGURANÇA
+      const dadosTratados = Array.isArray(response.data)
+        ? response.data
+        : (response.data && Array.isArray(response.data.content) ? response.data.content : [])
+
+      setContratos(dadosTratados)
     } catch (err) {
       console.error(err)
     }
@@ -101,7 +114,7 @@ export default function Projetos() {
 
       {loading ? (
         <LoadingSpinner />
-      ) : projetos.length === 0 ? (
+      ) : !Array.isArray(projetos) || projetos.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <Briefcase size={48} className="mx-auto text-slate-400 mb-4" />
           <p className="text-slate-600">Nenhum projeto cadastrado</p>
@@ -119,7 +132,7 @@ export default function Projetos() {
 
               <div className="space-y-2 text-sm text-slate-600">
                 <p>
-                  <span className="font-medium">Contrato:</span> {projeto.contrato?.contrato}
+                  <span className="font-medium">Contrato:</span> {projeto.contrato?.contrato || '-'}
                 </p>
                 <p>
                   <span className="font-medium">Início:</span>{' '}
@@ -153,7 +166,7 @@ export default function Projetos() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Selecione um contrato</option>
-              {contratos.map(c => (
+              {Array.isArray(contratos) && contratos.map(c => (
                 <option key={c.id} value={c.id}>{c.contrato} - {c.cliente}</option>
               ))}
             </select>

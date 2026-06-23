@@ -5,6 +5,7 @@ import com.poprc.demo.model.Faturamento;
 import com.poprc.demo.model.SituacaoFaturamento;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FaturamentoRepository;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,5 +55,10 @@ public class FaturamentoService {
     public Faturamento buscarPorId(Long id) {
         return faturamentoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Faturamento não encontrado"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Faturamento> listarTodos() {
+        return faturamentoRepository.findAll();
     }
 }

@@ -190,7 +190,7 @@ export default function PortalTecnicoDashboard() {
   }
 
   return (
-    // 💥 MUDANÇA 1: Removido o frame de celular falso. O container agora ocupa a tela inteira com espaçamento fluido.
+    //  MUDANÇA 1: Removido o frame de celular falso. O container agora ocupa a tela inteira com espaçamento fluido.
     <div className="bg-slate-950 min-h-screen text-slate-100 font-sans antialiased p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         
@@ -207,7 +207,7 @@ export default function PortalTecnicoDashboard() {
           </div>
         </header>
 
-        {/* 💥 MUDANÇA 2: GRID SISTÊMICO RESPONSIVO */}
+        {/*  MUDANÇA 2: GRID SISTÊMICO RESPONSIVO */}
         {/* No Mobile: 1 coluna (tudo empilhado). No Computador (lg): Divide em 3 colunas (1 pro Ponto, 2 paras as OS) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           
@@ -309,7 +309,7 @@ export default function PortalTecnicoDashboard() {
               </span>
             </div>
 
-            {/* 💥 MUDANÇA 3: AS ORDENS DE SERVIÇO NO COMPUTADOR FICAM LADO A LADO EM SUB-GRID */}
+            {/*  MUDANÇA 3: AS ORDENS DE SERVIÇO NO COMPUTADOR FICAM LADO A LADO EM SUB-GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {ordensServico.map((os) => (
                 <div 

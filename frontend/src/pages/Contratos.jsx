@@ -26,10 +26,17 @@ export default function Contratos() {
     try {
       setLoading(true)
       const response = await api.get('/contratos')
-      setContratos(response.data)
+      
+      // 💥 TRAVA DE SEGURANÇA: Identifica se é Array ou objeto paginado do Spring
+      const dadosTratados = Array.isArray(response.data)
+        ? response.data
+        : (response.data && Array.isArray(response.data.content) ? response.data.content : [])
+
+      setContratos(dadosTratados)
       setError(null)
     } catch (err) {
-      setError('Erro ao carregar contratos')
+      setError('Erro ao carregar contratos no servidor')
+      setContratos([]) // Reseta para array vazio para não crashar o layout
       console.error(err)
     } finally {
       setLoading(false)
@@ -92,7 +99,7 @@ export default function Contratos() {
 
       {loading ? (
         <LoadingSpinner />
-      ) : contratos.length === 0 ? (
+      ) : !Array.isArray(contratos) || contratos.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <FileUp size={48} className="mx-auto text-slate-400 mb-4" />
           <p className="text-slate-600">Nenhum contrato cadastrado</p>

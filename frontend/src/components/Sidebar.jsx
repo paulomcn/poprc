@@ -10,13 +10,19 @@ import {
   LogOut,
   Menu,
   X,
-  Smartphone
+  Smartphone,
+  // 💥 NOVOS ÍCONES IMPORTADOS DA ETAPA 4
+  TrendingUp,
+  DollarSign,
+  Plane,
+  Layers
 } from 'lucide-react'
 
 export default function Sidebar() {
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
 
+  // 💥 ARRAY ATUALIZADO COM OS NOVOS MÓDULOS GERENCIAIS
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/contratos', icon: FileText, label: 'Contratos' },
@@ -24,6 +30,13 @@ export default function Sidebar() {
     { path: '/funcionarios', icon: Users, label: 'Funcionários' },
     { path: '/comarcas', icon: Building2, label: 'Gestão de Comarcas' },
     { path: '/estoque', icon: Package, label: 'Estoque de Materiais' },
+    
+    // Novas páginas do financeiro, logística e engenharia
+    { path: '/financeiro/lucratividade', icon: TrendingUp, label: 'Lucratividade' },
+    { path: '/financeiro/faturamento', icon: DollarSign, label: 'Gestão Faturamento' },
+    { path: '/logistica/viagens', icon: Plane, label: 'Viagens e Reembolsos' },
+    { path: '/auditoria/tecnica', icon: Layers, label: 'Auditoria Técnica' },
+
     { path: '/tecnico', icon: Smartphone, label: 'Área do Técnico' },
   ]
 
@@ -56,7 +69,7 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto"> {/* Adicionado scroll caso a tela seja pequena */}
           <ul className="space-y-2">
             {menuItems.map((item) => (
               <li key={item.path}>
