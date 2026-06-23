@@ -35,7 +35,7 @@ public class SecurityConfig {
             // 3. REGRAS DE PERMISSÃO
             .authorizeHttpRequests(authorize -> authorize
                 // Liberando a rota de campo pros testes e a rota /error pra ver os logs reais do Java
-                .requestMatchers("/api/campo/**", "/error").permitAll() 
+                .requestMatchers("/api/**", "/error").permitAll() 
                 .anyRequest().authenticated()
             )
             // Configuração OAuth2 Login com Zoho + Nosso Hack do UserInfo

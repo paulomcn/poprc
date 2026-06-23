@@ -87,3 +87,40 @@ Content-Type: application/json
     "novaUrl": "https://s3.poprc.com/arquivos/v2/diagrama_finalizado.vsdx",
     "usuario": "Paulo Morais"
 }
+
+
+
+### ===========================================================
+### ETAPA 4 - PARTE 3: FATURAMENTO E MEDIÇÕES
+### ===========================================================
+
+### 1. REGISTRAR UMA MEDIÇÃO DE SERVIÇO (Status: A_FATURAR)
+POST http://localhost:8085/api/faturamentos
+Content-Type: application/json
+
+{
+    "servicosExecutados": "Instalação física de 24 pontos de rede Cat6 e certificação Fluke LinkIQ.",
+    "valorMedicao": 4500.00,
+    "contratoId": 1
+}
+
+### 2. EMITIR NOTA FISCAL (Status vira FATURADO e ganha vencimento)
+# (Confirme se o ID gerado no passo 1 foi o 1)
+PUT http://localhost:8085/api/faturamentos/1/emitir-nf
+Content-Type: application/json
+
+{
+    "numeroNotaFiscal": "NF-2026-9941",
+    "dataVencimento": "2026-07-15"
+}
+
+### 3. DAR BAIXA NO PAGAMENTO (Status vira PAGO)
+PUT http://localhost:8085/api/faturamentos/1/baixa
+
+
+### ===========================================================
+### ETAPA 4 - CONSOLIDAÇÃO FINANCEIRA (O BOSS FINAL DO BACKEND)
+### ===========================================================
+
+### 1. OBTER SAÚDE FINANCEIRA DO PROJETO 1
+GET http://localhost:8085/api/relatorios/projeto/1/lucratividade
