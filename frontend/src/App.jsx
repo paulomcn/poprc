@@ -20,7 +20,7 @@ function App() {
   const userName = 'Paulo Morais' // TODO: Get from session/JWT
 
   return (
-    <Router>
+    <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
         <Route
           path="/"
@@ -79,7 +79,7 @@ function App() {
           }
         />
 
-        {/*  NOVAS ROTAS DA ETAPA 4 (DENTRO DO LAYOUT GERENCIAL) */}
+        {/* NOVAS ROTAS DA ETAPA 4 (DENTRO DO LAYOUT GERENCIAL) */}
         <Route
           path="/financeiro/lucratividade"
           element={

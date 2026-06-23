@@ -1,5 +1,6 @@
 package com.poprc.demo.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -35,9 +36,11 @@ public class Viagem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "funcionario_id", nullable = false)
+    @JsonIgnoreProperties({"certificacoes", "documentPaths"}) // Corta loops pesados do funcionário
     private Funcionario funcionario;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projeto_id", nullable = false)
+    @JsonIgnoreProperties({"contrato", "atividades", "ordensServico"}) // 💥 CORTA O LOOP INFINITO AQUI
     private Projeto projeto;
 }

@@ -2,6 +2,7 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.PrestacaoContas;
 import com.poprc.demo.model.Viagem;
+import com.poprc.demo.repository.ViagemRepository; // 💥 IMPORT DO REPO
 import com.poprc.demo.service.FinanceiroService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
+import java.util.List; // 💥 IMPORT DA LIST
 
 @RestController
 @RequestMapping("/api/financeiro")
@@ -16,6 +18,13 @@ import java.math.BigDecimal;
 public class ViagemController {
 
     private final FinanceiroService financeiroService;
+    private final ViagemRepository viagemRepository; // 💥 INJEÇÃO DO REPO
+
+    // 📥 ROTA NOVELLA: Listar todas as viagens para o front carregar
+    @GetMapping("/viagens")
+    public ResponseEntity<List<Viagem>> listarViagens() {
+        return ResponseEntity.ok(viagemRepository.findAll());
+    }
 
     @PostMapping("/viagens")
     public ResponseEntity<Viagem> criarViagem(@RequestBody NovaViagemDTO dto) {
@@ -39,7 +48,6 @@ public class ViagemController {
         return ResponseEntity.status(HttpStatus.CREATED).body(prestacao);
     }
 
-    // DTOs pra isolar a requisição e não engessar o Front
     @Data
     public static class NovaViagemDTO {
         private String solicitacaoVeiculo;

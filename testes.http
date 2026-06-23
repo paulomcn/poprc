@@ -124,3 +124,27 @@ PUT http://localhost:8085/api/faturamentos/1/baixa
 
 ### 1. OBTER SAÚDE FINANCEIRA DO PROJETO 1
 GET http://localhost:8085/api/relatorios/projeto/1/lucratividade
+
+
+### INJETAR NOVA MEDIÇÃO OPERACIONAL (CORRIGIDO)
+POST http://localhost:8085/api/faturamentos
+Content-Type: application/json
+
+{
+  "servicosExecutados": "Instalação de Ativos e Cabeamento Estruturado - Fase 2",
+  "valorMedicao": 5000.00,
+  "contratoId": 1
+}
+
+### INJETAR VIAGEM OPERACIONAL REAL (MÓDULO 6)
+POST http://localhost:8085/api/financeiro/viagens
+Content-Type: application/json
+
+{
+  "solicitacaoVeiculo": "Aluguel de SUV 4x4 - Localiza Natal",
+  "hospedagemDetalhes": "Hotel Ibis Feira de Santana - 3 Diárias",
+  "adiantamentoDiarias": 450.00,
+  "custoPlanejado": 1200.00,
+  "funcionarioId": 1,
+  "projetoId": 1
+}

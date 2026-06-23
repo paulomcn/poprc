@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 @Entity
 @Table(name = "faturamentos")
 @Data
@@ -36,5 +38,6 @@ public class Faturamento {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contrato_id", nullable = false)
+    @JsonIgnoreProperties("projetos")
     private Contrato contrato;
 }
