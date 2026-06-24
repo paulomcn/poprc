@@ -36,10 +36,7 @@ public class FinanceiroService {
         Viagem viagem = viagemRepository.findById(viagemId)
                 .orElseThrow(() -> new RuntimeException("Viagem não encontrada"));
 
-        // Regra de ouro: Se estourou o planejado, toma a flag de EXCEDIDO na cara
-        String statusCalculado = custoReal.compareTo(viagem.getCustoPlanejado()) > 0 
-                ? "EXCEDIDO" 
-                : "DENTRO_DO_ORCAMENTO";
+        String statusCalculado = custoReal.compareTo(viagem.getCustoPlanejado()) > 0 ? "EXCEDIDO" : "DENTRO_DO_ORCAMENTO";
 
         PrestacaoContas prestacao = new PrestacaoContas();
         prestacao.setViagem(viagem);
@@ -47,10 +44,11 @@ public class FinanceiroService {
         prestacao.setCaminhoNotaFiscal(pathNota);
         prestacao.setStatus(statusCalculado);
 
-        // Atualiza a viagem automática para o fechamento
+        // Amarra as pontas em memória
+        viagem.setPrestacaoContas(prestacao);
         viagem.setStatus(StatusViagem.CONCLUIDA);
-        viagemRepository.save(viagem);
 
+        //  CORREÇÃO: Salvando apenas o lado DONO da relação, o JPA resolve o resto sem duplicar
         return prestacaoContasRepository.save(prestacao);
     }
 }

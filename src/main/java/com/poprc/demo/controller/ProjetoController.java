@@ -7,12 +7,7 @@ import com.poprc.demo.repository.ContratoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +22,9 @@ public class ProjetoController {
 
     @Autowired
     private ContratoRepository contratoRepository;
+
+    // 💥 MÁGICA: Variável em memória para simular a mudança de status em tempo real
+    private String asBuiltStatusSimulado = "PENDENTE";
 
     /**
      * Salvar novo projeto vinculado a um contrato
@@ -98,5 +96,37 @@ public class ProjetoController {
     public ResponseEntity<List<Projeto>> listarPorResponsavel(@PathVariable Long responsavelId) {
         List<Projeto> projetos = projetoRepository.findByResponsavelId(responsavelId);
         return ResponseEntity.ok(projetos);
+    }
+
+    /**
+     * 📥 Buscar auditoria de materiais e status de As-Built do Projeto
+     */
+    @GetMapping("/{id}/auditoria")
+    public ResponseEntity<Map<String, Object>> buscarAuditoria(@PathVariable Long id) {
+        Map<String, Object> response = new HashMap<>();
+        
+        // 💥 CORREÇÃO: Agora ele lê a variável dinâmica e não o texto fixo!
+        response.put("asBuiltStatus", this.asBuiltStatusSimulado);
+        
+        response.put("materiais", List.of(
+            Map.of("nome", "Cabo UTP Cat6 S/FTP Polimérico", "previsto", 500, "utilizado", 520),
+            Map.of("nome", "Switch 24p PoE Cisco Catalyst", "previsto", 2, "utilizado", 2),
+            Map.of("nome", "Dio 24 Fibras Ópticas Conectorizado", "previsto", 4, "utilizado", 3)
+        ));
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 📤 Disparado pelo botão "Homologar Documento"
+     */
+    @PutMapping("/{id}/as-built/homologar")
+    public ResponseEntity<Map<String, String>> homologarAsBuilt(@PathVariable Long id) {
+        // 💥 CORREÇÃO: Altera o estado na memória do servidor
+        this.asBuiltStatusSimulado = "HOMOLOGADO";
+        
+        return ResponseEntity.ok(Map.of(
+            "status", "HOMOLOGADO", 
+            "mensagem", "As-Built homologado com sucesso no servidor!"
+        ));
     }
 }

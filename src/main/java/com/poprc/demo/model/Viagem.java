@@ -36,11 +36,15 @@ public class Viagem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "funcionario_id", nullable = false)
-    @JsonIgnoreProperties({"certificacoes", "documentPaths"}) // Corta loops pesados do funcionário
+    @JsonIgnoreProperties({ "certificacoes", "documentPaths" }) // Corta loops pesados do funcionário
     private Funcionario funcionario;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projeto_id", nullable = false)
-    @JsonIgnoreProperties({"contrato", "atividades", "ordensServico"}) // 💥 CORTA O LOOP INFINITO AQUI
+    @JsonIgnoreProperties({ "contrato", "atividades", "ordensServico" }) // 💥 CORTA O LOOP INFINITO AQUI
     private Projeto projeto;
+
+    @OneToOne(mappedBy = "viagem", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("viagem")
+    private PrestacaoContas prestacaoContas;
 }
