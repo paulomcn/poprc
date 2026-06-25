@@ -1,18 +1,18 @@
 package com.poprc.demo.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import java.time.LocalDate;
+import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
 @Table(name = "projetos")
+@Data // 
+@NoArgsConstructor // Construtor padrão vazio
+@AllArgsConstructor // Construtor com todos os campos
 public class Projeto {
 
     @Id
@@ -34,54 +34,11 @@ public class Projeto {
     @JoinColumn(name = "responsavel_id")
     private Funcionario responsavel;
 
-    public Projeto() {
-    }
+    // 🛠️ CAMPOS NOVOS DA OPÇÃO 1 (AUDITORIA REAL)
+    @Column(name = "as_built_status")
+    private String asBuiltStatus = "PENDENTE"; // PENDENTE ou HOMOLOGADO
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Contrato getContrato() {
-        return contrato;
-    }
-
-    public void setContrato(Contrato contrato) {
-        this.contrato = contrato;
-    }
-
-    public LocalDate getDataInicio() {
-        return dataInicio;
-    }
-
-    public void setDataInicio(LocalDate dataInicio) {
-        this.dataInicio = dataInicio;
-    }
-
-    public LocalDate getDataFim() {
-        return dataFim;
-    }
-
-    public void setDataFim(LocalDate dataFim) {
-        this.dataFim = dataFim;
-    }
-
-    public ProjetoStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(ProjetoStatus status) {
-        this.status = status;
-    }
-
-    public Funcionario getResponsavel() {
-        return responsavel;
-    }
-
-    public void setResponsavel(Funcionario responsavel) {
-        this.responsavel = responsavel;
-    }
+    @OneToMany(mappedBy = "projeto", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("projeto")
+    private List<MaterialProjeto> materiais;
 }

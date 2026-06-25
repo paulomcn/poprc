@@ -155,3 +155,4 @@ GET http://localhost:8085/api/projetos/1/auditoria
 
 ### CHECAR ENDPOINT DE HOMOLOGAÇÃO DO AS-BUILT
 PUT http://localhost:8085/api/projetos/1/as-built/homologar
+

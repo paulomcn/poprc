@@ -1,12 +1,71 @@
-import { BarChart3, FileText, Briefcase, Users } from 'lucide-react'
+import React, { useState, useEffect } from 'react';
+import { BarChart3, FileText, Briefcase, Users, Loader2 } from 'lucide-react';
+import api from '../services/api';
 
 export default function Dashboard() {
+  const [estatisticas, setEstatisticas] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const puxarDadosDashboard = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get('/dashboard/stats');
+        setEstatisticas(response.data);
+      } catch (error) {
+        console.error("Erro ao carregar dados do dashboard:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    puxarDadosDashboard();
+  }, []);
+
+  // Helper para formatar a dinheirama no padrão brasileiro
+  const formatarMoeda = (valor) => {
+    if (!valor) return 'R$ 0,00';
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(valor);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex justify-center items-center">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  // Mapeia os dados dinâmicos vindos do Java para os cards visuais
   const stats = [
-    { icon: FileText, label: 'Contratos Ativos', value: '12', color: 'bg-blue-100' },
-    { icon: Briefcase, label: 'Projetos em Andamento', value: '28', color: 'bg-green-100' },
-    { icon: Users, label: 'Funcionários', value: '145', color: 'bg-purple-100' },
-    { icon: BarChart3, label: 'Valor Total', value: 'R$ 2.5M', color: 'bg-orange-100' },
-  ]
+    { 
+      icon: FileText, 
+      label: 'Contratos Ativos', 
+      value: estatisticas?.contratosAtivos || '0', 
+      color: 'bg-blue-100' 
+    },
+    { 
+      icon: Briefcase, 
+      label: 'Projetos em Andamento', 
+      value: estatisticas?.projetosAndamento || '0', 
+      color: 'bg-green-100' 
+    },
+    { 
+      icon: Users, 
+      label: 'Funcionários', 
+      value: estatisticas?.funcionarios || '0', 
+      color: 'bg-purple-100' 
+    },
+    { 
+      icon: BarChart3, 
+      label: 'Valor Total', 
+      value: formatarMoeda(estatisticas?.valorTotal), 
+      color: 'bg-orange-100' 
+    },
+  ];
 
   return (
     <div className="max-w-6xl">
@@ -15,14 +74,14 @@ export default function Dashboard() {
         <p className="text-slate-600 mt-2">Bem-vindo ao RC Operations Hub</p>
       </div>
 
-      {/* Stats Grid */}
+      {/* Stats Grid Dinâmico */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat, idx) => (
-          <div key={idx} className="bg-white rounded-lg shadow p-6">
+          <div key={idx} className="bg-white rounded-lg shadow p-6 border border-slate-100">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-slate-600 text-sm font-medium">{stat.label}</p>
-                <p className="text-3xl font-bold text-slate-800 mt-2">{stat.value}</p>
+                <p className="text-3xl font-bold text-slate-800 mt-2 tracking-tight">{stat.value}</p>
               </div>
               <div className={`${stat.color} p-4 rounded-lg`}>
                 <stat.icon size={28} className="text-slate-700" />
@@ -32,7 +91,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions e Infos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold text-slate-800 mb-4">Ações Rápidas</h2>
@@ -52,21 +111,13 @@ export default function Dashboard() {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold text-slate-800 mb-4">Informações do Sistema</h2>
           <div className="space-y-3 text-sm text-slate-600">
-            <p>
-              <span className="font-medium">Versão:</span> 0.1.5
-            </p>
-            <p>
-              <span className="font-medium">Ambiente:</span> Desenvolvimento
-            </p>
-            <p>
-              <span className="font-medium">API:</span> Online
-            </p>
-            <p>
-              <span className="font-medium">Data:</span> {new Date().toLocaleDateString('pt-BR')}
-            </p>
+            <p><span className="font-medium">Versão:</span> 0.1.5</p>
+            <p><span className="font-medium">Ambiente:</span> Desenvolvimento</p>
+            <p><span className="font-medium">API:</span> <span className="text-emerald-600 font-bold">Online</span></p>
+            <p><span className="font-medium">Data:</span> {new Date().toLocaleDateString('pt-BR')}</p>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
