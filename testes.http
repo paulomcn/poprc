@@ -156,3 +156,10 @@ GET http://localhost:8085/api/projetos/1/auditoria
 ### CHECAR ENDPOINT DE HOMOLOGAÇÃO DO AS-BUILT
 PUT http://localhost:8085/api/projetos/1/as-built/homologar
 
+####
+
+POST http://localhost:8085/api/alertas/disparar-todos
+
+
+### Testar o novo Dashboard Executivo Analítico
+GET http://localhost:8085/api/dashboard/executivo

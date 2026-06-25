@@ -1,32 +1,36 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
-import Contratos from './pages/Contratos'
-import Projetos from './pages/Projetos'
-import Funcionarios from './pages/Funcionarios'
-import GestaoOrdensServico from './pages/GestaoOrdensServico'
-import GestaoComarcas from './pages/GestaoComarcas'
-import PainelEstoque from './pages/PainelEstoque'
-import PortalTecnicoDashboard from './pages/PortalTecnicoDashboard'
-import ExecutarOrdemServico from './pages/ExecutarOrdemServico'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import Dashboard from "./pages/Dashboard"; // Dashboard antigo
+import Contratos from "./pages/Contratos";
+import Projetos from "./pages/Projetos";
+import Funcionarios from "./pages/Funcionarios";
+import GestaoOrdensServico from "./pages/GestaoOrdensServico";
+import GestaoComarcas from "./pages/GestaoComarcas";
+import PainelEstoque from "./pages/PainelEstoque";
+import PortalTecnicoDashboard from "./pages/PortalTecnicoDashboard";
+import ExecutarOrdemServico from "./pages/ExecutarOrdemServico";
 
-//  NOVOS IMPORTS DA ETAPA 4
-import PainelFinanceiro from './pages/PainelFinanceiro'
-import GestaoFaturamento from './pages/GestaoFaturamento'
-import PainelViagensEReembolso from './pages/PainelViagensEReembolso'
-import AuditoriaMateriaisEAsBuilt from './pages/AuditoriaMateriaisEAsBuilt'
+// NOVOS IMPORTS DA ETAPA 4
+import PainelFinanceiro from "./pages/PainelFinanceiro";
+import GestaoFaturamento from "./pages/GestaoFaturamento";
+import PainelViagensEReembolso from "./pages/PainelViagensEReembolso";
+import AuditoriaMateriaisEAsBuilt from "./pages/AuditoriaMateriaisEAsBuilt";
+
+import DashboardExecutivo from "./pages/DashboardExecutivo";
+import ConfiguracaoNotificacoes from "./pages/ConfiguracaoNotificacoes";
 
 function App() {
-  const userName = 'Paulo Morais' // TODO: Get from session/JWT
+  const userName = "Paulo Morais"; // TODO: Get from session/JWT
 
   return (
     <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
+        {/* 💥 TROCADO: Agora a página inicial REAL do sistema é o Dashboard Executivo */}
         <Route
           path="/"
           element={
             <Layout userName={userName}>
-              <Dashboard />
+              <DashboardExecutivo />
             </Layout>
           }
         />
@@ -112,19 +116,21 @@ function App() {
             </Layout>
           }
         />
-
+        <Route
+          path="/configuracao-notificacoes"
+          element={
+            <Layout userName={userName}>
+              <ConfiguracaoNotificacoes />
+            </Layout>
+          }
+        />
+        
         {/* ROTAS DO PORTAL DO TÉCNICO (FORA DO LAYOUT PADRÃO) */}
-        <Route
-          path="/tecnico"
-          element={<PortalTecnicoDashboard />}
-        />
-        <Route
-          path="/tecnico/os/:id"
-          element={<ExecutarOrdemServico />}
-        />
+        <Route path="/tecnico" element={<PortalTecnicoDashboard />} />
+        <Route path="/tecnico/os/:id" element={<ExecutarOrdemServico />} />
       </Routes>
     </Router>
-  )
+  );
 }
 
-export default App
+export default App;

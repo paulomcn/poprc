@@ -15,16 +15,17 @@ import {
   TrendingUp,
   DollarSign,
   Plane,
-  Layers
+  Layers,
+  Bell
 } from 'lucide-react'
 
 export default function Sidebar() {
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
 
-  // 💥 ARRAY ATUALIZADO COM OS NOVOS MÓDULOS GERENCIAIS
+ //  ARRAY ATUALIZADO COM O DASHBOARD EXECUTIVO NA LIDERANÇA
   const menuItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/', icon: LayoutDashboard, label: 'Dashboard Executivo' }, // 💥 Linkado na Home
     { path: '/contratos', icon: FileText, label: 'Contratos' },
     { path: '/projetos', icon: Briefcase, label: 'Projetos' },
     { path: '/funcionarios', icon: Users, label: 'Funcionários' },
@@ -36,6 +37,7 @@ export default function Sidebar() {
     { path: '/financeiro/faturamento', icon: DollarSign, label: 'Gestão Faturamento' },
     { path: '/logistica/viagens', icon: Plane, label: 'Viagens e Reembolsos' },
     { path: '/auditoria/tecnica', icon: Layers, label: 'Auditoria Técnica' },
+    { path: '/configuracao-notificacoes', icon: Bell, label: 'Notificações' },
 
     { path: '/tecnico', icon: Smartphone, label: 'Área do Técnico' },
   ]
@@ -43,7 +45,7 @@ export default function Sidebar() {
   const isActive = (path) => location.pathname === path
 
   const handleLogout = () => {
-    window.location.href = 'http://localhost:8080/logout'
+    window.location.href = 'http://localhost:8085/logout'
   }
 
   return (
