@@ -14,7 +14,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
 @Table(name = "contratos")
-@Data // 💥 Adeus Getters, Setters, Equals e HashCode manuais
+@Data // Adeus Getters, Setters, Equals e HashCode manuais
 @NoArgsConstructor
 @AllArgsConstructor
 public class Contrato {
@@ -44,6 +44,7 @@ public class Contrato {
 
     @Column(length = 2000)
     private String escopo;
+    private String status = "ATIVO";
 
     @OneToMany(mappedBy = "contrato", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnoreProperties("contrato") // Evita recursão infinita no JSON

@@ -2,10 +2,10 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.Contrato;
-import com.poprc.demo.model.MaterialProjeto;
+import com.poprc.demo.model.ProjetoStatus; // 💥 IMPORT NOVO CORRIGIDO
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.ContratoRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,16 +19,21 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/projetos")
+@CrossOrigin(origins = "*")
 public class ProjetoController {
 
-    @Autowired
-    private ProjetoRepository projetoRepository;
+    private final ProjetoRepository projetoRepository;
+    private final ContratoRepository contratoRepository;
 
-    @Autowired
-    private ContratoRepository contratoRepository;
+    // Construtor manual para garantir o funcionamento com o Spring sem quebra de
+    // Beans
+    public ProjetoController(ProjetoRepository projetoRepository, ContratoRepository contratoRepository) {
+        this.projetoRepository = projetoRepository;
+        this.contratoRepository = contratoRepository;
+    }
 
     /**
-     * Salvar novo projeto vinculado a um contrato
+     * 💾 POST: Salvar novo projeto vinculado a um contrato
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> salvarProjeto(@RequestBody Projeto projeto) {
@@ -46,9 +51,19 @@ public class ProjetoController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
 
+            // ⚡ CORREÇÃO AQUI: Usando o Enum real em vez de String pura
+            if (projeto.getStatus() == null) {
+                projeto.setStatus(ProjetoStatus.EM_ANDAMENTO);
+            }
+            if (projeto.getAsBuiltStatus() == null) {
+                projeto.setAsBuiltStatus("PENDENTE");
+            }
+
+            projeto.setContrato(contrato.get());
+
             Projeto projetoSalvo = projetoRepository.save(projeto);
             response.put("projeto", projetoSalvo);
-            response.put("mensagem", "Projeto salvo com sucesso");
+            response.put("mensagem", "Projeto saved com sucesso");
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
@@ -56,6 +71,45 @@ public class ProjetoController {
             erro.put("erro", "Erro ao salvar projeto: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(erro);
         }
+    }
+
+    /**
+     * 🔍 GET /{id}: Buscar projeto específico por ID
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<Projeto> buscarPorId(@PathVariable Long id) {
+        return projetoRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * ✏️ PUT /{id}: Atualizar dados do projeto e Status via formulário do React
+     */
+    @PutMapping("/{id}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> atualizarProjeto(@PathVariable Long id,
+            @RequestBody Projeto dadosAtualizados) {
+        Map<String, Object> response = new HashMap<>();
+
+        return projetoRepository.findById(id)
+                .map(projeto -> {
+                    projeto.setDataInicio(dadosAtualizados.getDataInicio());
+                    projeto.setDataFim(dadosAtualizados.getDataFim());
+                    projeto.setStatus(dadosAtualizados.getStatus());
+                    projeto.setAsBuiltStatus(dadosAtualizados.getAsBuiltStatus());
+
+                    if (dadosAtualizados.getContrato() != null && dadosAtualizados.getContrato().getId() != null) {
+                        contratoRepository.findById(dadosAtualizados.getContrato().getId())
+                                .ifPresent(projeto::setContrato);
+                    }
+
+                    Projeto salvo = projetoRepository.save(projeto);
+                    response.put("projeto", salvo);
+                    response.put("mensagem", "Projeto atualizado com sucesso!");
+                    return ResponseEntity.ok(response);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     /**
@@ -100,7 +154,7 @@ public class ProjetoController {
     }
 
     /**
-     *  Buscar auditoria de materiais e status de As-Built do Projeto DIRETO DO BANCO
+     * Buscar auditoria de materiais e status de As-Built do Projeto
      */
     @GetMapping("/{id}/auditoria")
     @Transactional(readOnly = true)
@@ -112,26 +166,24 @@ public class ProjetoController {
 
         Projeto projeto = projetoOpt.get();
         Map<String, Object> response = new HashMap<>();
-        
+
         response.put("asBuiltStatus", projeto.getAsBuiltStatus() != null ? projeto.getAsBuiltStatus() : "PENDENTE");
-        
-        // 💥 ADAPTAÇÃO PRO SEU MODEL REAL: Transforma a lista do banco no formato do Front
+
         List<Map<String, Object>> materiaisMapeados = projeto.getMateriais().stream().map(mat -> {
             Map<String, Object> m = new HashMap<>();
-            // Busca o nome de dentro do objeto Material mapeado (ajuste se o campo for 'descricao')
             m.put("nome", mat.getMaterial() != null ? mat.getMaterial().getNome() : "Material não identificado");
             m.put("previsto", mat.getQuantidadePrevista());
             m.put("utilizado", mat.getQuantidadeUtilizada());
             return m;
         }).collect(Collectors.toList());
 
-        response.put("materiais", materiaisMapeados);
-        
+        response.put("materials", materiaisMapeados);
+
         return ResponseEntity.ok(response);
     }
 
     /**
-     *  Homologar Documento alterando o registro definitivo no Postgres
+     * Homologar Documento alterando o registro definitivo no Postgres
      */
     @PutMapping("/{id}/as-built/homologar")
     @Transactional
@@ -146,8 +198,7 @@ public class ProjetoController {
         projetoRepository.save(projeto);
 
         return ResponseEntity.ok(Map.of(
-            "status", "HOMOLOGADO", 
-            "mensagem", "As-Built homologado com sucesso no banco de dados!"
-        ));
+                "status", "HOMOLOGADO",
+                "mensagem", "As-Built homologado com sucesso no banco de dados!"));
     }
 }
