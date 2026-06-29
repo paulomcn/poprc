@@ -163,3 +163,47 @@ POST http://localhost:8085/api/alertas/disparar-todos
 
 ### Testar o novo Dashboard Executivo Analítico
 GET http://localhost:8085/api/dashboard/executivo
+
+
+
+
+### Registrar nova atividade (multipart/form-data)
+POST http://localhost:8085/api/comarcas/1/atividades
+Content-Type: multipart/form-data; boundary=Boundary
+
+--Boundary
+Content-Disposition: form-data; name="dataInicio"
+
+2026-06-01
+--Boundary
+Content-Disposition: form-data; name="descricaoAtividades"
+
+<p>Vistoria concluída e cabeamento Cat6 lançado.</p>
+--Boundary
+Content-Disposition: form-data; name="fotos"; filename="evidencia.jpg"
+Content-Type: image/jpeg
+
+< ./evidencia.jpg
+--Boundary--
+
+### Listar histórico
+GET http://localhost:8085/api/comarcas/1/atividades
+
+### Validação obrigatória (deve retornar 400)
+POST http://localhost:8085/api/comarcas/1/atividades
+Content-Type: multipart/form-data; boundary=Boundary
+
+--Boundary
+Content-Disposition: form-data; name="dataInicio"
+
+2026-06-01
+--Boundary
+Content-Disposition: form-data; name="descricaoAtividades"
+
+
+--Boundary--
+
+
+####
+
+GET http://localhost:8085/api/comarcas

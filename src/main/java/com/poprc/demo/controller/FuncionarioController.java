@@ -2,34 +2,32 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.repository.FuncionarioRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/funcionarios")
+@CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class FuncionarioController {
 
-    @Autowired
-    private FuncionarioRepository funcionarioRepository;
+    private final FuncionarioRepository funcionarioRepository;
 
     /**
-     * Inserir novo funcionário (acesso restrito ao time de RH)
+     * 📥 POST: Inserir novo funcionário
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> inserirFuncionario(@RequestBody Funcionario funcionario) {
         try {
             Map<String, Object> response = new HashMap<>();
-            
+
             if (funcionario.getNome() == null || funcionario.getNome().trim().isEmpty()) {
                 response.put("erro", "Nome do funcionário é obrigatório");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
@@ -48,38 +46,67 @@ public class FuncionarioController {
     }
 
     /**
-     * Listar todos os funcionários
+     * 🔍 GET /{id}: Buscar funcionário por ID
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<Funcionario> buscarPorId(@PathVariable Long id) {
+        return funcionarioRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * ✏️ PUT /{id}: Atualizar funcionário existente
+     */
+    @PutMapping("/{id}")
+    @Transactional // 💥 MÁGICA AQUI: Força o Spring a gravar as alterações no banco!
+    public ResponseEntity<Map<String, Object>> atualizarFuncionario(@PathVariable Long id,
+            @RequestBody Funcionario dadosAtualizados) {
+        Map<String, Object> response = new HashMap<>();
+
+        return funcionarioRepository.findById(id)
+                .map(funcionario -> {
+                    // Atualiza os campos básicos
+                    funcionario.setNome(dadosAtualizados.getNome());
+                    funcionario.setFuncao(dadosAtualizados.getFuncao());
+                    funcionario.setCidade(dadosAtualizados.getCidade());
+
+                    // 💥 MÁGICA 2: Pluga as listas que tavam de fora!
+                    if (dadosAtualizados.getCertificacoes() != null) {
+                        funcionario.setCertificacoes(dadosAtualizados.getCertificacoes());
+                    }
+                    if (dadosAtualizados.getDocumentPaths() != null) {
+                        funcionario.setDocumentPaths(dadosAtualizados.getDocumentPaths());
+                    }
+
+                    Funcionario salvo = funcionarioRepository.save(funcionario);
+                    response.put("funcionario", salvo);
+                    response.put("mensagem", "Funcionário atualizado com sucesso!");
+                    return ResponseEntity.ok(response);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * 📋 Listar todos os funcionários
      */
     @GetMapping
     public ResponseEntity<List<Funcionario>> listarTodos() {
-        List<Funcionario> funcionarios = funcionarioRepository.findAll();
-        return ResponseEntity.ok(funcionarios);
+        return ResponseEntity.ok(funcionarioRepository.findAll());
     }
 
-    /**
-     * Buscar funcionários por nome
-     */
     @GetMapping("/nome")
     public ResponseEntity<List<Funcionario>> buscarPorNome(@RequestParam String nome) {
-        List<Funcionario> funcionarios = funcionarioRepository.findByNome(nome);
-        return ResponseEntity.ok(funcionarios);
+        return ResponseEntity.ok(funcionarioRepository.findByNome(nome));
     }
 
-    /**
-     * Buscar funcionários por função
-     */
     @GetMapping("/funcao")
     public ResponseEntity<List<Funcionario>> buscarPorFuncao(@RequestParam String funcao) {
-        List<Funcionario> funcionarios = funcionarioRepository.findByFuncao(funcao);
-        return ResponseEntity.ok(funcionarios);
+        return ResponseEntity.ok(funcionarioRepository.findByFuncao(funcao));
     }
 
-    /**
-     * Buscar funcionários por cidade
-     */
     @GetMapping("/cidade")
     public ResponseEntity<List<Funcionario>> buscarPorCidade(@RequestParam String cidade) {
-        List<Funcionario> funcionarios = funcionarioRepository.findByCidade(cidade);
-        return ResponseEntity.ok(funcionarios);
+        return ResponseEntity.ok(funcionarioRepository.findByCidade(cidade));
     }
 }
