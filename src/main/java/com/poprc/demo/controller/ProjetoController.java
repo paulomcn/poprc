@@ -2,10 +2,10 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.Contrato;
-import com.poprc.demo.model.ProjetoStatus; //   IMPORT NOVO CORRIGIDO
+import com.poprc.demo.model.ProjetoStatus;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.ContratoRepository;
-import lombok.RequiredArgsConstructor;
+import com.poprc.demo.service.ComarcaService; //   NOVO IMPORT
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,17 +24,15 @@ public class ProjetoController {
 
     private final ProjetoRepository projetoRepository;
     private final ContratoRepository contratoRepository;
+    private final ComarcaService comarcaService; // NOVO
 
-    // Construtor manual para garantir o funcionamento com o Spring sem quebra de
-    // Beans
-    public ProjetoController(ProjetoRepository projetoRepository, ContratoRepository contratoRepository) {
+    public ProjetoController(ProjetoRepository projetoRepository, ContratoRepository contratoRepository,
+            ComarcaService comarcaService) {
         this.projetoRepository = projetoRepository;
         this.contratoRepository = contratoRepository;
+        this.comarcaService = comarcaService;
     }
 
-    /**
-     * POST: Salvar novo projeto vinculado a um contrato
-     */
     @PostMapping
     public ResponseEntity<Map<String, Object>> salvarProjeto(@RequestBody Projeto projeto) {
         try {
@@ -51,7 +49,6 @@ public class ProjetoController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
 
-            // CORREÇÃO AQUI: Usando o Enum real em vez de String pura
             if (projeto.getStatus() == null) {
                 projeto.setStatus(ProjetoStatus.EM_ANDAMENTO);
             }
@@ -62,6 +59,11 @@ public class ProjetoController {
             projeto.setContrato(contrato.get());
 
             Projeto projetoSalvo = projetoRepository.save(projeto);
+
+            // NOVO: sincroniza automaticamente com Gestão de Comarcas
+            projetoSalvo.setNomeComarcaVinculada(projeto.getNomeComarcaVinculada());
+            comarcaService.criarOuVincularComarcaParaProjeto(projetoSalvo);
+
             response.put("projeto", projetoSalvo);
             response.put("mensagem", "Projeto saved com sucesso");
 

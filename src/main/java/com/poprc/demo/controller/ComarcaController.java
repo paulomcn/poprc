@@ -36,7 +36,8 @@ public class ComarcaController {
 
     @PatchMapping("/{id}/progresso")
     public ResponseEntity<Comarca> atualizarProgresso(@PathVariable Long id, @RequestBody ProgressoRequest request) {
-        Comarca comarca = comarcaService.atualizarProgresso(id, request.getPercentualConcluido(), request.getSituacao());
+        Comarca comarca = comarcaService.atualizarProgresso(id, request.getPercentualConcluido(),
+                request.getSituacao());
         if (comarca != null) {
             return ResponseEntity.ok(comarca);
         }
@@ -50,6 +51,37 @@ public class ComarcaController {
             return ResponseEntity.ok(comarca);
         }
         return ResponseEntity.notFound().build();
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<Comarca> atualizar(@PathVariable Long id, @RequestBody AtualizacaoComarcaRequest request) {
+        Comarca comarca = comarcaService.atualizarComarca(id, request.getPercentualConcluido(),
+                request.getPendencias());
+        if (comarca != null) {
+            return ResponseEntity.ok(comarca);
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    public static class AtualizacaoComarcaRequest {
+        private java.math.BigDecimal percentualConcluido;
+        private String pendencias;
+
+        public java.math.BigDecimal getPercentualConcluido() {
+            return percentualConcluido;
+        }
+
+        public void setPercentualConcluido(java.math.BigDecimal percentualConcluido) {
+            this.percentualConcluido = percentualConcluido;
+        }
+
+        public String getPendencias() {
+            return pendencias;
+        }
+
+        public void setPendencias(String pendencias) {
+            this.pendencias = pendencias;
+        }
     }
 
     public static class ProgressoRequest {

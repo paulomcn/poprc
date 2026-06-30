@@ -19,6 +19,7 @@ export default function Projetos() {
     dataFim: "",
     status: "EM_ANDAMENTO",
     asBuiltStatus: "PENDENTE",
+    nomeComarcaVinculada: "", //  NOVO
   });
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function Projetos() {
     setSelectedProjeto(projeto);
     setIsEditing(editMode);
     setErrorMessage(null);
+    setModalOpen(true); // Corrigido: Abre o modal ao clicar
 
     if (projeto) {
       setFormData({
@@ -54,6 +56,7 @@ export default function Projetos() {
         dataFim: projeto.dataFim || "",
         status: projeto.status || "EM_ANDAMENTO",
         asBuiltStatus: projeto.asBuiltStatus || "PENDENTE",
+        nomeComarcaVinculada: "",
       });
     } else {
       setFormData({
@@ -62,9 +65,9 @@ export default function Projetos() {
         dataFim: "",
         status: "EM_ANDAMENTO",
         asBuiltStatus: "PENDENTE",
+        nomeComarcaVinculada: "",
       });
     }
-    setModalOpen(true);
   };
 
   const handleSave = async (e) => {
@@ -163,7 +166,7 @@ export default function Projetos() {
         ))}
       </div>
 
-      {/*   MODAL UNIFICADO: DETALHES / NOVO / EDITAR */}
+      {/* MODAL UNIFICADO: DETALHES / NOVO / EDITAR */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
@@ -208,6 +211,31 @@ export default function Projetos() {
                   ))}
                 </select>
               </div>
+
+              {/* CAMPO ADICIONADO AQUI: Aparece apenas na criação */}
+              {!selectedProjeto && (
+                <div>
+                  <label className="text-xs font-bold text-slate-600 uppercase">
+                    Nome da Comarca (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nomeComarcaVinculada}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        nomeComarcaVinculada: e.target.value,
+                      })
+                    }
+                    className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
+                    placeholder="Se vazio, usaremos o nome do cliente do contrato"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Esse projeto será automaticamente listado em Gestão de
+                    Comarcas.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

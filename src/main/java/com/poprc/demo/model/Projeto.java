@@ -10,9 +10,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
 @Table(name = "projetos")
-@Data //
-@NoArgsConstructor // Construtor padrão vazio
-@AllArgsConstructor // Construtor com todos os campos
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Projeto {
 
     @Id
@@ -34,11 +34,15 @@ public class Projeto {
     @JoinColumn(name = "responsavel_id")
     private Funcionario responsavel;
 
-    // ️ CAMPOS NOVOS DA OPÇÃO 1 (AUDITORIA REAL)
     @Column(name = "as_built_status")
-    private String asBuiltStatus = "PENDENTE"; // PENDENTE ou HOMOLOGADO
+    private String asBuiltStatus = "PENDENTE";
 
     @OneToMany(mappedBy = "projeto", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnoreProperties("projeto")
     private List<MaterialProjeto> materiais;
+
+    // NOVO: usado só na criação para nomear a comarca vinculada; não é
+    // persistido
+    @Transient
+    private String nomeComarcaVinculada;
 }

@@ -1,11 +1,7 @@
 package com.poprc.demo.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
 import java.math.BigDecimal;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -40,4 +36,11 @@ public class Comarca {
 
     @Column(columnDefinition = "TEXT")
     private String pendencias;
+
+    // NOVO: vínculo de origem com o projeto que gerou esta comarca
+    // automaticamente
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "projeto_id")
+    @JsonIgnoreProperties({ "materiais" })
+    private Projeto projeto;
 }
