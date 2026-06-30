@@ -12,9 +12,9 @@ public class HomeController {
     public String home(@AuthenticationPrincipal OAuth2User principal) {
         // Pega o ID que a gente forçou lá no hack do SecurityConfig
         String userId = principal.getAttribute("id");
-        
-        return "<h1>Deu bom! 🚀</h1>" +
-               "<p>Você passou pelo OAuth2 da Zoho!</p>" +
-               "<p>Usuário logado: <b>" + userId + "</b></p>";
+
+        return "<h1>Deu bom!  </h1>" +
+                "<p>Você passou pelo OAuth2 da Zoho!</p>" +
+                "<p>Usuário logado: <b>" + userId + "</b></p>";
     }
 }

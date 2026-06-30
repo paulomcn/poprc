@@ -2,7 +2,7 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.Contrato;
-import com.poprc.demo.model.ProjetoStatus; // 💥 IMPORT NOVO CORRIGIDO
+import com.poprc.demo.model.ProjetoStatus; //   IMPORT NOVO CORRIGIDO
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +33,7 @@ public class ProjetoController {
     }
 
     /**
-     * 💾 POST: Salvar novo projeto vinculado a um contrato
+     * POST: Salvar novo projeto vinculado a um contrato
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> salvarProjeto(@RequestBody Projeto projeto) {
@@ -51,7 +51,7 @@ public class ProjetoController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
 
-            // ⚡ CORREÇÃO AQUI: Usando o Enum real em vez de String pura
+            // CORREÇÃO AQUI: Usando o Enum real em vez de String pura
             if (projeto.getStatus() == null) {
                 projeto.setStatus(ProjetoStatus.EM_ANDAMENTO);
             }
@@ -74,7 +74,7 @@ public class ProjetoController {
     }
 
     /**
-     * 🔍 GET /{id}: Buscar projeto específico por ID
+     * GET /{id}: Buscar projeto específico por ID
      */
     @GetMapping("/{id}")
     public ResponseEntity<Projeto> buscarPorId(@PathVariable Long id) {
@@ -84,7 +84,7 @@ public class ProjetoController {
     }
 
     /**
-     * ✏️ PUT /{id}: Atualizar dados do projeto e Status via formulário do React
+     * ️ PUT /{id}: Atualizar dados do projeto e Status via formulário do React
      */
     @PutMapping("/{id}")
     @Transactional

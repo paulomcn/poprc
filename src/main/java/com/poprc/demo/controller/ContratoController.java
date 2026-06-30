@@ -2,7 +2,7 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.repository.ContratoRepository;
-import lombok.RequiredArgsConstructor; // 💥 Injeção moderna
+import lombok.RequiredArgsConstructor; //   Injeção moderna
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,24 +22,24 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/contratos")
 @CrossOrigin(origins = "*")
-@RequiredArgsConstructor // 💥 Ativa a injeção automática por construtor do Lombok
+@RequiredArgsConstructor // Ativa a injeção automática por construtor do Lombok
 public class ContratoController {
 
-    private final ContratoRepository contratoRepository; // 💥 Troca do @Autowired para private final
+    private final ContratoRepository contratoRepository; // Troca do @Autowired para private final
     private final String UPLOAD_DIR = "uploads/contratos/";
 
     /**
-     * 📥 POST: Salvar novo contrato recebendo os novos campos + arquivos anexos
+     * POST: Salvar novo contrato recebendo os novos campos + arquivos anexos
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> salvarContrato(
             @RequestParam String cliente,
             @RequestParam String contrato,
-            @RequestParam(required = false) LocalDate vigenciaInicio, // 💥 Adicionado
-            @RequestParam(required = false) LocalDate vigenciaFim, // 💥 Adicionado
-            @RequestParam(required = false) BigDecimal valorGlobal, // 💥 Adicionado
-            @RequestParam(required = false) String escopo, // 💥 Adicionado
-            @RequestParam(required = false, defaultValue = "ATIVO") String status, // 💥 Adicionado
+            @RequestParam(required = false) LocalDate vigenciaInicio, // Adicionado
+            @RequestParam(required = false) LocalDate vigenciaFim, // Adicionado
+            @RequestParam(required = false) BigDecimal valorGlobal, // Adicionado
+            @RequestParam(required = false) String escopo, // Adicionado
+            @RequestParam(required = false, defaultValue = "ATIVO") String status, // Adicionado
             @RequestParam(required = false) MultipartFile edital,
             @RequestParam(required = false) MultipartFile proposta,
             @RequestParam(required = false) MultipartFile[] aditivos) {
@@ -49,11 +49,11 @@ public class ContratoController {
             Contrato novoContrato = new Contrato();
             novoContrato.setCliente(cliente);
             novoContrato.setContrato(contrato);
-            novoContrato.setVigenciaInicio(vigenciaInicio); // 💥 Mapeado
-            novoContrato.setVigenciaFim(vigenciaFim); // 💥 Mapeado
-            novoContrato.setValorGlobal(valorGlobal); // 💥 Mapeado
-            novoContrato.setEscopo(escopo); // 💥 Mapeado
-            novoContrato.setStatus(status); // 💥 Mapeado
+            novoContrato.setVigenciaInicio(vigenciaInicio); // Mapeado
+            novoContrato.setVigenciaFim(vigenciaFim); // Mapeado
+            novoContrato.setValorGlobal(valorGlobal); // Mapeado
+            novoContrato.setEscopo(escopo); // Mapeado
+            novoContrato.setStatus(status); // Mapeado
 
             Map<String, String> caminhos = new HashMap<>();
 
@@ -92,7 +92,7 @@ public class ContratoController {
     }
 
     /**
-     * 🔍 GET /{id}: Buscar contrato específico por ID (Gatilho para o botão
+     * GET /{id}: Buscar contrato específico por ID (Gatilho para o botão
      * "Detalhes" do React)
      */
     @GetMapping("/{id}")
@@ -103,7 +103,7 @@ public class ContratoController {
     }
 
     /**
-     * ✏️ PUT /{id}: Atualizar dados cadastrais e Status via JSON enviado pelo React
+     * ️ PUT /{id}: Atualizar dados cadastrais e Status via JSON enviado pelo React
      */
     @PutMapping("/{id}")
     public ResponseEntity<Contrato> atualizarContrato(@PathVariable Long id, @RequestBody Contrato dadosAtualizados) {
@@ -115,7 +115,7 @@ public class ContratoController {
                     contrato.setVigenciaFim(dadosAtualizados.getVigenciaFim());
                     contrato.setValorGlobal(dadosAtualizados.getValorGlobal());
                     contrato.setEscopo(dadosAtualizados.getEscopo());
-                    contrato.setStatus(dadosAtualizados.getStatus()); // 💥 Atualiza o status real do banco
+                    contrato.setStatus(dadosAtualizados.getStatus()); // Atualiza o status real do banco
 
                     Contrato salvo = contratoRepository.save(contrato);
                     return ResponseEntity.ok(salvo);

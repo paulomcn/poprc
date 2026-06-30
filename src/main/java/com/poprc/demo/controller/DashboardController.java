@@ -18,17 +18,17 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/dashboard")
-@RequiredArgsConstructor // 💥 Mágica do Lombok: injeta tudo pelo construtor automaticamente
+@RequiredArgsConstructor // Mágica do Lombok: injeta tudo pelo construtor automaticamente
 public class DashboardController {
 
     // Trocar para 'private final' ativa a injeção segura por construtor do Lombok
     private final ContratoRepository contratoRepository;
     private final ProjetoRepository projetoRepository;
     private final FuncionarioRepository funcionarioRepository;
-    private final DashboardService dashboardService; // 📥 Injeta o novo Service analítico
+    private final DashboardService dashboardService; // Injeta o novo Service analítico
 
     /**
-     * 📊 Mantém a sua rota antiga funcionando 100% para a Home não quebrar!
+     * Mantém a sua rota antiga funcionando 100% para a Home não quebrar!
      */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> buscarEstatisticas() {
@@ -53,10 +53,10 @@ public class DashboardController {
     }
 
     /**
-     * 🔐 Nova Rota: Busca os KPIs estratégicos restritos à DIRETORIA ou ao CLIENTE
+     * Nova Rota: Busca os KPIs estratégicos restritos à DIRETORIA ou ao CLIENTE
      */
     @GetMapping("/executivo")
-    @PreAuthorize("hasAnyRole('ROLE_DIRETORIA', 'ROLE_CLIENTE')") // 🛡️ Trava de segurança real
+    @PreAuthorize("hasAnyRole('ROLE_DIRETORIA', 'ROLE_CLIENTE')") // ️ Trava de segurança real
     public ResponseEntity<DashboardIndicadoresDTO> buscarDashboardExecutivo() {
         DashboardIndicadoresDTO dto = dashboardService.calcularIndicadoresExecutivos();
         return ResponseEntity.ok(dto);

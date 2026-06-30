@@ -12,7 +12,7 @@ export default function GestaoComarcas() {
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedComarca, setSelectedComarca] = useState(null);
-  const [comarcaHistorico, setComarcaHistorico] = useState(null); // 💥 NOVO: controla o modal de histórico
+  const [comarcaHistorico, setComarcaHistorico] = useState(null); //   NOVO: controla o modal de histórico
   const [formData, setFormData] = useState({
     percentualConcluido: 0,
     pendencias: "",
@@ -205,7 +205,7 @@ export default function GestaoComarcas() {
                   Registrar Pendência/Ajustar Progresso
                 </button>
 
-                {/* 💥 NOVO BOTÃO: Histórico de Atividades + Evidências */}
+                {/*   NOVO BOTÃO: Histórico de Atividades + Evidências */}
                 <button
                   onClick={() => setComarcaHistorico(comarca)}
                   className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg transition-colors"
@@ -286,7 +286,7 @@ export default function GestaoComarcas() {
         </form>
       </Modal>
 
-      {/* 💥 NOVO MODAL: Histórico de Atividades + Galeria de Evidências */}
+      {/*   NOVO MODAL: Histórico de Atividades + Galeria de Evidências */}
       <Modal
         isOpen={!!comarcaHistorico}
         onClose={() => setComarcaHistorico(null)}

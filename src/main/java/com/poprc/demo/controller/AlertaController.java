@@ -18,28 +18,28 @@ public class AlertaController {
     private final ConfiguracaoNotificacaoRepository configRepository;
 
     /**
-     * 📥 GET: Busca as configurações do banco. Se não existir, cria o padrão.
+     * GET: Busca as configurações do banco. Se não existir, cria o padrão.
      */
     @GetMapping("/configuracoes")
     public ResponseEntity<ConfiguracaoNotificacao> obterConfiguracoes() {
         ConfiguracaoNotificacao config = configRepository.findById(1L)
                 .orElseGet(() -> configRepository.save(new ConfiguracaoNotificacao(
-                        1L, "diretoria@poprc.com", "5584999999999", true, true, true
-                )));
+                        1L, "diretoria@poprc.com", "5584999999999", true, true, true)));
         return ResponseEntity.ok(config);
     }
 
     /**
-     * 💾 POST: Salva ou atualiza os parâmetros globais no Postgres
+     * POST: Salva ou atualiza os parâmetros globais no Postgres
      */
     @PostMapping("/configuracoes")
-    public ResponseEntity<ConfiguracaoNotificacao> salvarConfiguracoes(@RequestBody ConfiguracaoNotificacao novaConfig) {
+    public ResponseEntity<ConfiguracaoNotificacao> salvarConfiguracoes(
+            @RequestBody ConfiguracaoNotificacao novaConfig) {
         novaConfig.setId(1L); // Força a gravar sempre na linha 1
         return ResponseEntity.ok(configRepository.save(novaConfig));
     }
 
     /**
-     * 🚨 Botão de Pânico: Dispara varredura manual
+     * Botão de Pânico: Dispara varredura manual
      */
     @PostMapping("/disparar-todos")
     public ResponseEntity<Map<String, String>> forcarDisparoTodosAlertas() {

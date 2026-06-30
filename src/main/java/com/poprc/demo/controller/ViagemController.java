@@ -2,7 +2,7 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.PrestacaoContas;
 import com.poprc.demo.model.Viagem;
-import com.poprc.demo.repository.ViagemRepository; // 💥 IMPORT DO REPO
+import com.poprc.demo.repository.ViagemRepository; //   IMPORT DO REPO
 import com.poprc.demo.service.FinanceiroService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
-import java.util.List; // 💥 IMPORT DA LIST
+import java.util.List; //   IMPORT DA LIST
 
 @RestController
 @RequestMapping("/api/financeiro")
@@ -18,9 +18,9 @@ import java.util.List; // 💥 IMPORT DA LIST
 public class ViagemController {
 
     private final FinanceiroService financeiroService;
-    private final ViagemRepository viagemRepository; // 💥 INJEÇÃO DO REPO
+    private final ViagemRepository viagemRepository; // INJEÇÃO DO REPO
 
-    // 📥 ROTA NOVELLA: Listar todas as viagens para o front carregar
+    // ROTA NOVELLA: Listar todas as viagens para o front carregar
     @GetMapping("/viagens")
     public ResponseEntity<List<Viagem>> listarViagens() {
         return ResponseEntity.ok(viagemRepository.findAll());
@@ -43,8 +43,7 @@ public class ViagemController {
         PrestacaoContas prestacao = financeiroService.fecharPrestacaoContas(
                 dto.getViagemId(),
                 dto.getCustoReal(),
-                dto.getCaminhoNotaFiscal()
-        );
+                dto.getCaminhoNotaFiscal());
         return ResponseEntity.status(HttpStatus.CREATED).body(prestacao);
     }
 

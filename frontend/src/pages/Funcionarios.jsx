@@ -11,7 +11,7 @@ export default function Funcionarios() {
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
-  // 💥 ESTADOS NOVOS PARA CONTROLAR A EDIÇÃO
+  //   ESTADOS NOVOS PARA CONTROLAR A EDIÇÃO
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
 
@@ -42,7 +42,7 @@ export default function Funcionarios() {
     }
   };
 
-  // 💥 FUNÇÃO NOVA: Abre o modal limpo para CRIAR
+  //   FUNÇÃO NOVA: Abre o modal limpo para CRIAR
   const handleNew = () => {
     setIsEditing(false);
     setCurrentId(null);
@@ -56,7 +56,7 @@ export default function Funcionarios() {
     setShowModal(true);
   };
 
-  // 💥 FUNÇÃO NOVA: Abre o modal preenchido para EDITAR
+  //   FUNÇÃO NOVA: Abre o modal preenchido para EDITAR
   const handleEdit = (funcionario) => {
     setIsEditing(true);
     setCurrentId(funcionario.id);
@@ -97,7 +97,7 @@ export default function Funcionarios() {
           : [],
       };
 
-      // 💥 MÁGICA ACONTECENDO AQUI: Se for edição, faz PUT. Se for novo, faz POST.
+      //   MÁGICA ACONTECENDO AQUI: Se for edição, faz PUT. Se for novo, faz POST.
       if (isEditing) {
         await api.put(`/funcionarios/${currentId}`, payload);
       } else {
@@ -185,7 +185,7 @@ export default function Funcionarios() {
                       : "-"}
                   </td>
                   <td className="px-6 py-4 text-sm">
-                    {/* 💥 AGORA O BOTÃO DE EDITAR CHAMA A FUNÇÃO */}
+                    {/*   AGORA O BOTÃO DE EDITAR CHAMA A FUNÇÃO */}
                     <button
                       onClick={() => handleEdit(funcionario)}
                       className="text-blue-600 hover:text-blue-800 font-medium"
@@ -200,7 +200,7 @@ export default function Funcionarios() {
         </div>
       )}
 
-      {/* 💥 O TÍTULO DO MODAL MUDA DINAMICAMENTE */}
+      {/*   O TÍTULO DO MODAL MUDA DINAMICAMENTE */}
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}

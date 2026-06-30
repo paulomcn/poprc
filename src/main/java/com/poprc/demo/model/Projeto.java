@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
 @Table(name = "projetos")
-@Data // 
+@Data //
 @NoArgsConstructor // Construtor padrão vazio
 @AllArgsConstructor // Construtor com todos os campos
 public class Projeto {
@@ -34,7 +34,7 @@ public class Projeto {
     @JoinColumn(name = "responsavel_id")
     private Funcionario responsavel;
 
-    // 🛠️ CAMPOS NOVOS DA OPÇÃO 1 (AUDITORIA REAL)
+    // ️ CAMPOS NOVOS DA OPÇÃO 1 (AUDITORIA REAL)
     @Column(name = "as_built_status")
     private String asBuiltStatus = "PENDENTE"; // PENDENTE ou HOMOLOGADO
 

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
@@ -11,42 +11,50 @@ import {
   Menu,
   X,
   Smartphone,
-  // 💥 NOVOS ÍCONES IMPORTADOS DA ETAPA 4
+  //   NOVOS ÍCONES IMPORTADOS DA ETAPA 4
   TrendingUp,
   DollarSign,
   Plane,
   Layers,
-  Bell
-} from 'lucide-react'
+  Bell,
+} from "lucide-react";
 
 export default function Sidebar() {
-  const location = useLocation()
-  const [isOpen, setIsOpen] = useState(false)
+  const location = useLocation();
+  const [isOpen, setIsOpen] = useState(false);
 
- //  ARRAY ATUALIZADO COM O DASHBOARD EXECUTIVO NA LIDERANÇA
+  //  ARRAY ATUALIZADO COM O DASHBOARD EXECUTIVO NA LIDERANÇA
   const menuItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard Executivo' }, // 💥 Linkado na Home
-    { path: '/contratos', icon: FileText, label: 'Contratos' },
-    { path: '/projetos', icon: Briefcase, label: 'Projetos' },
-    { path: '/funcionarios', icon: Users, label: 'Funcionários' },
-    { path: '/comarcas', icon: Building2, label: 'Gestão de Comarcas' },
-    { path: '/estoque', icon: Package, label: 'Estoque de Materiais' },
-    
+    { path: "/", icon: LayoutDashboard, label: "Dashboard Executivo" }, //   Linkado na Home
+    { path: "/contratos", icon: FileText, label: "Contratos" },
+    { path: "/projetos", icon: Briefcase, label: "Projetos" },
+    { path: "/funcionarios", icon: Users, label: "Funcionários" },
+    { path: "/comarcas", icon: Building2, label: "Gestão de Comarcas" },
+    { path: "/estoque", icon: Package, label: "Estoque de Materiais" },
+
     // Novas páginas do financeiro, logística e engenharia
-    { path: '/financeiro/lucratividade', icon: TrendingUp, label: 'Lucratividade' },
-    { path: '/financeiro/faturamento', icon: DollarSign, label: 'Gestão Faturamento' },
-    { path: '/logistica/viagens', icon: Plane, label: 'Viagens e Reembolsos' },
-    { path: '/auditoria/tecnica', icon: Layers, label: 'Auditoria Técnica' },
-    { path: '/configuracao-notificacoes', icon: Bell, label: 'Notificações' },
+    {
+      path: "/financeiro/lucratividade",
+      icon: TrendingUp,
+      label: "Lucratividade",
+    },
+    {
+      path: "/financeiro/faturamento",
+      icon: DollarSign,
+      label: "Gestão Faturamento",
+    },
+    { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos" },
+    { path: "/auditoria/tecnica", icon: Layers, label: "Auditoria Técnica" },
+    { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações" },
 
-    { path: '/tecnico', icon: Smartphone, label: 'Área do Técnico' },
-  ]
+    { path: "/tecnico", icon: Smartphone, label: "Área do Técnico" },
+  ];
 
-  const isActive = (path) => location.pathname === path
+  const isActive = (path) => location.pathname === path;
 
   const handleLogout = () => {
-    window.location.href = 'http://localhost:8085/logout'
-  }
+    window.location.href = "http://localhost:8085/logout";
+  };
 
   return (
     <>
@@ -61,7 +69,7 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={`${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+          isOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0 fixed md:static top-0 left-0 h-screen w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white transition-transform duration-300 z-40 flex flex-col`}
       >
         {/* Logo */}
@@ -71,7 +79,9 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 overflow-y-auto"> {/* Adicionado scroll caso a tela seja pequena */}
+        <nav className="flex-1 p-4 overflow-y-auto">
+          {" "}
+          {/* Adicionado scroll caso a tela seja pequena */}
           <ul className="space-y-2">
             {menuItems.map((item) => (
               <li key={item.path}>
@@ -80,8 +90,8 @@ export default function Sidebar() {
                   onClick={() => setIsOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                     isActive(item.path)
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-700'
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-300 hover:bg-slate-700"
                   }`}
                 >
                   <item.icon size={20} />
@@ -112,5 +122,5 @@ export default function Sidebar() {
         />
       )}
     </>
-  )
+  );
 }

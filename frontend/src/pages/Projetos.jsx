@@ -163,17 +163,17 @@ export default function Projetos() {
         ))}
       </div>
 
-      {/* 🛑 MODAL UNIFICADO: DETALHES / NOVO / EDITAR */}
+      {/*   MODAL UNIFICADO: DETALHES / NOVO / EDITAR */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
               <h2 className="text-xl font-bold">
                 {isEditing
-                  ? "✏️ Editar Projeto"
+                  ? " ️ Editar Projeto"
                   : selectedProjeto
-                    ? "🔍 Detalhes do Projeto"
-                    : "✨ Novo Projeto"}
+                    ? "  Detalhes do Projeto"
+                    : "  Novo Projeto"}
               </h2>
               <button
                 onClick={() => setModalOpen(false)}

@@ -25,7 +25,7 @@ public class EmailService {
             mailSender.send(mensagem);
             System.out.println(" Alerta enviado com sucesso para: " + para);
         } catch (Exception e) {
-            System.err.println("❌ Falha crítica ao disparar e-mail de alerta: " + e.getMessage());
+            System.err.println("  Falha crítica ao disparar e-mail de alerta: " + e.getMessage());
         }
     }
 }

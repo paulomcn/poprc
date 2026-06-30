@@ -21,7 +21,7 @@ public class FuncionarioController {
     private final FuncionarioRepository funcionarioRepository;
 
     /**
-     * 📥 POST: Inserir novo funcionário
+     * POST: Inserir novo funcionário
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> inserirFuncionario(@RequestBody Funcionario funcionario) {
@@ -46,7 +46,7 @@ public class FuncionarioController {
     }
 
     /**
-     * 🔍 GET /{id}: Buscar funcionário por ID
+     * GET /{id}: Buscar funcionário por ID
      */
     @GetMapping("/{id}")
     public ResponseEntity<Funcionario> buscarPorId(@PathVariable Long id) {
@@ -56,10 +56,10 @@ public class FuncionarioController {
     }
 
     /**
-     * ✏️ PUT /{id}: Atualizar funcionário existente
+     * ️ PUT /{id}: Atualizar funcionário existente
      */
     @PutMapping("/{id}")
-    @Transactional // 💥 MÁGICA AQUI: Força o Spring a gravar as alterações no banco!
+    @Transactional // MÁGICA AQUI: Força o Spring a gravar as alterações no banco!
     public ResponseEntity<Map<String, Object>> atualizarFuncionario(@PathVariable Long id,
             @RequestBody Funcionario dadosAtualizados) {
         Map<String, Object> response = new HashMap<>();
@@ -71,7 +71,7 @@ public class FuncionarioController {
                     funcionario.setFuncao(dadosAtualizados.getFuncao());
                     funcionario.setCidade(dadosAtualizados.getCidade());
 
-                    // 💥 MÁGICA 2: Pluga as listas que tavam de fora!
+                    // MÁGICA 2: Pluga as listas que tavam de fora!
                     if (dadosAtualizados.getCertificacoes() != null) {
                         funcionario.setCertificacoes(dadosAtualizados.getCertificacoes());
                     }
@@ -88,7 +88,7 @@ public class FuncionarioController {
     }
 
     /**
-     * 📋 Listar todos os funcionários
+     * Listar todos os funcionários
      */
     @GetMapping
     public ResponseEntity<List<Funcionario>> listarTodos() {

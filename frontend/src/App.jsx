@@ -25,7 +25,7 @@ function App() {
   return (
     <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
-        {/* 💥 TROCADO: Agora a página inicial REAL do sistema é o Dashboard Executivo */}
+        {/*   TROCADO: Agora a página inicial REAL do sistema é o Dashboard Executivo */}
         <Route
           path="/"
           element={
@@ -124,7 +124,7 @@ function App() {
             </Layout>
           }
         />
-        
+
         {/* ROTAS DO PORTAL DO TÉCNICO (FORA DO LAYOUT PADRÃO) */}
         <Route path="/tecnico" element={<PortalTecnicoDashboard />} />
         <Route path="/tecnico/os/:id" element={<ExecutarOrdemServico />} />
