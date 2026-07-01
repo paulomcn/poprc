@@ -99,8 +99,8 @@ POST http://localhost:8085/api/faturamentos
 Content-Type: application/json
 
 {
-    "servicosExecutados": "Instalação física de 24 pontos de rede Cat6 e certificação Fluke LinkIQ.",
-    "valorMedicao": 4500.00,
+    "servicosExecutados": "Pagamento referente a ...",
+    "valorMedicao": 6897.32,
     "contratoId": 1
 }
 

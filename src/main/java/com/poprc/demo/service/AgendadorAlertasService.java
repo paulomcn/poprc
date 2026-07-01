@@ -1,23 +1,24 @@
 package com.poprc.demo.service;
 
-import com.poprc.demo.model.Contrato;
-import com.poprc.demo.model.Material;
-import com.poprc.demo.model.OrdemServico;
-import com.poprc.demo.model.ConfiguracaoNotificacao;
-import com.poprc.demo.repository.ContratoRepository;
-import com.poprc.demo.repository.MaterialRepository;
-import com.poprc.demo.repository.OrdemServicoRepository;
-import com.poprc.demo.repository.ConfiguracaoNotificacaoRepository;
-import lombok.RequiredArgsConstructor;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
+import com.poprc.demo.model.ConfiguracaoNotificacao;
+import com.poprc.demo.model.Contrato;
+import com.poprc.demo.model.Material;
+import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.repository.ConfiguracaoNotificacaoRepository;
+import com.poprc.demo.repository.ContratoRepository;
+import com.poprc.demo.repository.MaterialRepository;
+import com.poprc.demo.repository.OrdemServicoRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @EnableScheduling

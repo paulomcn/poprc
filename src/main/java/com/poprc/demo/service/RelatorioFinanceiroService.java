@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -32,27 +33,34 @@ public class RelatorioFinanceiroService {
                 .orElseThrow(() -> new RuntimeException("Projeto não encontrado"));
 
         // 1. FATURAMENTO (Entradas)
-        // Como o Faturamento é ligado ao Contrato, pegamos o contrato do projeto
         BigDecimal totalFaturado = BigDecimal.ZERO;
         if (projeto.getContrato() != null) {
             List<Faturamento> faturamentos = faturamentoRepository.findByContratoId(projeto.getContrato().getId());
             totalFaturado = faturamentos.stream()
-                    .map(Faturamento::getValorMedicao)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .filter(Objects::nonNull)
+                    .map(f -> f.getValorMedicao())
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         }
 
         // 2. CUSTO DAS VIAGENS (Prestação de contas)
         List<PrestacaoContas> prestacoes = prestacaoContasRepository.findByViagemProjetoId(projetoId);
         BigDecimal totalCustoViagens = prestacoes.stream()
-                .map(PrestacaoContas::getCustoReal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .filter(Objects::nonNull)
+                .map(p -> p.getCustoReal())
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
-        // 3. CUSTO DOS MATERIAIS (Mockado a R$ 50,00 por unidade utilizada)
+        // 3. CUSTO DOS MATERIAIS
         List<MaterialProjeto> materiais = materialProjetoRepository.findByProjetoId(projetoId);
         BigDecimal precoPadraoMaterial = new BigDecimal("50.00");
         BigDecimal totalCustoMateriais = materiais.stream()
-                .map(m -> precoPadraoMaterial.multiply(BigDecimal.valueOf(m.getQuantidadeUtilizada())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .filter(Objects::nonNull)
+                .map(m -> m.getQuantidadeUtilizada() != null
+                        ? precoPadraoMaterial.multiply(BigDecimal.valueOf(m.getQuantidadeUtilizada()))
+                        : BigDecimal.ZERO)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         // 4. CONSOLIDAÇÃO E LUCRO BRUTO
         BigDecimal custoTotalAcumulado = totalCustoViagens.add(totalCustoMateriais);
@@ -63,7 +71,6 @@ public class RelatorioFinanceiroService {
         String saudeFinanceira = "PREJUIZO_CRITICO";
 
         if (totalFaturado.compareTo(BigDecimal.ZERO) > 0) {
-            // Regra de três: (Lucro / Faturamento) * 100
             margemLucro = lucroBruto.divide(totalFaturado, 4, RoundingMode.HALF_UP)
                     .multiply(new BigDecimal("100"))
                     .setScale(2, RoundingMode.HALF_UP);
@@ -79,8 +86,7 @@ public class RelatorioFinanceiroService {
 
         return RelatorioLucratividadeDTO.builder()
                 .projetoId(projetoId)
-                // Como não temos coluna nome, vai o ID mesmo pra não quebrar
-                .nomeProjeto("Projeto Técnico " + projetoId) 
+                .nomeProjeto("Projeto Técnico " + projetoId)
                 .totalFaturado(totalFaturado)
                 .totalCustoViagens(totalCustoViagens)
                 .totalCustoMateriais(totalCustoMateriais)
