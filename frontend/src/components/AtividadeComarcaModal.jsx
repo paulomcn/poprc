@@ -27,7 +27,7 @@ export default function AtividadeComarcaModal({
   const emEdicao = !!atividadeExistente;
 
   const descricaoVazia = () => {
-    const textoSemHtml = descricaoAtividades.replace(/<[^>]*>/g, "").trim();
+    const textoSemHtml = descricaoAtividades.replace(/[<>]/g, "").trim();
     return textoSemHtml.length === 0;
   };
 
