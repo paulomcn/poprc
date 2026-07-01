@@ -7,6 +7,8 @@ import com.poprc.demo.model.Comarca;
 import com.poprc.demo.repository.AtividadeComarcaRepository;
 import com.poprc.demo.repository.ComarcaRepository;
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
+import org.jsoup.safety.Safelist;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,7 +29,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AtividadeComarcaService {
 
-    // Whitelist de extensões aceitas (regra de negócio + segurança no upload)
     private static final Set<String> EXTENSOES_PERMITIDAS = Set.of("jpg", "jpeg", "png", "webp");
     private static final Set<String> MIME_PERMITIDOS = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/webp");
@@ -46,18 +47,24 @@ public class AtividadeComarcaService {
                 .orElseThrow(() -> new RuntimeException("Comarca não encontrada"));
 
         AtividadeComarca atividade = new AtividadeComarca();
-        atividade.setComarca(comarca);
-        atividade.setDataInicio(dataInicio);
-        atividade.setDataEncerramento(dataEncerramento);
-        atividade.setDescricaoAtividades(descricaoAtividades.trim());
-        atividade.setDataRegistro(LocalDateTime.now());
-        atividade.setFotosEvidencia(salvarFotos(fotos));
+        textLimpezaEAtribuicao(atividade, comarca, dataInicio, dataEncerramento, descricaoAtividades, fotos);
 
         return atividadeComarcaRepository.save(atividade);
     }
 
+    private void textLimpezaEAtribuicao(AtividadeComarca atividade, Comarca comarca, LocalDate dataInicio,
+            LocalDate dataEncerramento, String descricaoAtividades, List<MultipartFile> fotos) {
+        atividade.setComarca(comarca);
+        atividade.setDataInicio(dataInicio);
+        atividade.setDataEncerramento(dataEncerramento);
+        // Salva o texto sanitizado e limpo de tags HTML maliciosas
+        atividade.setDescricaoAtividades(Jsoup.clean(descricaoAtividades, Safelist.none()).trim());
+        atividade.setDataRegistro(LocalDateTime.now());
+        atividade.setFotosEvidencia(salvarFotos(fotos));
+    }
+
     @Transactional
-    public AtividadeComarca atualizarAtividade(Long atividadeId, LocalDate dataInicio, LocalDate dataEncerramento,
+    public AtividadeComarca actualizarAtividade(Long atividadeId, LocalDate dataInicio, LocalDate dataEncerramento,
             String descricaoAtividades, List<MultipartFile> novasFotos) {
 
         validarDescricao(descricaoAtividades);
@@ -65,11 +72,9 @@ public class AtividadeComarcaService {
         AtividadeComarca atividade = atividadeComarcaRepository.findById(atividadeId)
                 .orElseThrow(() -> new RuntimeException("Registro de atividade não encontrado"));
 
-        // Datas e descrição podem ser editadas posteriormente, conforme regra de
-        // negócio
         atividade.setDataInicio(dataInicio);
         atividade.setDataEncerramento(dataEncerramento);
-        atividade.setDescricaoAtividades(descricaoAtividades.trim());
+        atividade.setDescricaoAtividades(Jsoup.clean(descricaoAtividades, Safelist.none()).trim());
 
         List<String> novosCaminhos = salvarFotos(novasFotos);
         if (!novosCaminhos.isEmpty()) {
@@ -84,8 +89,19 @@ public class AtividadeComarcaService {
         return atividadeComarcaRepository.findByComarcaIdOrderByDataInicioDesc(comarcaId);
     }
 
+    // ADICIONADO JSOUP: Remove ReDoS e falha de escape incompleto identificados
+    // pelo GitHub CodeQL
     private void validarDescricao(String descricaoAtividades) {
-        if (descricaoAtividades == null || descricaoAtividades.replaceAll("<[^>]*>", "").trim().isEmpty()) {
+        if (descricaoAtividades == null) {
+            throw new DescricaoAtividadeObrigatoriaException(
+                    "O campo 'Descrição das Atividades' é obrigatório e não pode estar vazio.");
+        }
+
+        // Remove qualquer tag HTML usando uma whitelist vazia (Safelist.none()) de
+        // forma segura
+        String textoSemHtml = Jsoup.clean(descricaoAtividades, Safelist.none());
+
+        if (textoSemHtml.trim().isEmpty()) {
             throw new DescricaoAtividadeObrigatoriaException(
                     "O campo 'Descrição das Atividades' é obrigatório e não pode estar vazio.");
         }
@@ -113,15 +129,12 @@ public class AtividadeComarcaService {
         String nomeOriginal = foto.getOriginalFilename();
         String extensao = extrairExtensao(nomeOriginal);
 
-        // Dupla validação: extensão do nome do arquivo + content-type declarado
         if (!EXTENSOES_PERMITIDAS.contains(extensao.toLowerCase())
                 || !MIME_PERMITIDOS.contains(foto.getContentType())) {
             throw new ArquivoInvalidoException(
                     "Formato de arquivo não permitido. Envie apenas imagens .jpg, .jpeg, .png ou .webp.");
         }
 
-        // Nome aleatório (UUID) evita colisão e impede path traversal a partir do nome
-        // original
         String nomeUnico = UUID.randomUUID() + "." + extensao.toLowerCase();
         Path caminhoAbsoluto = pastaDestino.resolve(nomeUnico);
 
@@ -131,7 +144,6 @@ public class AtividadeComarcaService {
             throw new RuntimeException("Erro ao salvar evidência fotográfica no servidor", e);
         }
 
-        // URL pública servida pelo resource handler configurado em WebConfig
         return "/uploads/comarcas/" + nomeUnico;
     }
 
