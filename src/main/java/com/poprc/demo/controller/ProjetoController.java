@@ -5,7 +5,7 @@ import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.ProjetoStatus;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.ContratoRepository;
-import com.poprc.demo.service.ComarcaService; //   NOVO IMPORT
+import com.poprc.demo.service.ComarcaService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +24,7 @@ public class ProjetoController {
 
     private final ProjetoRepository projetoRepository;
     private final ContratoRepository contratoRepository;
-    private final ComarcaService comarcaService; // NOVO
+    private final ComarcaService comarcaService;
 
     public ProjetoController(ProjetoRepository projetoRepository, ContratoRepository contratoRepository,
             ComarcaService comarcaService) {
@@ -57,10 +57,8 @@ public class ProjetoController {
             }
 
             projeto.setContrato(contrato.get());
-
             Projeto projetoSalvo = projetoRepository.save(projeto);
 
-            // NOVO: sincroniza automaticamente com Gestão de Comarcas
             projetoSalvo.setNomeComarcaVinculada(projeto.getNomeComarcaVinculada());
             comarcaService.criarOuVincularComarcaParaProjeto(projetoSalvo);
 
@@ -75,9 +73,6 @@ public class ProjetoController {
         }
     }
 
-    /**
-     * GET /{id}: Buscar projeto específico por ID
-     */
     @GetMapping("/{id}")
     public ResponseEntity<Projeto> buscarPorId(@PathVariable Long id) {
         return projetoRepository.findById(id)
@@ -85,9 +80,6 @@ public class ProjetoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * ️ PUT /{id}: Atualizar dados do projeto e Status via formulário do React
-     */
     @PutMapping("/{id}")
     @Transactional
     public ResponseEntity<Map<String, Object>> atualizarProjeto(@PathVariable Long id,
@@ -96,10 +88,14 @@ public class ProjetoController {
 
         return projetoRepository.findById(id)
                 .map(projeto -> {
-                    projeto.setDataInicio(dadosAtualizados.getDataInicio());
-                    projeto.setDataFim(dadosAtualizados.getDataFim());
-                    projeto.setStatus(dadosAtualizados.getStatus());
-                    projeto.setAsBuiltStatus(dadosAtualizados.getAsBuiltStatus());
+                    if (dadosAtualizados.getDataInicio() != null)
+                        projeto.setDataInicio(dadosAtualizados.getDataInicio());
+                    if (dadosAtualizados.getDataFim() != null)
+                        projeto.setDataFim(dadosAtualizados.getDataFim());
+                    if (dadosAtualizados.getStatus() != null)
+                        projeto.setStatus(dadosAtualizados.getStatus());
+                    if (dadosAtualizados.getAsBuiltStatus() != null)
+                        projeto.setAsBuiltStatus(dadosAtualizados.getAsBuiltStatus());
 
                     if (dadosAtualizados.getContrato() != null && dadosAtualizados.getContrato().getId() != null) {
                         contratoRepository.findById(dadosAtualizados.getContrato().getId())
@@ -114,50 +110,35 @@ public class ProjetoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Listar todos os projetos
-     */
     @GetMapping
     public ResponseEntity<List<Projeto>> listarTodos() {
-        List<Projeto> projetos = projetoRepository.findAll();
-        return ResponseEntity.ok(projetos);
+        return ResponseEntity.ok(projetoRepository.findAll());
     }
 
     /**
-     * Listar projetos vinculados a um contrato específico
+     * ✏️ PUT: Atualizar a quantidade utilizada de um material específico na
+     * auditoria 💥
      */
-    @GetMapping("/contrato/{contratoId}")
-    public ResponseEntity<Map<String, Object>> listarPorContrato(@PathVariable Long contratoId) {
-        try {
-            Optional<Contrato> contrato = contratoRepository.findById(contratoId);
-            if (!contrato.isPresent()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-            }
+    @PutMapping("/{projetoId}/materiais/{materialId}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> atualizarQuantidadeUtilizada(
+            @PathVariable Long projetoId,
+            @PathVariable Long materialId,
+            @RequestParam Integer quantidadeUtilizada) {
 
-            List<Projeto> projetos = projetoRepository.findByContratoId(contratoId);
-            Map<String, Object> response = new HashMap<>();
-            response.put("contrato", contrato.get());
-            response.put("projetos", projetos);
-            response.put("total", projetos.size());
+        Map<String, Object> response = new HashMap<>();
+        return projetoRepository.findById(projetoId).map(projeto -> {
+            projeto.getMateriais().stream()
+                    .filter(m -> m.getId().equals(materialId))
+                    .findFirst()
+                    .ifPresent(m -> m.setQuantidadeUtilizada(quantidadeUtilizada));
 
+            projetoRepository.save(projeto);
+            response.put("mensagem", "Inventário de auditoria sincronizado!");
             return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        }).orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Listar projetos por responsável
-     */
-    @GetMapping("/responsavel/{responsavelId}")
-    public ResponseEntity<List<Projeto>> listarPorResponsavel(@PathVariable Long responsavelId) {
-        List<Projeto> projetos = projetoRepository.findByResponsavelId(responsavelId);
-        return ResponseEntity.ok(projetos);
-    }
-
-    /**
-     * Buscar auditoria de materiais e status de As-Built do Projeto
-     */
     @GetMapping("/{id}/auditoria")
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> buscarAuditoria(@PathVariable Long id) {
@@ -168,25 +149,21 @@ public class ProjetoController {
 
         Projeto projeto = projetoOpt.get();
         Map<String, Object> response = new HashMap<>();
-
         response.put("asBuiltStatus", projeto.getAsBuiltStatus() != null ? projeto.getAsBuiltStatus() : "PENDENTE");
 
         List<Map<String, Object>> materiaisMapeados = projeto.getMateriais().stream().map(mat -> {
             Map<String, Object> m = new HashMap<>();
+            m.put("id", mat.getId()); // ID do vínculo relacional 💥
             m.put("nome", mat.getMaterial() != null ? mat.getMaterial().getNome() : "Material não identificado");
             m.put("previsto", mat.getQuantidadePrevista());
             m.put("utilizado", mat.getQuantidadeUtilizada());
             return m;
         }).collect(Collectors.toList());
 
-        response.put("materials", materiaisMapeados);
-
+        response.put("materiais", materiaisMapeados); // Chave corrigida para bater com o React! 💥[cite: 1]
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * Homologar Documento alterando o registro definitivo no Postgres
-     */
     @PutMapping("/{id}/as-built/homologar")
     @Transactional
     public ResponseEntity<Map<String, String>> homologarAsBuilt(@PathVariable Long id) {

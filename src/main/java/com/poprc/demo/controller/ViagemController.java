@@ -2,30 +2,41 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.PrestacaoContas;
 import com.poprc.demo.model.Viagem;
-import com.poprc.demo.repository.ViagemRepository; //   IMPORT DO REPO
+import com.poprc.demo.repository.ViagemRepository;
+import com.poprc.demo.repository.FuncionarioRepository; // 💥 Import novo
+import com.poprc.demo.repository.ProjetoRepository; // 💥 Import novo
 import com.poprc.demo.service.FinanceiroService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional; // 💥 Import novo
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
-import java.util.List; //   IMPORT DA LIST
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/financeiro")
+@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class ViagemController {
 
     private final FinanceiroService financeiroService;
-    private final ViagemRepository viagemRepository; // INJEÇÃO DO REPO
+    private final ViagemRepository viagemRepository;
+    private final FuncionarioRepository funcionarioRepository; // 💥 Injetado para o update
+    private final ProjetoRepository projetoRepository; // 💥 Injetado para o update
 
-    // ROTA NOVELLA: Listar todas as viagens para o front carregar
+    /**
+     * 📋 Listar todas as viagens cadastradas
+     */
     @GetMapping("/viagens")
     public ResponseEntity<List<Viagem>> listarViagens() {
         return ResponseEntity.ok(viagemRepository.findAll());
     }
 
+    /**
+     * ✈️ POST: Lançar nova viagem do zero
+     */
     @PostMapping("/viagens")
     public ResponseEntity<Viagem> criarViagem(@RequestBody NovaViagemDTO dto) {
         Viagem viagem = new Viagem();
@@ -38,6 +49,35 @@ public class ViagemController {
         return ResponseEntity.status(HttpStatus.CREATED).body(salva);
     }
 
+    /**
+     * ✏️ PUT: Editar uma ordem de viagem existente (CRUD Completo) 💥
+     */
+    @PutMapping("/viagens/{id}")
+    @Transactional
+    public ResponseEntity<Viagem> atualizarViagem(@PathVariable Long id, @RequestBody NovaViagemDTO dto) {
+        return viagemRepository.findById(id)
+                .map(viagem -> {
+                    viagem.setSolicitacaoVeiculo(dto.getSolicitacaoVeiculo());
+                    viagem.setHospedagemDetalhes(dto.getHospedagemDetalhes());
+                    viagem.setAdiantamentoDiarias(dto.getAdiantamentoDiarias());
+                    viagem.setCustoPlanejado(dto.getCustoPlanejado());
+
+                    if (dto.getFuncionarioId() != null) {
+                        funcionarioRepository.findById(dto.getFuncionarioId()).ifPresent(viagem::setFuncionario);
+                    }
+                    if (dto.getProjetoId() != null) {
+                        projetoRepository.findById(dto.getProjetoId()).ifPresent(viagem::setProjeto);
+                    }
+
+                    Viagem atualizada = viagemRepository.save(viagem);
+                    return ResponseEntity.ok(atualizada);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * 💰 POST: Prestar contas e liquidar custos
+     */
     @PostMapping("/prestacao-contas")
     public ResponseEntity<PrestacaoContas> fecharPrestacao(@RequestBody PrestacaoContasDTO dto) {
         PrestacaoContas prestacao = financeiroService.fecharPrestacaoContas(

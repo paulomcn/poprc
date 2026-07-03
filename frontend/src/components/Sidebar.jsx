@@ -11,7 +11,8 @@ import {
   Menu,
   X,
   Smartphone,
-  //   NOVOS ÍCONES IMPORTADOS DA ETAPA 4
+  // 💥 ÍCONE NOVO PARA A O.S.
+  ClipboardList,
   TrendingUp,
   DollarSign,
   Plane,
@@ -23,11 +24,16 @@ export default function Sidebar() {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
 
-  //  ARRAY ATUALIZADO COM O DASHBOARD EXECUTIVO NA LIDERANÇA
+  // 🎛️ ARRAY ATUALIZADO COM A ORDEM DE SERVIÇO NO LUGAR CERTO 💥
   const menuItems = [
-    { path: "/", icon: LayoutDashboard, label: "Dashboard Executivo" }, //   Linkado na Home
+    { path: "/", icon: LayoutDashboard, label: "Dashboard Executivo" },
     { path: "/contratos", icon: FileText, label: "Contratos" },
     { path: "/projetos", icon: Briefcase, label: "Projetos" },
+    {
+      path: "/ordens-servico",
+      icon: ClipboardList,
+      label: "Ordens de Serviço",
+    }, // 💥 LINK INJETADO AQUI!
     { path: "/funcionarios", icon: Users, label: "Funcionários" },
     { path: "/comarcas", icon: Building2, label: "Gestão de Comarcas" },
     { path: "/estoque", icon: Package, label: "Estoque de Materiais" },
@@ -80,8 +86,6 @@ export default function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 p-4 overflow-y-auto">
-          {" "}
-          {/* Adicionado scroll caso a tela seja pequena */}
           <ul className="space-y-2">
             {menuItems.map((item) => (
               <li key={item.path}>

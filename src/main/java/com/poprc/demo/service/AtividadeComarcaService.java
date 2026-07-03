@@ -64,7 +64,7 @@ public class AtividadeComarcaService {
     }
 
     @Transactional
-    public AtividadeComarca actualizarAtividade(Long atividadeId, LocalDate dataInicio, LocalDate dataEncerramento,
+    public AtividadeComarca atualizarAtividade(Long atividadeId, LocalDate dataInicio, LocalDate dataEncerramento,
             String descricaoAtividades, List<MultipartFile> novasFotos) {
 
         validarDescricao(descricaoAtividades);

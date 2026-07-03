@@ -7,31 +7,34 @@ import com.poprc.demo.repository.OrdemServicoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*; // 💥 Import simplificado para pegar o CrossOrigin
+
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/ordens-servico")
+@CrossOrigin(origins = "*") // 🛡️ Blindagem total contra erro de CORS no front
 @RequiredArgsConstructor
 public class OrdemServicoController {
 
     private final OrdemServicoService ordemServicoService;
     private final OrdemServicoRepository ordemServicoRepository;
 
+    /**
+     * 🛠️ POST: Criar nova Ordem de Serviço amarrada ao contrato
+     */
     @PostMapping
     public ResponseEntity<OrdemServico> criar(@RequestBody OrdemServico ordemServico) {
         OrdemServico novaOrdem = ordemServicoService.criar(ordemServico);
         return ResponseEntity.status(HttpStatus.CREATED).body(novaOrdem);
     }
 
+    /**
+     * 🔄 PUT: Transicionar os cards entre as colunas do Kanban
+     */
     @PutMapping("/{id}/status")
-    public ResponseEntity<OrdemServico> atualizarStatus(@PathVariable Long id, @RequestBody StatusUpdateRequest request) {
+    public ResponseEntity<OrdemServico> atualizarStatus(@PathVariable Long id,
+            @RequestBody StatusUpdateRequest request) {
         OrdemServico ordem = ordemServicoService.atualizarStatus(id, request.getStatus());
         if (ordem != null) {
             return ResponseEntity.ok(ordem);
@@ -40,7 +43,8 @@ public class OrdemServicoController {
     }
 
     @PutMapping("/{id}/checklist")
-    public ResponseEntity<OrdemServico> atualizarChecklist(@PathVariable Long id, @RequestBody ChecklistUpdateRequest request) {
+    public ResponseEntity<OrdemServico> atualizarChecklist(@PathVariable Long id,
+            @RequestBody ChecklistUpdateRequest request) {
         OrdemServico ordem = ordemServicoService.atualizarChecklist(id, request.getChecklist());
         if (ordem != null) {
             return ResponseEntity.ok(ordem);

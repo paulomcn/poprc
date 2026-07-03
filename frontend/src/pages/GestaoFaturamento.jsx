@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   Plus,
   Edit,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react";
 import api from "../services/api";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -30,14 +32,14 @@ export default function GestaoFaturamento() {
   const [baixaModalOpen, setBaixaModalOpen] = useState(false);
   const [numeroNF, setNumeroNF] = useState("");
 
-  // FORMULÁRIO COMPLETO DO CRUD
+  // FORMULÁRIO COMPLETO
   const [formData, setFormData] = useState({
     contrato: { id: "" },
     servicosExecutados: "",
     valorMedicao: "",
     dataVencimento: "",
     numeroNotaFiscal: "",
-    situacao: "PENDENTE",
+    situacao: "A_FATURAR",
   });
 
   useEffect(() => {
@@ -61,7 +63,22 @@ export default function GestaoFaturamento() {
     }
   };
 
-  // 💾 ABRIR MODAL PARA NOVO CADASTRO
+  // 📈 CÁLCULO DINÂMICO DOS CARD DE METRICAS (Padrão Dashboard Executivo)
+  const metricas = faturamentos.reduce(
+    (acc, curr) => {
+      const valor = parseFloat(curr.valorMedicao) || 0;
+      const sit = String(curr.situacao).toUpperCase();
+
+      if (sit === "A_FATURAR") acc.aFaturar += valor;
+      else if (sit === "FATURADO") acc.faturado += valor;
+      else if (sit === "PAGO" || sit === "LIQUIDADO") acc.pago += valor;
+      else if (sit === "EM_ATRASO") acc.emAtraso += valor;
+
+      return acc;
+    },
+    { aFaturar: 0, faturado: 0, pago: 0, emAtraso: 0 },
+  );
+
   const handleOpenCreate = () => {
     setIsEditing(false);
     setSelectedId(null);
@@ -71,12 +88,11 @@ export default function GestaoFaturamento() {
       valorMedicao: "",
       dataVencimento: "",
       numeroNotaFiscal: "",
-      situacao: "PENDENTE",
+      situacao: "A_FATURAR",
     });
     setCrudModalOpen(true);
   };
 
-  // ✏️ ABRIR MODAL PARA EDIÇÃO GERAL
   const handleOpenEdit = (f) => {
     setIsEditing(true);
     setSelectedId(f.id);
@@ -86,20 +102,23 @@ export default function GestaoFaturamento() {
       valorMedicao: f.valorMedicao || "",
       dataVencimento: f.dataVencimento || "",
       numeroNotaFiscal: f.numeroNotaFiscal || "",
-      situacao: f.situacao || "PENDENTE",
+      situacao: f.situacao || "A_FATURAR",
     });
     setCrudModalOpen(true);
   };
 
-  // 🚀 DISPARAR SALVAMENTO GERAL (POST OU PUT)
   const handleSaveFaturamento = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        valorMedicao: parseFloat(formData.valorMedicao) || 0,
+      };
       if (isEditing) {
-        await api.put(`/faturamentos/${selectedId}`, formData);
+        await api.put(`/faturamentos/${selectedId}`, payload);
         setSuccess("Medição atualizada com sucesso!");
       } else {
-        await api.post("/faturamentos", formData);
+        await api.post("/faturamentos", payload);
         setSuccess("Nova medição lançada no sistema!");
       }
       setCrudModalOpen(false);
@@ -121,7 +140,7 @@ export default function GestaoFaturamento() {
       await api.put(`/faturamentos/${selectedId}/emitir-nota`, null, {
         params: { numeroNotaFiscal: numeroNF },
       });
-      setSuccess("Nota Fiscal registrada!");
+      setSuccess("Nota Fiscal registrada corporativamente!");
       setNfModalOpen(false);
       carregarDados();
     } catch (err) {
@@ -136,7 +155,7 @@ export default function GestaoFaturamento() {
   const confirmarBaixarPagamento = async () => {
     try {
       await api.put(`/faturamentos/${selectedId}/baixar-pagamento`);
-      setSuccess("Pagamento liquidado!");
+      setSuccess("Pagamento liquidado e caixa atualizado!");
       setBaixaModalOpen(false);
       carregarDados();
     } catch (err) {
@@ -154,20 +173,22 @@ export default function GestaoFaturamento() {
 
   return (
     <div className="space-y-6">
+      {/* Header Principal */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText size={32} /> Gestão de Faturamentos
+          <h1 className="text-3xl font-black tracking-tight text-slate-800 flex items-center gap-2">
+            <FileText size={32} className="text-blue-600" /> Gestão de
+            Faturamentos
           </h1>
-          <p className="text-slate-600 mt-1">
-            Lançamentos de medições, emissão de NF-e e fluxo de caixa
+          <p className="text-slate-500 text-sm mt-0.5">
+            Módulo Contábil - Controle operacional de recebíveis em tempo real
           </p>
         </div>
         <button
           onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-semibold flex items-center gap-2 shadow-sm transition-colors"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 shadow-md shadow-blue-600/10 transition-all"
         >
-          <Plus size={20} /> Nova Medição
+          <Plus size={18} /> Nova Medição
         </button>
       </div>
 
@@ -182,18 +203,77 @@ export default function GestaoFaturamento() {
         />
       )}
 
+      {/* 📊 SEÇÃO DE METRICAS DINÂMICAS REESTILIZADAS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              A Faturar
+            </p>
+            <p className="text-2xl font-black text-slate-800 mt-1">
+              {formatCurrency(metricas.aFaturar)}
+            </p>
+          </div>
+          <div className="p-3 bg-slate-50 text-slate-500 rounded-lg border border-slate-100">
+            <Clock size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Faturado (Aguardando)
+            </p>
+            <p className="text-2xl font-black text-blue-600 mt-1">
+              {formatCurrency(metricas.faturado)}
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
+            <Receipt size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Total Recebido
+            </p>
+            <p className="text-2xl font-black text-emerald-600 mt-1">
+              {formatCurrency(metricas.pago)}
+            </p>
+          </div>
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
+            <CheckCircle size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-rose-100 p-5 rounded-xl shadow-sm flex items-center justify-between bg-gradient-to-br from-white to-rose-50/20">
+          <div>
+            <p className="text-xs font-bold text-rose-500 uppercase tracking-wider">
+              Inadimplência / Atraso
+            </p>
+            <p className="text-2xl font-black text-rose-600 mt-1">
+              {formatCurrency(metricas.emAtraso)}
+            </p>
+          </div>
+          <div className="p-3 bg-rose-50 text-rose-600 rounded-lg border border-rose-100">
+            <AlertCircle size={20} />
+          </div>
+        </div>
+      </div>
+
       {/* Tabela Principal */}
-      <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase">
+            <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
               <th className="p-4">Contrato</th>
               <th className="p-4">Serviços Executados</th>
               <th className="p-4">Valor</th>
               <th className="p-4">Vencimento</th>
               <th className="p-4">Nota Fiscal</th>
               <th className="p-4">Situação</th>
-              <th className="p-4 text-center">Ações Operacionais</th>
+              <th className="p-4 text-center">Etapa do Fluxo</th>
               <th className="p-4 text-center">Ajustar</th>
             </tr>
           </thead>
@@ -203,52 +283,69 @@ export default function GestaoFaturamento() {
               return (
                 <tr
                   key={f.id}
-                  className="hover:bg-slate-50/80 transition-colors"
+                  className="hover:bg-slate-50/50 transition-colors"
                 >
-                  <td className="p-4 font-semibold text-slate-800">
+                  <td className="p-4 font-bold text-slate-800">
                     {f.contrato?.contrato || "---"}
                   </td>
-                  <td className="p-4 max-w-xs truncate">
+                  <td className="p-4 max-w-xs truncate text-slate-500">
                     {f.servicosExecutados || "---"}
                   </td>
-                  <td className="p-4 font-mono font-medium text-slate-900">
+                  <td className="p-4 font-mono font-semibold text-slate-900">
                     {formatCurrency(f.valorMedicao)}
                   </td>
-                  <td className="p-4">{f.dataVencimento || "---"}</td>
-                  <td className="p-4 font-mono text-xs text-slate-500">
-                    {f.numeroNotaFiscal || "🔄 Aguardando"}
+                  <td className="p-4 font-medium">
+                    {f.dataVencimento || "---"}
+                  </td>
+                  <td className="p-4 font-mono text-xs text-slate-400">
+                    {f.numeroNotaFiscal || "---"}
                   </td>
                   <td className="p-4">
+                    {/* Status Tags com visibilidade premium 💥 */}
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 w-fit ${
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                         situacaoStr === "PAGO"
-                          ? "bg-green-100 text-green-700"
+                          ? "bg-green-50 text-green-700 border-green-200"
                           : situacaoStr === "FATURADO"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-amber-100 text-amber-700"
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                            : situacaoStr === "EM_ATRASO"
+                              ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
                       }`}
                     >
-                      {f.situacao}
+                      {situacaoStr === "EM_ATRASO"
+                        ? "⚠️ EM ATRASO"
+                        : f.situacao}
                     </span>
                   </td>
                   <td className="p-4 text-center">
-                    {situacaoStr === "PENDENTE" ? (
+                    {/* LÓGICA DO FLUXO CORRIGIDA SEM FALSOS LIQUIDADOS 💥 */}
+                    {situacaoStr === "A_FATURAR" ? (
                       <button
                         onClick={() => handleEmitirNota(f.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 mx-auto"
                       >
-                        Emitir NF-e
+                        <Receipt size={13} /> Emitir NF-e
                       </button>
                     ) : situacaoStr === "FATURADO" ? (
                       <button
                         onClick={() => handleBaixarPagamento(f.id)}
-                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 mx-auto shadow-sm"
+                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 mx-auto"
                       >
-                        <DollarSign size={14} /> Baixar Pagamento
+                        <DollarSign size={13} /> Registrar Recebimento
+                      </button>
+                    ) : situacaoStr === "EM_ATRASO" ? (
+                      /* Se está em atraso, a ação contábil ainda é receber o dinheiro! 💥 */
+                      <button
+                        onClick={() => handleBaixarPagamento(f.id)}
+                        className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 mx-auto shadow-rose-600/10"
+                      >
+                        <AlertTriangle size={13} /> Registrar Recebimento
+                        Atrasado
                       </button>
                     ) : (
-                      <span className="text-xs text-green-600 font-bold bg-green-50 px-2.5 py-1 rounded-full border border-green-200">
-                        💰 Liquidado
+                      <span className="text-xs text-green-600 font-bold bg-green-50 px-2.5 py-1 rounded-full border border-green-200 inline-flex items-center gap-1">
+                        <CheckCircle size={12} /> Liquidado
                       </span>
                     )}
                   </td>
@@ -296,7 +393,7 @@ export default function GestaoFaturamento() {
                         contrato: { id: e.target.value },
                       })
                     }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50"
+                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   >
                     {contratos.map((c) => (
@@ -318,7 +415,7 @@ export default function GestaoFaturamento() {
                     onChange={(e) =>
                       setFormData({ ...formData, valorMedicao: e.target.value })
                     }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50"
+                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0.00"
                   />
                 </div>
@@ -336,23 +433,24 @@ export default function GestaoFaturamento() {
                         dataVencimento: e.target.value,
                       })
                     }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50"
+                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 uppercase">
-                    Situação / Status
+                    Situação / Status *
                   </label>
                   <select
                     value={formData.situacao}
                     onChange={(e) =>
                       setFormData({ ...formData, situacao: e.target.value })
                     }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50"
+                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="PENDENTE">PENDENTE</option>
+                    <option value="A_FATURAR">A FATURAR</option>
                     <option value="FATURADO">FATURADO</option>
                     <option value="PAGO">PAGO</option>
+                    <option value="EM_ATRASO">EM ATRASO</option>
                   </select>
                 </div>
               </div>
@@ -369,8 +467,8 @@ export default function GestaoFaturamento() {
                       numeroNotaFiscal: e.target.value,
                     })
                   }
-                  className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50"
-                  placeholder="Apenas se já faturado"
+                  className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: NF-2026-XXXX"
                 />
               </div>
               <div>
@@ -386,13 +484,13 @@ export default function GestaoFaturamento() {
                       servicosExecutados: e.target.value,
                     })
                   }
-                  className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50"
-                  placeholder="Ex: Execução de cabeamento estruturado e as-built da comarca..."
+                  className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: Certificação de rede estruturada..."
                 ></textarea>
               </div>
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors shadow-sm"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors shadow-sm mt-2"
               >
                 Salvar Lançamento
               </button>
@@ -404,29 +502,30 @@ export default function GestaoFaturamento() {
       {/* MODAL OPERACIONAL 1: NOTA FISCAL */}
       {nfModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-md overflow-hidden p-6 space-y-4">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <Receipt size={20} /> Registrar Nota Fiscal
+          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-md overflow-hidden p-6 space-y-4 animate-fade-in">
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+              <Receipt size={20} className="text-blue-600" /> Registrar Nota
+              Fiscal
             </h2>
             <input
               type="text"
               required
               value={numeroNF}
               onChange={(e) => setNumeroNF(e.target.value)}
-              className="w-full p-2.5 border rounded-lg text-sm bg-slate-50"
+              className="w-full p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Número da NF-e"
             />
             <div className="flex gap-3">
               <button
                 onClick={confirmarEmitirNota}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold text-sm"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-semibold text-sm transition-colors"
               >
                 Confirmar
               </button>
               <button
                 type="button"
                 onClick={() => setNfModalOpen(false)}
-                className="flex-1 bg-slate-100 text-slate-700 py-2 rounded-lg font-semibold text-sm"
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg font-semibold text-sm transition-colors"
               >
                 Cancelar
               </button>
@@ -438,29 +537,29 @@ export default function GestaoFaturamento() {
       {/* MODAL OPERACIONAL 2: BAIXA DE PAGAMENTO */}
       {baixaModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-sm overflow-hidden text-center p-6 space-y-4">
-            <div className="mx-auto w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center border border-amber-200">
-              <AlertTriangle size={26} />
+          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-sm overflow-hidden text-center p-6 space-y-4 animate-fade-in">
+            <div className="mx-auto w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-200">
+              <TrendingUp size={24} />
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-800">
                 Confirmar Recebimento?
               </h3>
               <p className="text-sm text-slate-500 mt-2">
-                Isto dará baixa definitiva no faturamento e atualizará o fluxo
-                de caixa corporativo.
+                Isto confirmará a entrada de capital no banco e alterará o
+                status da medição para liquidado.
               </p>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={confirmarBaixarPagamento}
-                className="flex-1 bg-green-600 text-white py-2.5 rounded-lg font-semibold text-sm"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors"
               >
-                Sim, Dar Baixa!
+                Confirmar Entrada
               </button>
               <button
                 onClick={() => setBaixaModalOpen(false)}
-                className="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-lg font-semibold text-sm"
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg font-semibold text-sm transition-colors"
               >
                 Cancelar
               </button>
