@@ -2,10 +2,15 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.repository.ContratoRepository;
+import com.poprc.demo.specification.ContratoSpecification;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,8 +25,6 @@ public class ContratoController {
 
     /**
      * POST: Salvar novo contrato recebendo JSON do React
-     * (a versão anterior usava @RequestParam multipart — incompatível com o front
-     * atual)
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> salvarContrato(@RequestBody Contrato novoContrato) {
@@ -80,11 +83,29 @@ public class ContratoController {
     }
 
     /**
-     * GET: Listar todos os contratos
+     * GET: Listar contratos com suporte a filtros dinâmicos cruzados (Server-side)
+     * 💥
+     */
+    /**
+     * GET: Listar contratos com a arquitetura completa de filtros ativos
+     * (Server-side)
      */
     @GetMapping
-    public ResponseEntity<List<Contrato>> listarTodos() {
-        return ResponseEntity.ok(contratoRepository.findAll());
+    public ResponseEntity<List<Contrato>> listarTodos(
+            @RequestParam(required = false) List<String> cliente, // 💥 Virou lista para multi-select
+            @RequestParam(required = false) String contrato,
+            @RequestParam(required = false) List<String> status, // 💥 Virou lista para multi-select
+            @RequestParam(required = false) String recorrencia, // 💥 Novo
+            @RequestParam(required = false) String segmento, // 💥 Novo
+            @RequestParam(required = false) String gestor, // 💥 Novo
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(required = false) BigDecimal valorMin,
+            @RequestParam(required = false) BigDecimal valorMax) {
+
+        Specification<Contrato> spec = ContratoSpecification.filtrar(
+                cliente, contrato, status, recorrencia, segmento, gestor, dataInicio, dataFim, valorMin, valorMax);
+        return ResponseEntity.ok(contratoRepository.findAll(spec));
     }
 
     /**

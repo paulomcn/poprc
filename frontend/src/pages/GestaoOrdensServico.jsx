@@ -10,6 +10,11 @@ import {
   X,
   Briefcase,
   FileText,
+  Move,
+  Eye,
+  ClipboardCheck,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import api from "../services/api";
 import OrdensServicoCard from "../components/OrdensServicoCard";
@@ -21,98 +26,147 @@ const STATUS_COLUMNS = [
     label: "Aberta",
     color: "bg-blue-50",
     borderColor: "border-blue-200",
+    dropColor: "hover:bg-blue-100/50",
   },
   {
     value: "EM_EXECUCAO",
     label: "Em Execução",
     color: "bg-yellow-50",
     borderColor: "border-yellow-200",
+    dropColor: "hover:bg-yellow-100/50",
   },
   {
     value: "AGUARDANDO_VALIDACAO",
     label: "Aguardando Validação",
     color: "bg-purple-50",
     borderColor: "border-purple-200",
+    dropColor: "hover:bg-purple-100/50",
   },
   {
     value: "CONCLUIDA",
     label: "Concluída",
     color: "bg-green-50",
     borderColor: "border-green-200",
+    dropColor: "hover:bg-green-100/50",
   },
   {
     value: "FATURADA",
     label: "Faturada",
     color: "bg-gray-50",
     borderColor: "border-gray-200",
+    dropColor: "hover:bg-gray-200/50",
   },
 ];
 
 export default function GestaoOrdensServico() {
   const [ordensServico, setOrdensServico] = useState([]);
-  const [projetos, setProjetos] = useState([]); // 💥 Trocado de contratos para projetos!
-  const [filteredOrdens, setFilteredOrdens] = useState([]);
+  const [projetos, setProjetos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Inputs de Filtros
   const [filterCliente, setFilterCliente] = useState("");
   const [filterNumeroOS, setFilterNumeroOS] = useState("");
+
   const [selectedOrdem, setSelectedOrdem] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
-
-  // Modal e formulário adaptados para o vínculo duplo 💥
+  const [draggingOrdem, setDraggingOrdem] = useState(null);
+  const [checklistModalOpen, setChecklistModalOpen] = useState(false);
+  const [ordemChecklistFoco, setOrdemChecklistFoco] = useState(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     numeroOs: "",
     descricao: "",
     status: "ABERTA",
-    projeto: { id: "" }, // 💥 Link direto com a engenharia
-    contrato: { id: "" }, // 💥 Link direto com o faturamento
+    projeto: { id: "" },
+    contrato: { id: "" },
   });
 
+  // 💥 1. Carrega a lista estática de projetos APENAS uma vez no mount da tela
   useEffect(() => {
-    carregarDadosIniciais();
+    const carregarProjetosIniciais = async () => {
+      try {
+        const res = await api.get("/projects" || "/projetos"); // se adequa à sua rota de projetos
+        setProjetos(res.data || []);
+      } catch (err) {
+        console.error("Erro ao puxar árvore de projetos:", err);
+      }
+    };
+    carregarProjetosIniciais();
   }, []);
 
+  // 💥 2. ENGINE DE DEBOUNCE: Aguarda 400ms após o término da digitação para consultar o Postgres
   useEffect(() => {
-    aplicarFiltros();
-  }, [ordensServico, filterCliente, filterNumeroOS]);
-
-  const carregarDadosIniciais = async () => {
     setLoading(true);
+    const delayDebounceFn = setTimeout(() => {
+      buscarOrdensFilttradas();
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [filterNumeroOS, filterCliente]);
+
+  const buscarOrdensFilttradas = async () => {
     setError(null);
     try {
-      const [resOS, resProjetos] = await Promise.all([
-        api.get("/ordens-servico"),
-        api.get("/projetos"), // 💥 Puxando os projetos reais do Postgres
-      ]);
-      setOrdensServico(resOS.data || []);
-      setProjetos(resProjetos.data || []);
+      // Repassa os inputs limpos via query params na URL do Axios ⚡
+      const response = await api.get("/ordens-servico", {
+        params: {
+          numeroOs: filterNumeroOS.trim(),
+          cliente: filterCliente.trim(),
+        },
+      });
+      setOrdensServico(response.data || []);
     } catch (err) {
-      setError("Erro ao sincronizar ecossistema de Ordens de Serviço.");
+      setError("Erro ao sincronizar dados com a central de filtros do banco.");
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const aplicarFiltros = () => {
-    let resultado = ordensServico;
+  // DRAG & DROP NATIVO
+  const handleDragStart = (e, ordem) => {
+    setDraggingOrdem(ordem);
+  };
 
-    if (filterNumeroOS.trim()) {
-      resultado = resultado.filter((ordem) =>
-        ordem.numeroOs?.toLowerCase().includes(filterNumeroOS.toLowerCase()),
+  const handleDrop = async (e, targetStatus) => {
+    e.preventDefault();
+    if (!draggingOrdem || draggingOrdem.status === targetStatus) return;
+
+    const statusOrigem = draggingOrdem.status;
+    const ordemId = draggingOrdem.id;
+
+    setOrdensServico((prev) =>
+      prev.map((o) => (o.id === ordemId ? { ...o, status: targetStatus } : o)),
+    );
+    setDraggingOrdem(null);
+
+    try {
+      await api.put(`/ordens-servico/${ordemId}/status`, {
+        status: targetStatus,
+      });
+    } catch (err) {
+      console.error(err);
+      setOrdensServico((prev) =>
+        prev.map((o) =>
+          o.id === ordemId ? { ...o, status: statusOrigem } : o,
+        ),
       );
+      alert("Falha de comunicação com o servidor. Movimentação cancelada.");
     }
+  };
 
-    if (filterCliente.trim()) {
-      resultado = resultado.filter((ordem) =>
-        ordem.contrato?.cliente
-          ?.toLowerCase()
-          .includes(filterCliente.toLowerCase()),
-      );
+  const transicionarStatusDireto = async (ordemId, novoStatus) => {
+    try {
+      await api.put(`/ordens-servico/${ordemId}/status`, {
+        status: novoStatus,
+      });
+      setChecklistModalOpen(false);
+      buscarOrdensFilttradas();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao alterar o status do chamado no banco.");
     }
-
-    setFilteredOrdens(resultado);
   };
 
   const handleCriarOS = async (e) => {
@@ -121,16 +175,13 @@ export default function GestaoOrdensServico() {
       !formData.numeroOs.trim() ||
       !formData.projeto.id ||
       !formData.contrato.id
-    ) {
-      alert("Por favor, selecione um projeto operacional válido.");
+    )
       return;
-    }
 
     try {
       await api.post("/ordens-servico", formData);
       setCreateModalOpen(false);
-      const response = await api.get("/ordens-servico");
-      setOrdensServico(response.data || []);
+      buscarOrdensFilttradas();
     } catch (err) {
       console.error(err);
       alert("Erro ao salvar ordem de serviço vinculada no banco.");
@@ -156,28 +207,59 @@ export default function GestaoOrdensServico() {
     fecharModalStatus();
   };
 
+  const renderConteudoChecklist = (textoChecklist) => {
+    if (!textoChecklist) {
+      return (
+        <div className="text-center py-8 text-gray-400 italic text-sm bg-gray-50 rounded-xl border border-dashed">
+          Nenhum relatório técnico preenchido em campo para esta OS.
+        </div>
+      );
+    }
+
+    if (textoChecklist.trim().startsWith("{")) {
+      try {
+        const dadosJson = JSON.parse(textoChecklist);
+        return (
+          <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+            {Object.entries(dadosJson).map(([chave, valor]) => (
+              <div
+                key={chave}
+                className="flex justify-between items-center py-2 border-b border-gray-200/60 last:border-none"
+              >
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  {chave.replace(/_/g, " ")}
+                </span>
+                <span className="text-sm font-semibold text-gray-800">
+                  {typeof valor === "boolean"
+                    ? valor
+                      ? "✅ Conforme"
+                      : "❌ Inconforme"
+                    : String(valor)}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      } catch (err) {}
+    }
+
+    return (
+      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm text-gray-700 leading-relaxed whitespace-pre-line font-medium shadow-inner">
+        {textoChecklist}
+      </div>
+    );
+  };
+
   const agruparPorStatus = () => {
     const agrupado = {};
     STATUS_COLUMNS.forEach((col) => {
-      agrupado[col.value] = filteredOrdens.filter(
+      // Agrupa usando a massa de dados que veio já limpa e filtrada do backend! ⚡
+      agrupado[col.value] = ordensServico.filter(
         (ordem) => (ordem.status || "ABERTA") === col.value,
       );
     });
     return agrupado;
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center">
-          <Loader className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">
-            Sincronizando fluxo com o Postgres...
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   const ordensPorStatus = agruparPorStatus();
 
@@ -231,7 +313,20 @@ export default function GestaoOrdensServico() {
               <Plus className="w-4 h-4" /> Nova OS
             </button>
           </div>
+
+          {loading && (filterNumeroOS || filterCliente) && (
+            <div className="mt-2 text-[10px] text-blue-500 animate-pulse font-bold uppercase tracking-wider">
+              Consultando tabelas do Postgres...
+            </div>
+          )}
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg flex items-center gap-3 mb-6 text-sm">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
       </div>
 
       {/* Kanban Board */}
@@ -252,18 +347,50 @@ export default function GestaoOrdensServico() {
               <div className="w-full h-1 bg-gray-200 rounded-full" />
             </div>
 
-            <div className="space-y-3 min-h-[500px] bg-gray-100/40 p-2 rounded-xl border border-dashed border-gray-200">
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => handleDrop(e, coluna.value)}
+              className={`space-y-3 min-h-[550px] bg-gray-100/40 p-2 rounded-xl border border-dashed border-gray-200 transition-colors duration-200 ${coluna.dropColor}`}
+            >
               {ordensPorStatus[coluna.value]?.length > 0 ? (
                 ordensPorStatus[coluna.value].map((ordem) => (
-                  <OrdensServicoCard
+                  <div
                     key={ordem.id}
-                    ordem={ordem}
-                    onAtualizarStatus={() => abrirModalStatus(ordem)}
-                  />
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, ordem)}
+                    className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-grab active:cursor-grabbing transform transition-all duration-100 active:scale-95 group relative flex flex-col"
+                  >
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-gray-500">
+                      <Move size={14} />
+                    </div>
+
+                    <div className="p-1 flex-1">
+                      <OrdensServicoCard
+                        ordem={ordem}
+                        onAtualizarStatus={() => abrirModalStatus(ordem)}
+                      />
+                    </div>
+
+                    <div className="bg-gray-50 px-4 py-2 border-t border-gray-100 flex justify-between items-center text-xs">
+                      <span className="text-gray-400 font-mono text-[10px]">
+                        OS #{ordem.id}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOrdemChecklistFoco(ordem);
+                          setChecklistModalOpen(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition-colors"
+                      >
+                        <Eye size={12} /> <span>Ver Relatório</span>
+                      </button>
+                    </div>
+                  </div>
                 ))
               ) : (
-                <div className="text-center py-12 text-gray-400">
-                  <p className="text-xs font-medium">Sem chamados ativos</p>
+                <div className="text-center py-12 text-gray-400 pointers-events-none">
+                  <p className="text-xs font-medium">Solte chamados aqui</p>
                 </div>
               )}
             </div>
@@ -271,10 +398,116 @@ export default function GestaoOrdensServico() {
         ))}
       </div>
 
-      {/* 🛑 MODAL CORRIGIDO: SELEÇÃO OPERACIONAL POR PROJETO/COMARCA */}
+      {/* MODAL CHECKLIST */}
+      {checklistModalOpen && ordemChecklistFoco && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-lg overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="text-blue-600 w-5 h-5" />
+                <div>
+                  <h2 className="text-sm font-black text-gray-800 tracking-tight">
+                    Relatório Técnico de Campo
+                  </h2>
+                  <p className="text-[10px] text-gray-400 font-mono">
+                    Código OS: {ordemChecklistFoco.numeroOs}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setChecklistModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[400px] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4 text-xs bg-gray-50 p-3 rounded-lg border border-gray-100 font-medium text-gray-500">
+                <div>
+                  <span className="block text-[10px] text-gray-400 uppercase font-bold">
+                    Projeto
+                  </span>
+                  <span className="text-gray-800 font-semibold text-xs">
+                    Projeto #{ordemChecklistFoco.projeto?.id || "N/A"}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] text-gray-400 uppercase font-bold">
+                    Assinatura Digital
+                  </span>
+                  <span
+                    className={`font-semibold text-xs ${ordemChecklistFoco.assinaturaDigital ? "text-emerald-600" : "text-amber-600"}`}
+                  >
+                    {ordemChecklistFoco.assinaturaDigital
+                      ? "Homologada via App"
+                      : "Pendente"}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Escopo Original Solicitado
+                </label>
+                <div className="p-3 bg-gray-100/50 text-xs text-gray-600 rounded-xl border border-gray-200/60 italic">
+                  "{ordemChecklistFoco.descricao || "Sem descrição cadastrada."}
+                  "
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Checklist / Resposta do Técnico
+                </label>
+                {renderConteudoChecklist(ordemChecklistFoco.checklist)}
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+              {ordemChecklistFoco.status === "AGUARDANDO_VALIDACAO" && (
+                <>
+                  <button
+                    onClick={() =>
+                      transicionarStatusDireto(
+                        ordemChecklistFoco.id,
+                        "EM_EXECUCAO",
+                      )
+                    }
+                    className="flex-1 bg-white hover:bg-rose-50 border border-gray-200 text-rose-600 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <ThumbsDown size={14} /> Recusar Relatório
+                  </button>
+                  <button
+                    onClick={() =>
+                      transicionarStatusDireto(
+                        ordemChecklistFoco.id,
+                        "CONCLUIDA",
+                      )
+                    }
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <ThumbsUp size={14} /> Aprovar OS
+                  </button>
+                </>
+              )}
+              {ordemChecklistFoco.status !== "AGUARDANDO_VALIDACAO" && (
+                <button
+                  onClick={() => setChecklistModalOpen(false)}
+                  className="w-full bg-gray-800 hover:bg-gray-900 text-white py-2 rounded-xl text-xs font-bold transition"
+                >
+                  Fechar Auditoria
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CRIAÇÃO */}
       {createModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl border w-full max-w-md overflow-hidden animate-fade-in">
+          <div className="bg-white rounded-xl shadow-xl border w-full max-w-md overflow-hidden">
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                 <FileText size={18} className="text-blue-600" /> Abrir Nova
@@ -304,7 +537,6 @@ export default function GestaoOrdensServico() {
                 />
               </div>
 
-              {/* 💥 SELETOR EVOLUÍDO: MAPEIA PROJETO, COMARCA E CONTRATO SIMULTANEAMENTE */}
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                   Projeto / Comarca Alvo *
@@ -346,7 +578,7 @@ export default function GestaoOrdensServico() {
                     setFormData({ ...formData, descricao: e.target.value })
                   }
                   className="w-full mt-1 p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Descreva o escopo da manutenção ou instalação técnica..."
+                  placeholder="Descreva o escopo da manutenção..."
                 ></textarea>
               </div>
               <button

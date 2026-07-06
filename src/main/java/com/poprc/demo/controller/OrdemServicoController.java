@@ -53,8 +53,11 @@ public class OrdemServicoController {
     }
 
     @GetMapping
-    public ResponseEntity<List<OrdemServico>> listarTodas() {
-        List<OrdemServico> ordens = ordemServicoRepository.findAll();
+    public ResponseEntity<List<OrdemServico>> listarTodas(
+            @RequestParam(required = false) String numeroOs,
+            @RequestParam(required = false) String cliente) {
+        // Adeus findAll() genérico! Agora a busca vai blindada e cirúrgica
+        List<OrdemServico> ordens = ordemServicoRepository.buscarComFiltros(numeroOs, cliente);
         return ResponseEntity.ok(ordens);
     }
 
