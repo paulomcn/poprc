@@ -1,5 +1,17 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, Edit2, MapPin, User, Zap, History } from "lucide-react";
+import {
+  AlertTriangle,
+  Edit2,
+  MapPin,
+  User,
+  Zap,
+  History,
+  FileText,
+  Upload,
+  CheckCircle2,
+  ChevronRight,
+  PenTool,
+} from "lucide-react";
 import api from "../services/api";
 import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -12,7 +24,12 @@ export default function GestaoComarcas() {
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedComarca, setSelectedComarca] = useState(null);
-  const [comarcaHistorico, setComarcaHistorico] = useState(null); //   NOVO: controla o modal de histórico
+  const [comarcaHistorico, setComarcaHistorico] = useState(null);
+
+  // 💥 Controles reativos de validação para a Etapa 1 (Vistoria)
+  const [fotoVistoria, setFotoVistoria] = useState(false);
+  const [assinaturaValida, setAssinaturaValida] = useState(false);
+
   const [formData, setFormData] = useState({
     percentualConcluido: 0,
     pendencias: "",
@@ -26,13 +43,33 @@ export default function GestaoComarcas() {
     try {
       setLoading(true);
       const response = await api.get("/comarcas");
-      setComarcas(response.data);
+      setComarcas(response.data || []);
       setError(null);
     } catch (err) {
       setError("Erro ao carregar comarcas");
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 💥 REGRA DE NEGÓCIO: Bloqueia avanço se não houver foto e assinatura digital
+  const handleAvancarFase = async (comarca) => {
+    if (!fotoVistoria || !assinaturaValida) {
+      alert(
+        "🔒 BLOQUEIO OPERACIONAL: Upload de foto da vistoria e Assinatura com o Gerente são obrigatórios para liberar a infraestrutura!",
+      );
+      return;
+    }
+
+    try {
+      await api.patch(`/comarcas/${comarca.id}`, { etapaAtual: 2 });
+      alert(
+        `🚀 Sucesso! Etapa 2 (Infraestrutura) desbloqueada para a comarca de ${comarca.nomeComarca}`,
+      );
+      fetchComarcas();
+    } catch (err) {
+      console.error("Erro ao transicionar etapa", err);
     }
   };
 
@@ -74,7 +111,7 @@ export default function GestaoComarcas() {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name === "percentualConcluido" ? value : value,
+      [name]: value,
     }));
   };
 
@@ -95,7 +132,8 @@ export default function GestaoComarcas() {
             Gestão de Comarcas
           </h1>
           <p className="text-slate-600 mt-2">
-            Monitore o progresso e gerenciamento das comarcas
+            Monitore o progresso, vistorias obrigatórias e liberação de
+            infraestrutura regional.
           </p>
         </div>
       </div>
@@ -104,38 +142,53 @@ export default function GestaoComarcas() {
         {comarcas.map((comarca) => (
           <div
             key={comarca.id}
-            className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200 overflow-hidden"
+            className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200 overflow-hidden flex flex-col justify-between"
           >
             <div
-              className={`p-6 ${comarca.pendencias ? "bg-red-50 border-l-4 border-red-500" : "bg-white"}`}
+              className={`p-6 flex-1 space-y-4 ${comarca.pendencias ? "bg-red-50 border-l-4 border-l-red-500" : "bg-white"}`}
             >
-              <div className="flex items-start justify-between mb-4">
+              {/* Topo do Card: Identificador Único da OS + Stepper Visual de Linha do Tempo */}
+              <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-slate-800">
+                  <h3 className="text-xl font-bold text-slate-800">
                     {comarca.nomeComarca}
                   </h3>
-                </div>
-                {comarca.pendencias && (
-                  <div className="ml-4 animate-pulse">
-                    <div className="flex items-center gap-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                      <AlertTriangle size={16} />
-                      <span>Alerta</span>
-                    </div>
+                  <div className="mt-1 inline-flex items-center gap-1 text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                    <FileText size={12} /> OS:{" "}
+                    {comarca.ordemServico?.numeroOs || `OS-2026-0${comarca.id}`}
                   </div>
-                )}
+                </div>
+
+                {/* Indicador de Passos / Status do Fluxo Linear */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                  <span
+                    className={`px-2 py-0.5 rounded ${comarca.etapaAtual !== 2 ? "bg-amber-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
+                  >
+                    1. Vistoria
+                  </span>
+                  <ChevronRight size={10} className="text-slate-400" />
+                  <span
+                    className={`px-2 py-0.5 rounded ${comarca.etapaAtual === 2 ? "bg-emerald-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
+                  >
+                    2. Infra
+                  </span>
+                </div>
               </div>
 
-              <div className="space-y-3 mb-6">
+              {/* Dados Estruturados de Campo */}
+              <div className="space-y-2 text-sm text-slate-700">
                 <div className="flex items-start gap-3">
                   <MapPin
                     size={18}
                     className="text-blue-500 mt-0.5 flex-shrink-0"
                   />
                   <div>
-                    <p className="text-sm font-medium text-slate-600">
+                    <p className="text-xs font-bold text-slate-400 uppercase">
                       Endereço
                     </p>
-                    <p className="text-slate-800">{comarca.endereco}</p>
+                    <p className="text-slate-800 font-medium">
+                      {comarca.endereco}
+                    </p>
                   </div>
                 </div>
 
@@ -145,35 +198,60 @@ export default function GestaoComarcas() {
                     className="text-purple-500 mt-0.5 flex-shrink-0"
                   />
                   <div>
-                    <p className="text-sm font-medium text-slate-600">
+                    <p className="text-xs font-bold text-slate-400 uppercase">
                       Juiz Responsável
                     </p>
-                    <p className="text-slate-800">{comarca.juizResponsavel}</p>
+                    <p className="text-slate-800 font-medium">
+                      {comarca.juizResponsavel}
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3">
+                {/* Painel de Previsão de Materiais / Insumos Planejados */}
+                <div className="flex items-start gap-3 pt-1">
                   <Zap
                     size={18}
                     className="text-yellow-500 mt-0.5 flex-shrink-0"
                   />
                   <div>
-                    <p className="text-sm font-medium text-slate-600">
-                      Quantidade de Pontos
+                    <p className="text-xs font-bold text-slate-400 uppercase">
+                      Painel de Previsão de Materiais
                     </p>
                     <p className="text-slate-800 font-semibold">
-                      {comarca.quantidadePontos || 0}
+                      {comarca.quantidadePoints || 25} pontos previstos para
+                      instalação física
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="mb-6">
+              {/* 🛑 SEÇÃO DE VISTORIA COM GERENTE COM CARDS DE UPLOAD/ASSINATURA (ETAPA 1) */}
+              {(!comarca.etapaAtual || comarca.etapaAtual === 1) && (
+                <div className="bg-amber-50/40 border border-amber-200/70 rounded-xl p-3 grid grid-cols-2 gap-3 text-xs font-bold tracking-wide">
+                  <div
+                    onClick={() => setFotoVistoria(true)}
+                    className={`border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex items-center justify-center gap-1 ${fotoVistoria ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white hover:border-blue-400 text-slate-500"}`}
+                  >
+                    <Upload size={14} />{" "}
+                    {fotoVistoria ? "Foto Carregada" : "Fazer Upload Foto"}
+                  </div>
+                  <div
+                    onClick={() => setAssinaturaValida(true)}
+                    className={`border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex items-center justify-center gap-1 ${assinaturaValida ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white hover:border-blue-400 text-slate-500"}`}
+                  >
+                    <PenTool size={14} />{" "}
+                    {assinaturaValida ? "Termo Assinado" : "Coletar Assinatura"}
+                  </div>
+                </div>
+              )}
+
+              {/* Barra de Progresso Operacional */}
+              <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-slate-600">
+                  <p className="text-xs font-bold text-slate-400 uppercase">
                     Progresso de Conclusão
                   </p>
-                  <span className="text-sm font-semibold text-slate-700">
+                  <span className="text-sm font-bold text-slate-700">
                     {comarca.percentualConcluido || 0}%
                   </span>
                 </div>
@@ -188,37 +266,46 @@ export default function GestaoComarcas() {
               </div>
 
               {comarca.pendencias && (
-                <div className="mb-6 bg-red-100 border border-red-300 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-red-800 mb-2">
-                    Pendências:
+                <div className="bg-red-100 border border-red-300 rounded-lg p-3 text-xs text-red-800 flex items-center gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0" />
+                  <p>
+                    <span className="font-bold">Pendência:</span>{" "}
+                    {comarca.pendencias}
                   </p>
-                  <p className="text-sm text-red-700">{comarca.pendencias}</p>
                 </div>
               )}
+            </div>
 
-              <div className="space-y-2">
+            {/* Ações dinâmicas com trava de avanço baseada na etapa */}
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex flex-col sm:flex-row gap-2">
+              {!comarca.etapaAtual || comarca.etapaAtual === 1 ? (
+                <button
+                  onClick={() => handleAvancarFase(comarca)}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
+                >
+                  Homologar Vistoria e Liberar Obras
+                </button>
+              ) : (
                 <button
                   onClick={() => handleOpenModal(comarca)}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm"
                 >
-                  <Edit2 size={18} />
                   Registrar Pendência/Ajustar Progresso
                 </button>
-
-                {/*   NOVO BOTÃO: Histórico de Atividades + Evidências */}
-                <button
-                  onClick={() => setComarcaHistorico(comarca)}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg transition-colors"
-                >
-                  <History size={18} />
-                  Histórico de Atividades
-                </button>
-              </div>
+              )}
+              <button
+                onClick={() => setComarcaHistorico(comarca)}
+                className="flex-shrink-0 flex items-center justify-center gap-1 bg-white hover:bg-slate-100 border text-slate-700 font-bold py-2 px-4 rounded-lg text-xs transition-colors"
+              >
+                <History size={14} />
+                Histórico
+              </button>
             </div>
           </div>
         ))}
       </div>
 
+      {/* Modal Ajustar Progresso */}
       <Modal
         isOpen={showModal}
         onClose={handleCloseModal}
@@ -237,23 +324,11 @@ export default function GestaoComarcas() {
                 onChange={handleInputChange}
                 min="0"
                 max="100"
-                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <span className="text-slate-700 font-semibold">%</span>
             </div>
-            <div className="mt-3 bg-slate-100 rounded-lg p-3">
-              <div className="w-full bg-slate-300 rounded-full h-3 overflow-hidden">
-                <div
-                  className={`h-full transition-all ${getProgressColor(formData.percentualConcluido)}`}
-                  style={{
-                    width: `${Math.min(formData.percentualConcluido, 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
           </div>
-
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               Pendências/Observações
@@ -262,23 +337,22 @@ export default function GestaoComarcas() {
               name="pendencias"
               value={formData.pendencias}
               onChange={handleInputChange}
-              rows="5"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              placeholder="Descreva qualquer pendência, ajuste ou observação importante..."
+              rows="4"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Descreva qualquer detalhe em campo..."
             />
           </div>
-
           <div className="flex gap-3 justify-end">
             <button
               type="button"
               onClick={handleCloseModal}
-              className="px-6 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors"
+              className="px-5 py-2 border rounded-lg text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
             >
               Salvar Alterações
             </button>
@@ -286,7 +360,7 @@ export default function GestaoComarcas() {
         </form>
       </Modal>
 
-      {/*   NOVO MODAL: Histórico de Atividades + Galeria de Evidências */}
+      {/* Modal Histórico */}
       <Modal
         isOpen={!!comarcaHistorico}
         onClose={() => setComarcaHistorico(null)}

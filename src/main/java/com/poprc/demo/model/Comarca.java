@@ -3,6 +3,7 @@ package com.poprc.demo.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -37,10 +38,26 @@ public class Comarca {
     @Column(columnDefinition = "TEXT")
     private String pendencias;
 
-    // NOVO: vínculo de origem com o projeto que gerou esta comarca
-    // automaticamente
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projeto_id")
     @JsonIgnoreProperties({ "materiais" })
     private Projeto projeto;
+
+    // 💥 NOVOS CAMPOS EXIGIDOS PELA REGRA DE NEGÓCIO 💥
+
+    @OneToOne
+    @JoinColumn(name = "ordem_servico_id", referencedColumnName = "id")
+    private OrdemServico ordemServico;
+
+    // Mude de "private int" para isso aqui 💥
+    @Column(name = "etapa_atual", columnDefinition = "integer default 1")
+    private Integer etapaAtual = 1; // 1 = Vistoria Técnica, 2 = Infraestrutura
+
+    @Column(columnDefinition = "TEXT")
+    private String assinaturaBase64; // Armazena a rubrica digitalizada do canvas
+
+    private String fotoVistoriaUrl; // Armazena a prova fotográfica do local
+
+    @OneToMany(mappedBy = "comarca", cascade = CascadeType.ALL)
+    private List<MaterialItem> materiais;
 }

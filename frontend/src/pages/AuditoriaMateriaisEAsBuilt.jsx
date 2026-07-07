@@ -20,12 +20,10 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  // Estados para o Modal de Edição de Quantidade 💥
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [novaQuantidade, setNovaQuantidade] = useState("");
 
-  // 1. Carrega os projetos disponíveis para popular o seletor do topo
   const carregarProjetos = async () => {
     try {
       const res = await api.get("/projetos");
@@ -39,7 +37,6 @@ export default function AuditoriaMateriaisEAsBuilt() {
     }
   };
 
-  // 2. Carrega a auditoria do projeto selecionado no dropdown
   const carregarAuditoria = async (id) => {
     if (!id) return;
     try {
@@ -65,7 +62,6 @@ export default function AuditoriaMateriaisEAsBuilt() {
     }
   }, [selectedProjetoId]);
 
-  // 🚀 PUT para homologar o As-Built
   const homologarAsBuilt = async () => {
     try {
       await api.put(`/projetos/${selectedProjetoId}/as-built/homologar`);
@@ -78,23 +74,19 @@ export default function AuditoriaMateriaisEAsBuilt() {
     }
   };
 
-  // ✏️ Abre o modal para atualizar a quantidade utilizada de um item
   const abrirModalEdicao = (material) => {
     setSelectedMaterial(material);
     setNovaQuantidade(material.utilizado);
     setEditModalOpen(true);
   };
 
-  // 💾 Envia o ajuste de inventário para o Postgres
   const salvarAjusteEstoque = async (e) => {
     e.preventDefault();
     try {
       await api.put(
         `/projetos/${selectedProjetoId}/materiais/${selectedMaterial.id}`,
         null,
-        {
-          params: { quantidadeUtilizada: parseInt(novaQuantidade, 10) || 0 },
-        },
+        { params: { quantidadeUtilizada: parseInt(novaQuantidade, 10) || 0 } },
       );
       setSuccess("Divergência de material atualizada com sucesso!");
       setEditModalOpen(false);
@@ -104,7 +96,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
     }
   };
 
-  const materiais = dados?.materiais || []; // Chave sincronizada perfeitamente com o Java! 💥
+  const materiais = dados?.materiais || [];
   const asBuiltStatus = dados?.asBuiltStatus || "PENDENTE";
 
   if (loading && projetos.length === 0)
@@ -128,7 +120,6 @@ export default function AuditoriaMateriaisEAsBuilt() {
             </p>
           </div>
 
-          {/* SELETOR DE PROJETOS DINÂMICO INJETADO NO TOPO 💥 */}
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300">
               <Briefcase size={16} className="text-indigo-400" />
@@ -159,18 +150,18 @@ export default function AuditoriaMateriaisEAsBuilt() {
         </header>
 
         {error && (
-          <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 p-4 rounded-xl text-sm animate-fade-in">
+          <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 p-4 rounded-xl text-sm">
             {error}
           </div>
         )}
         {success && (
-          <div className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 p-4 rounded-xl text-sm animate-fade-in">
+          <div className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 p-4 rounded-xl text-sm">
             {success}
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Tabela de Discrepância de Inventário */}
+          {/* Tabela de Discrepância de Inventário com Conciliação Dinâmica */}
           <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
             <div className="p-6 border-b border-slate-800 flex items-center gap-3">
               <Package className="w-5 h-5 text-indigo-400" />
@@ -184,9 +175,9 @@ export default function AuditoriaMateriaisEAsBuilt() {
                 <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800 uppercase text-xs font-bold tracking-wider">
                   <tr>
                     <th className="px-6 py-4">Item</th>
-                    <th className="px-6 py-4 text-center">Previsto</th>
-                    <th className="px-6 py-4 text-center">Utilizado</th>
-                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-center">Previsto (A)</th>
+                    <th className="px-6 py-4 text-center">Auditado (B)</th>
+                    <th className="px-6 py-4 text-center">Balanço Final</th>
                     <th className="px-6 py-4 text-center">Ajustar</th>
                   </tr>
                 </thead>
@@ -203,7 +194,9 @@ export default function AuditoriaMateriaisEAsBuilt() {
                     </tr>
                   ) : (
                     materiais.map((mat, i) => {
-                      const divergente = mat.utilizado > mat.previsto;
+                      // 💥 APLICAÇÃO DIRETA DA CLÁUSULA MATEMÁTICA DA ESPECIFICAÇÃO TÉCNICA 💥
+                      const saldoDivergencia = mat.previsto - mat.utilizado;
+
                       return (
                         <tr
                           key={i}
@@ -215,23 +208,28 @@ export default function AuditoriaMateriaisEAsBuilt() {
                           <td className="px-6 py-4 text-center text-slate-400 font-mono">
                             {mat.previsto}
                           </td>
-                          <td
-                            className={`px-6 py-4 text-center font-mono font-bold ${divergente ? "text-rose-400" : "text-slate-200"}`}
-                          >
+                          <td className="px-6 py-4 text-center font-mono font-bold text-slate-200">
                             {mat.utilizado}
                           </td>
+
+                          {/* Destacador visual automatizado do Saldo contábil */}
                           <td className="px-6 py-4 text-center">
-                            {divergente ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                <AlertTriangle className="w-3 h-3" /> Excedido
+                            {saldoDivergencia === 0 ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <CheckCircle2 className="w-3 h-3" /> Batido
+                                Perfeito
+                              </span>
+                            ) : saldoDivergencia > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                Sobra: {saldoDivergencia} un
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <CheckCircle2 className="w-3 h-3" /> OK
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                <AlertTriangle className="w-3 h-3" /> Falta:{" "}
+                                {Math.abs(saldoDivergencia)} un
                               </span>
                             )}
                           </td>
-                          {/* Ação de Ajuste adicionada 💥 */}
                           <td className="px-6 py-4 text-center">
                             <button
                               onClick={() => abrirModalEdicao(mat)}
@@ -289,10 +287,10 @@ export default function AuditoriaMateriaisEAsBuilt() {
         </div>
       </div>
 
-      {/* 🛑 MODAL CYBER-DARK: AJUSTAR USO DE MATERIAL */}
+      {/* MODAL AJUSTAR USO DE MATERIAL */}
       {editModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
               <h2 className="text-sm font-bold text-white truncate">
                 ✏️ Corrigir Consumo: {selectedMaterial?.nome}
@@ -306,8 +304,8 @@ export default function AuditoriaMateriaisEAsBuilt() {
             </div>
             <form onSubmit={salvarAjusteEstoque} className="p-6 space-y-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Quantidade Prevista em Escopo
+                <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                  Quantidade Prevista
                 </label>
                 <input
                   type="text"
@@ -317,8 +315,8 @@ export default function AuditoriaMateriaisEAsBuilt() {
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Quantidade Real Utilizada em Campo *
+                <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                  Quantidade Real Utilizada *
                 </label>
                 <input
                   type="number"
@@ -326,7 +324,6 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   value={novaQuantidade}
                   onChange={(e) => setNovaQuantidade(e.target.value)}
                   className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                  placeholder="0"
                 />
               </div>
               <button
