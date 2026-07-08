@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*; // 💥 Import simplificado para pegar o CrossOrigin
 
+import java.util.Map;
 import java.util.List;
 
 @RestController
@@ -27,6 +28,11 @@ public class OrdemServicoController {
     public ResponseEntity<OrdemServico> criar(@RequestBody OrdemServico ordemServico) {
         OrdemServico novaOrdem = ordemServicoService.criar(ordemServico);
         return ResponseEntity.status(HttpStatus.CREATED).body(novaOrdem);
+    }
+
+    @PostMapping("/reparar-vinculos-comarcas")
+    public ResponseEntity<Map<String, Object>> repararVinculosComarcas() {
+        return ResponseEntity.ok(ordemServicoService.repararVinculosComarcas());
     }
 
     /**
@@ -83,5 +89,10 @@ public class OrdemServicoController {
         public void setChecklist(String checklist) {
             this.checklist = checklist;
         }
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erro", ex.getMessage()));
     }
 }

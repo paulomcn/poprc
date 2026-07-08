@@ -32,6 +32,7 @@ public class Material {
     private String fornecedor;
 
     private Integer quantidadeDisponivel;
+    private Integer quantidadeReservada = 0;
 
     private String localizacao;
 }

@@ -6,6 +6,7 @@ import {
   Loader,
   Plus,
   Search,
+  RefreshCw,
   ChevronDown,
   X,
   Briefcase,
@@ -86,7 +87,7 @@ export default function GestaoOrdensServico() {
   useEffect(() => {
     const carregarProjetosIniciais = async () => {
       try {
-        const res = await api.get("/projects" || "/projetos"); // se adequa à sua rota de projetos
+        const res = await api.get("/projetos");
         setProjetos(res.data || []);
       } catch (err) {
         console.error("Erro ao puxar árvore de projetos:", err);
@@ -185,6 +186,28 @@ export default function GestaoOrdensServico() {
     } catch (err) {
       console.error(err);
       alert("Erro ao salvar ordem de serviço vinculada no banco.");
+    }
+  };
+
+  const handleRepararVinculos = async () => {
+    try {
+      setLoading(true);
+      const response = await api.post(
+        "/ordens-servico/reparar-vinculos-comarcas",
+      );
+      await buscarOrdensFilttradas();
+      const resumo = response.data || {};
+      alert(
+        `Sincronização concluída. OS vinculadas: ${resumo.ordensVinculadas || 0}. Materiais criados: ${resumo.materiaisCriados || 0}. Materiais atualizados: ${resumo.materiaisAtualizados || 0}. Conflitos: ${resumo.conflitos || 0}.`,
+      );
+    } catch (err) {
+      console.error(err);
+      setError(
+        err.response?.data?.erro ||
+          "Erro ao sincronizar vínculos entre OS, comarcas e materiais.",
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -295,6 +318,13 @@ export default function GestaoOrdensServico() {
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
+
+            <button
+              onClick={handleRepararVinculos}
+              className="bg-white text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-100 transition flex items-center justify-center gap-2 text-sm border border-gray-200 shadow-sm"
+            >
+              <RefreshCw className="w-4 h-4" /> Sincronizar
+            </button>
 
             <button
               onClick={() => {

@@ -58,6 +58,10 @@ public class Comarca {
 
     private String fotoVistoriaUrl; // Armazena a prova fotográfica do local
 
+    @Column(name = "as_built_status")
+    private String asBuiltStatus = "PENDENTE";
+
     @OneToMany(mappedBy = "comarca", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties({ "comarca" })
     private List<MaterialItem> materiais;
 }

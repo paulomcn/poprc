@@ -35,6 +35,9 @@ public class MovimentacaoEstoque {
     @Enumerated(EnumType.STRING)
     private TipoMovimentacao tipo;
 
+    @Column(columnDefinition = "TEXT")
+    private String observacao;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "material_id")
     private Material material;

@@ -21,6 +21,12 @@ public class MaterialItem {
     private String nomeMaterial;
     private int quantidadePrevista;
     private int quantidadeAuditada = 0; // Atualizado na tela de auditoria
+    private Boolean estoqueReservado = false;
+    private Boolean estoqueBaixado = false;
+
+    @ManyToOne
+    @JoinColumn(name = "material_id")
+    private Material material;
 
     @ManyToOne
     @JoinColumn(name = "comarca_id")

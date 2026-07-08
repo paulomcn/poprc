@@ -13,8 +13,8 @@ import {
 import api from "../services/api";
 
 export default function AuditoriaMateriaisEAsBuilt() {
-  const [projetos, setProjetos] = useState([]);
-  const [selectedProjetoId, setSelectedProjetoId] = useState("");
+  const [comarcas, setComarcas] = useState([]);
+  const [selectedComarcaId, setSelectedComarcaId] = useState("");
   const [dados, setDados] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -24,16 +24,18 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [novaQuantidade, setNovaQuantidade] = useState("");
 
-  const carregarProjetos = async () => {
+  const carregarComarcas = async () => {
     try {
-      const res = await api.get("/projetos");
-      setProjetos(res.data || []);
+      const res = await api.get("/comarcas");
+      setComarcas(res.data || []);
       if (res.data && res.data.length > 0) {
-        setSelectedProjetoId(res.data[0].id);
+        setSelectedComarcaId(res.data[0].id);
       }
     } catch (err) {
-      console.error("Erro ao listar projetos", err);
-      setError("Não foi possível buscar a lista de projetos ativos.");
+      console.error("Erro ao listar comarcas", err);
+      setError("Não foi possível buscar a lista de comarcas ativas.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -41,7 +43,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
     if (!id) return;
     try {
       setLoading(true);
-      const response = await api.get(`/projetos/${id}/auditoria`);
+      const response = await api.get(`/comarcas/${id}/auditoria`);
       setDados(response.data);
       setError(null);
     } catch (err) {
@@ -53,24 +55,28 @@ export default function AuditoriaMateriaisEAsBuilt() {
   };
 
   useEffect(() => {
-    carregarProjetos();
+    carregarComarcas();
   }, []);
 
   useEffect(() => {
-    if (selectedProjetoId) {
-      carregarAuditoria(selectedProjetoId);
+    if (selectedComarcaId) {
+      carregarAuditoria(selectedComarcaId);
     }
-  }, [selectedProjetoId]);
+  }, [selectedComarcaId]);
 
   const homologarAsBuilt = async () => {
     try {
-      await api.put(`/projetos/${selectedProjetoId}/as-built/homologar`);
-      setSuccess(
-        "Documentação Técnica As-Built homologada em nível de produção!",
+      const response = await api.patch(
+        `/comarcas/${selectedComarcaId}/as-built/homologar`,
       );
-      carregarAuditoria(selectedProjetoId);
+      setDados(response.data);
+      setError(null);
+      setSuccess("Documentação As-Built homologada para esta OS.");
     } catch (err) {
-      setError("Erro ao processar homologação de engenharia.");
+      setError(
+        err.response?.data?.erro ||
+          "Erro ao homologar As-Built. Verifique as divergências da auditoria.",
+      );
     }
   };
 
@@ -84,13 +90,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
     e.preventDefault();
     try {
       await api.put(
-        `/projetos/${selectedProjetoId}/materiais/${selectedMaterial.id}`,
+        `/comarcas/materiais/${selectedMaterial.id}/auditoria`,
         null,
-        { params: { quantidadeUtilizada: parseInt(novaQuantidade, 10) || 0 } },
+        { params: { quantidadeAuditada: parseInt(novaQuantidade, 10) || 0 } },
       );
       setSuccess("Divergência de material atualizada com sucesso!");
       setEditModalOpen(false);
-      carregarAuditoria(selectedProjetoId);
+      carregarAuditoria(selectedComarcaId);
     } catch (err) {
       setError("Erro ao atualizar dados de inventário.");
     }
@@ -98,8 +104,22 @@ export default function AuditoriaMateriaisEAsBuilt() {
 
   const materiais = dados?.materiais || [];
   const asBuiltStatus = dados?.asBuiltStatus || "PENDENTE";
+  const conciliado = Boolean(dados?.conciliado);
+  const podeHomologar =
+    materiais.length > 0 && conciliado && asBuiltStatus !== "HOMOLOGADO";
+  const statusAsBuiltClass =
+    asBuiltStatus === "HOMOLOGADO"
+      ? "text-emerald-400"
+      : asBuiltStatus === "DIVERGENTE"
+        ? "text-rose-400"
+        : "text-amber-400";
+  const comarcaSelecionada = comarcas.find(
+    (comarca) => String(comarca.id) === String(selectedComarcaId),
+  );
+  const numeroOsSelecionada =
+    dados?.numeroOs || comarcaSelecionada?.ordemServico?.numeroOs || "OS não vinculada";
 
-  if (loading && projetos.length === 0)
+  if (loading && comarcas.length === 0)
     return (
       <div className="min-h-screen bg-slate-950 flex justify-center items-center">
         <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
@@ -115,8 +135,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
               Auditoria de Materiais & As-Built
             </h1>
             <p className="text-slate-400 text-sm mt-0.5">
-              Módulo 15 e 16 - Controle de conformidade técnica e engenharia
-              reversa
+              Módulo 15 e 16 - Conciliação por OS, comarca e execução de campo
             </p>
           </div>
 
@@ -124,24 +143,24 @@ export default function AuditoriaMateriaisEAsBuilt() {
             <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300">
               <Briefcase size={16} className="text-indigo-400" />
               <select
-                value={selectedProjetoId}
-                onChange={(e) => setSelectedProjetoId(e.target.value)}
+                value={selectedComarcaId}
+                onChange={(e) => setSelectedComarcaId(e.target.value)}
                 className="bg-transparent border-none outline-none text-white text-xs font-bold cursor-pointer"
               >
-                {projetos.map((p) => (
+                {comarcas.map((comarca) => (
                   <option
-                    key={p.id}
-                    value={p.id}
+                    key={comarca.id}
+                    value={comarca.id}
                     className="bg-slate-900 text-white"
                   >
-                    Projeto #{p.id} - Comarca{" "}
-                    {p.nomeComarcaVinculada || "Operacional"}
+                    {comarca.ordemServico?.numeroOs || "OS não vinculada"} -{" "}
+                    {comarca.nomeComarca || "Comarca operacional"}
                   </option>
                 ))}
               </select>
             </div>
             <button
-              onClick={() => carregarAuditoria(selectedProjetoId)}
+              onClick={() => carregarAuditoria(selectedComarcaId)}
               className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-800 transition"
             >
               <RefreshCw className="w-4 h-4 text-slate-400" />
@@ -188,22 +207,32 @@ export default function AuditoriaMateriaisEAsBuilt() {
                         colSpan="5"
                         className="px-6 py-8 text-center text-slate-500"
                       >
-                        Nenhum insumo ou material auditado para este projeto no
-                        banco.
+                        Nenhum material previsto para esta OS/comarca no banco.
                       </td>
                     </tr>
                   ) : (
                     materiais.map((mat, i) => {
-                      // 💥 APLICAÇÃO DIRETA DA CLÁUSULA MATEMÁTICA DA ESPECIFICAÇÃO TÉCNICA 💥
                       const saldoDivergencia = mat.previsto - mat.utilizado;
 
                       return (
                         <tr
-                          key={i}
+                          key={mat.id || i}
                           className="hover:bg-slate-800/50 transition-colors"
                         >
                           <td className="px-6 py-4 font-medium text-slate-300">
-                            {mat.nome}
+                            <div className="flex items-center gap-2">
+                              <span>{mat.nome}</span>
+                              {mat.estoqueBaixado && (
+                                <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-400 border border-emerald-500/20">
+                                  Baixado
+                                </span>
+                              )}
+                              {mat.estoqueReservado && !mat.estoqueBaixado && (
+                                <span className="rounded bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-400 border border-blue-500/20">
+                                  Reservado
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-center text-slate-400 font-mono">
                             {mat.previsto}
@@ -233,7 +262,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
                           <td className="px-6 py-4 text-center">
                             <button
                               onClick={() => abrirModalEdicao(mat)}
-                              className="p-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-indigo-400 transition-colors"
+                              disabled={mat.estoqueBaixado || asBuiltStatus === "HOMOLOGADO"}
+                              className="p-1.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-900 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-800 rounded-lg text-slate-400 hover:text-indigo-400 transition-colors"
+                              title={
+                                mat.estoqueBaixado
+                                  ? "Material já baixado no estoque"
+                                  : "Ajustar quantidade auditada"
+                              }
                             >
                               <Edit2 size={14} />
                             </button>
@@ -255,17 +290,15 @@ export default function AuditoriaMateriaisEAsBuilt() {
                 <h2 className="font-bold text-white">Status do As-Built</h2>
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">
-                O arquivo As-Built valida que a engenharia executada em campo
-                bate 100% com a planta aprovada pelo cliente.
+                A conciliação usa a OS {numeroOsSelecionada} para comparar o
+                previsto na comarca com o que foi auditado em campo.
               </p>
 
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  Situação Atual
+                  Situação do Fechamento
                 </span>
-                <p
-                  className={`text-xl font-black tracking-widest ${asBuiltStatus === "HOMOLOGADO" ? "text-emerald-400" : "text-amber-400"}`}
-                >
+                <p className={`text-xl font-black tracking-widest ${statusAsBuiltClass}`}>
                   {asBuiltStatus}
                 </p>
               </div>
@@ -274,13 +307,18 @@ export default function AuditoriaMateriaisEAsBuilt() {
             {asBuiltStatus !== "HOMOLOGADO" ? (
               <button
                 onClick={homologarAsBuilt}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition shadow-lg shadow-indigo-600/10"
+                disabled={!podeHomologar}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl text-sm transition shadow-lg shadow-indigo-600/10"
               >
-                Homologar Documento
+                {materiais.length === 0
+                  ? "Sem Materiais Previstos"
+                  : conciliado
+                    ? "Homologar As-Built"
+                    : "Corrija Divergências"}
               </button>
             ) : (
               <div className="text-center p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-400 flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4" /> Projeto Final Homologado
+                <CheckCircle2 className="w-4 h-4" /> As-Built homologado
               </div>
             )}
           </div>
@@ -293,7 +331,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
               <h2 className="text-sm font-bold text-white truncate">
-                ✏️ Corrigir Consumo: {selectedMaterial?.nome}
+                Corrigir Consumo: {selectedMaterial?.nome}
               </h2>
               <button
                 onClick={() => setEditModalOpen(false)}

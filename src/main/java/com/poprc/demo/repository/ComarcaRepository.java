@@ -8,4 +8,5 @@ import java.util.Optional;
 @Repository
 public interface ComarcaRepository extends JpaRepository<Comarca, Long> {
     Optional<Comarca> findByProjetoId(Long projetoId);
+    Optional<Comarca> findByOrdemServicoNumeroOs(String numeroOs);
 }
