@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,15 +93,38 @@ public class ComarcaController {
         return ResponseEntity.ok(comarca);
     }
 
+    @PostMapping("/{id}/virada-rede/prova")
+    public ResponseEntity<Comarca> salvarProvaViradaRede(
+            @PathVariable Long id,
+            @RequestParam("foto") MultipartFile foto) {
+        return ResponseEntity.ok(comarcaService.salvarProvaViradaRede(id, foto));
+    }
+
     @PatchMapping("/{id}/avancar-etapa")
     public ResponseEntity<Comarca> avancarEtapa(@PathVariable Long id) {
         Comarca comarca = comarcaService.avancarParaInfraestrutura(id);
         return ResponseEntity.ok(comarca);
     }
 
+    @PatchMapping("/{id}/virada-rede")
+    public ResponseEntity<Comarca> salvarViradaRede(
+            @PathVariable Long id,
+            @RequestBody ViradaRedeRequest request) {
+        return ResponseEntity.ok(comarcaService.salvarViradaRede(
+                id,
+                request.getProvasFuncionamento(),
+                request.getChecklist(),
+                request.getConcluida()));
+    }
+
     @GetMapping("/{id}/auditoria")
     public ResponseEntity<Map<String, Object>> buscarAuditoria(@PathVariable Long id) {
         return ResponseEntity.ok(comarcaService.buscarAuditoriaPorComarca(id));
+    }
+
+    @GetMapping("/{id}/rastreabilidade-estoque")
+    public ResponseEntity<Map<String, Object>> buscarRastreabilidadeEstoque(@PathVariable Long id) {
+        return ResponseEntity.ok(comarcaService.buscarRastreabilidadePorComarca(id));
     }
 
     @GetMapping("/os/{numeroOs}/auditoria")
@@ -120,6 +144,11 @@ public class ComarcaController {
         return ResponseEntity.ok(comarcaService.homologarAsBuilt(id));
     }
 
+    @PatchMapping("/{id}/as-built/reabrir")
+    public ResponseEntity<Map<String, Object>> reabrirAsBuilt(@PathVariable Long id) {
+        return ResponseEntity.ok(comarcaService.reabrirAsBuilt(id));
+    }
+
     @GetMapping("/{id}/materiais-previstos")
     public ResponseEntity<List<MaterialItem>> listarMateriaisPrevistos(@PathVariable Long id) {
         return ResponseEntity.ok(comarcaService.listarMateriaisPrevistos(id));
@@ -134,6 +163,39 @@ public class ComarcaController {
                 request.getMaterialId(),
                 request.getNomeMaterial(),
                 request.getQuantidadePrevista()));
+    }
+
+    @PostMapping("/{id}/itens-adicionais")
+    public ResponseEntity<Comarca> adicionarItemAdicional(
+            @PathVariable Long id,
+            @RequestBody MaterialPrevistoRequest request) {
+        return ResponseEntity.ok(comarcaService.adicionarItemAdicional(
+                id,
+                request.getMaterialId(),
+                request.getNomeMaterial(),
+                request.getQuantidadePrevista()));
+    }
+
+    @PatchMapping("/{id}/materiais-faltantes")
+    public ResponseEntity<Comarca> atualizarMateriaisFaltantes(
+            @PathVariable Long id,
+            @RequestBody MateriaisFaltantesRequest request) {
+        return ResponseEntity.ok(comarcaService.atualizarMateriaisFaltantes(
+                id,
+                request.getFaltouMaterial(),
+                request.getMaterialItemIds(),
+                request.getDescricao()));
+    }
+
+    @PatchMapping("/materiais-previstos/{materialId}/timeline")
+    public ResponseEntity<Comarca> atualizarTimelineMaterial(
+            @PathVariable Long materialId,
+            @RequestBody TimelineMaterialRequest request) {
+        return ResponseEntity.ok(comarcaService.atualizarTimelineMaterial(
+                materialId,
+                request.getDataHoraSolicitacao(),
+                request.getDataHoraRetirada(),
+                request.getDataHoraUso()));
     }
 
     @PutMapping("/materiais-previstos/{materialId}")
@@ -245,6 +307,96 @@ public class ComarcaController {
 
         public void setQuantidadePrevista(Integer quantidadePrevista) {
             this.quantidadePrevista = quantidadePrevista;
+        }
+    }
+
+    public static class ViradaRedeRequest {
+        private String provasFuncionamento;
+        private String checklist;
+        private Boolean concluida;
+
+        public String getProvasFuncionamento() {
+            return provasFuncionamento;
+        }
+
+        public void setProvasFuncionamento(String provasFuncionamento) {
+            this.provasFuncionamento = provasFuncionamento;
+        }
+
+        public String getChecklist() {
+            return checklist;
+        }
+
+        public void setChecklist(String checklist) {
+            this.checklist = checklist;
+        }
+
+        public Boolean getConcluida() {
+            return concluida;
+        }
+
+        public void setConcluida(Boolean concluida) {
+            this.concluida = concluida;
+        }
+    }
+
+    public static class MateriaisFaltantesRequest {
+        private Boolean faltouMaterial;
+        private List<Long> materialItemIds;
+        private String descricao;
+
+        public Boolean getFaltouMaterial() {
+            return faltouMaterial;
+        }
+
+        public void setFaltouMaterial(Boolean faltouMaterial) {
+            this.faltouMaterial = faltouMaterial;
+        }
+
+        public List<Long> getMaterialItemIds() {
+            return materialItemIds;
+        }
+
+        public void setMaterialItemIds(List<Long> materialItemIds) {
+            this.materialItemIds = materialItemIds;
+        }
+
+        public String getDescricao() {
+            return descricao;
+        }
+
+        public void setDescricao(String descricao) {
+            this.descricao = descricao;
+        }
+    }
+
+    public static class TimelineMaterialRequest {
+        private LocalDateTime dataHoraSolicitacao;
+        private LocalDateTime dataHoraRetirada;
+        private LocalDateTime dataHoraUso;
+
+        public LocalDateTime getDataHoraSolicitacao() {
+            return dataHoraSolicitacao;
+        }
+
+        public void setDataHoraSolicitacao(LocalDateTime dataHoraSolicitacao) {
+            this.dataHoraSolicitacao = dataHoraSolicitacao;
+        }
+
+        public LocalDateTime getDataHoraRetirada() {
+            return dataHoraRetirada;
+        }
+
+        public void setDataHoraRetirada(LocalDateTime dataHoraRetirada) {
+            this.dataHoraRetirada = dataHoraRetirada;
+        }
+
+        public LocalDateTime getDataHoraUso() {
+            return dataHoraUso;
+        }
+
+        public void setDataHoraUso(LocalDateTime dataHoraUso) {
+            this.dataHoraUso = dataHoraUso;
         }
     }
 

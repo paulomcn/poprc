@@ -9,6 +9,7 @@ import {
   Briefcase,
   Edit2,
   X,
+  Download,
 } from "lucide-react";
 import api from "../services/api";
 
@@ -16,6 +17,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const [comarcas, setComarcas] = useState([]);
   const [selectedComarcaId, setSelectedComarcaId] = useState("");
   const [dados, setDados] = useState(null);
+  const [rastreabilidade, setRastreabilidade] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -43,8 +45,12 @@ export default function AuditoriaMateriaisEAsBuilt() {
     if (!id) return;
     try {
       setLoading(true);
-      const response = await api.get(`/comarcas/${id}/auditoria`);
-      setDados(response.data);
+      const [auditoriaResponse, rastreabilidadeResponse] = await Promise.all([
+        api.get(`/comarcas/${id}/auditoria`),
+        api.get(`/comarcas/${id}/rastreabilidade-estoque`),
+      ]);
+      setDados(auditoriaResponse.data);
+      setRastreabilidade(rastreabilidadeResponse.data);
       setError(null);
     } catch (err) {
       setError("Erro ao carregar os dados de engenharia do servidor.");
@@ -70,12 +76,45 @@ export default function AuditoriaMateriaisEAsBuilt() {
         `/comarcas/${selectedComarcaId}/as-built/homologar`,
       );
       setDados(response.data);
+      const rastreabilidadeResponse = await api.get(
+        `/comarcas/${selectedComarcaId}/rastreabilidade-estoque`,
+      );
+      setRastreabilidade(rastreabilidadeResponse.data);
       setError(null);
-      setSuccess("Documentação As-Built homologada para esta OS.");
+      setSuccess(
+        response.data?.asBuiltStatus === "HOMOLOGADO_COM_DIVERGENCIA"
+          ? "As-Built homologado com divergência registrada para esta OS."
+          : "Documentação As-Built homologada para esta OS.",
+      );
     } catch (err) {
       setError(
         err.response?.data?.erro ||
           "Erro ao homologar As-Built. Verifique as divergências da auditoria.",
+      );
+    }
+  };
+
+  const reabrirAsBuilt = async () => {
+    const confirmar = window.confirm(
+      "Reabrir este As-Built vai estornar a baixa no estoque e recriar a reserva dos materiais previstos. Deseja continuar?",
+    );
+    if (!confirmar) return;
+
+    try {
+      const response = await api.patch(
+        `/comarcas/${selectedComarcaId}/as-built/reabrir`,
+      );
+      setDados(response.data);
+      const rastreabilidadeResponse = await api.get(
+        `/comarcas/${selectedComarcaId}/rastreabilidade-estoque`,
+      );
+      setRastreabilidade(rastreabilidadeResponse.data);
+      setError(null);
+      setSuccess("As-Built reaberto para ajuste e baixa estornada no estoque.");
+    } catch (err) {
+      setError(
+        err.response?.data?.erro ||
+          "Erro ao reabrir As-Built. Verifique o status atual da OS.",
       );
     }
   };
@@ -106,10 +145,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const asBuiltStatus = dados?.asBuiltStatus || "PENDENTE";
   const conciliado = Boolean(dados?.conciliado);
   const podeHomologar =
-    materiais.length > 0 && conciliado && asBuiltStatus !== "HOMOLOGADO";
+    materiais.length > 0 &&
+    !["HOMOLOGADO", "HOMOLOGADO_COM_DIVERGENCIA"].includes(asBuiltStatus);
   const statusAsBuiltClass =
     asBuiltStatus === "HOMOLOGADO"
       ? "text-emerald-400"
+      : asBuiltStatus === "HOMOLOGADO_COM_DIVERGENCIA"
+        ? "text-blue-400"
       : asBuiltStatus === "DIVERGENTE"
         ? "text-rose-400"
         : "text-amber-400";
@@ -118,6 +160,79 @@ export default function AuditoriaMateriaisEAsBuilt() {
   );
   const numeroOsSelecionada =
     dados?.numeroOs || comarcaSelecionada?.ordemServico?.numeroOs || "OS não vinculada";
+  const quantidadeAuditadaModal = parseInt(novaQuantidade, 10) || 0;
+  const saldoModal = selectedMaterial
+    ? selectedMaterial.previsto - quantidadeAuditadaModal
+    : 0;
+  const rastreabilidadeItens = rastreabilidade?.itens || [];
+  const rastreabilidadeTotais = rastreabilidade?.totais || {};
+  const asBuiltHomologado = ["HOMOLOGADO", "HOMOLOGADO_COM_DIVERGENCIA"].includes(
+    asBuiltStatus,
+  );
+  const statusLabels = {
+    PENDENTE: "Pendente",
+    DIVERGENTE: "Divergente",
+    HOMOLOGADO: "Homologado",
+    HOMOLOGADO_COM_DIVERGENCIA: "Homologado com divergência",
+    REABERTO_PARA_AJUSTE: "Reaberto para ajuste",
+  };
+  const statusLabel = statusLabels[asBuiltStatus] || asBuiltStatus;
+  const escaparCsv = (valor) => `"${String(valor ?? "").replaceAll('"', '""')}"`;
+  const formatarDataHora = (value) => {
+    if (!value) return "-";
+    return new Date(value).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+  const exportarRastreabilidadeCsv = () => {
+    const linhas = [
+      [
+        "OS",
+        "Comarca",
+        "Material",
+        "Part Number",
+        "Previsto",
+        "Reservado",
+        "Auditado",
+        "Baixado",
+        "Item adicional",
+        "Material faltante",
+        "Solicitação",
+        "Retirada",
+        "Uso",
+        "Saldo Previsto x Baixado",
+        "Saldo Auditado x Baixado",
+      ],
+      ...rastreabilidadeItens.map((item) => [
+        numeroOsSelecionada,
+        rastreabilidade?.nomeComarca || comarcaSelecionada?.nomeComarca || "",
+        item.nome,
+        item.partNumber || "",
+        item.previsto,
+        item.reservado,
+        item.auditado,
+        item.baixado,
+        item.itemAdicional ? "Sim" : "Não",
+        item.materialFaltante ? item.descricaoFaltante || "Sim" : "Não",
+        item.dataHoraSolicitacao || "",
+        item.dataHoraRetirada || "",
+        item.dataHoraUso || "",
+        item.saldoPrevistoBaixado,
+        item.saldoAuditadoBaixado,
+      ]),
+    ];
+    const csv = `\ufeff${linhas.map((linha) => linha.map(escaparCsv).join(";")).join("\n")}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rastreabilidade-${numeroOsSelecionada}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (loading && comarcas.length === 0)
     return (
@@ -197,6 +312,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
                     <th className="px-6 py-4 text-center">Previsto (A)</th>
                     <th className="px-6 py-4 text-center">Auditado (B)</th>
                     <th className="px-6 py-4 text-center">Balanço Final</th>
+                    <th className="px-6 py-4">O que está faltando</th>
                     <th className="px-6 py-4 text-center">Ajustar</th>
                   </tr>
                 </thead>
@@ -204,7 +320,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   {materiais.length === 0 ? (
                     <tr>
                       <td
-                        colSpan="5"
+                        colSpan="6"
                         className="px-6 py-8 text-center text-slate-500"
                       >
                         Nenhum material previsto para esta OS/comarca no banco.
@@ -222,6 +338,11 @@ export default function AuditoriaMateriaisEAsBuilt() {
                           <td className="px-6 py-4 font-medium text-slate-300">
                             <div className="flex items-center gap-2">
                               <span>{mat.nome}</span>
+                              {mat.itemAdicional && (
+                                <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-400 border border-emerald-500/20">
+                                  Item adicional
+                                </span>
+                              )}
                               {mat.estoqueBaixado && (
                                 <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-400 border border-emerald-500/20">
                                   Baixado
@@ -259,10 +380,24 @@ export default function AuditoriaMateriaisEAsBuilt() {
                               </span>
                             )}
                           </td>
+                          <td className="px-6 py-4 text-xs text-slate-400 max-w-xs">
+                            {mat.materialFaltante ? (
+                              <div className="space-y-1">
+                                <span className="inline-flex rounded bg-amber-500/10 px-2 py-0.5 font-bold uppercase text-amber-300 border border-amber-500/20">
+                                  Faltante
+                                </span>
+                                <p className="whitespace-normal text-slate-500">
+                                  {mat.descricaoFaltante || "Material pendente"}
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="text-slate-600">Sem falta</span>
+                            )}
+                          </td>
                           <td className="px-6 py-4 text-center">
                             <button
                               onClick={() => abrirModalEdicao(mat)}
-                              disabled={mat.estoqueBaixado || asBuiltStatus === "HOMOLOGADO"}
+                              disabled={mat.estoqueBaixado || asBuiltHomologado}
                               className="p-1.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-900 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-800 rounded-lg text-slate-400 hover:text-indigo-400 transition-colors"
                               title={
                                 mat.estoqueBaixado
@@ -298,13 +433,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   Situação do Fechamento
                 </span>
-                <p className={`text-xl font-black tracking-widest ${statusAsBuiltClass}`}>
-                  {asBuiltStatus}
+                <p className={`text-xl font-black tracking-wide ${statusAsBuiltClass}`}>
+                  {statusLabel}
                 </p>
               </div>
             </div>
 
-            {asBuiltStatus !== "HOMOLOGADO" ? (
+            {!asBuiltHomologado ? (
               <button
                 onClick={homologarAsBuilt}
                 disabled={!podeHomologar}
@@ -314,13 +449,174 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   ? "Sem Materiais Previstos"
                   : conciliado
                     ? "Homologar As-Built"
-                    : "Corrija Divergências"}
+                    : "Homologar com Divergência"}
               </button>
             ) : (
-              <div className="text-center p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-400 flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4" /> As-Built homologado
+              <div className="space-y-2">
+                <div
+                  className={`text-center p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
+                    asBuiltStatus === "HOMOLOGADO"
+                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                      : "bg-indigo-500/10 border border-indigo-500/20 text-indigo-300"
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" /> {statusLabel}
+                </div>
+                <button
+                  onClick={reabrirAsBuilt}
+                  className="w-full bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-bold py-2.5 px-4 rounded-xl text-xs transition"
+                >
+                  Reabrir para ajuste
+                </button>
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+          <div className="p-6 border-b border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Package className="w-5 h-5 text-indigo-400" />
+              <div>
+                <h2 className="font-bold text-white">Rastreabilidade por OS</h2>
+                <p className="text-xs text-slate-500">
+                  Previsto, reservado, auditado e baixado no estoque para{" "}
+                  {numeroOsSelecionada}.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={exportarRastreabilidadeCsv}
+              disabled={rastreabilidadeItens.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600 md:order-last"
+            >
+              <Download size={14} /> Exportar CSV
+            </button>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+              {[
+                ["Previsto", rastreabilidadeTotais.previsto],
+                ["Reservado", rastreabilidadeTotais.reservado],
+                ["Auditado", rastreabilidadeTotais.auditado],
+                ["Baixado", rastreabilidadeTotais.baixado],
+                ["Saldo", rastreabilidadeTotais.saldoPrevistoBaixado],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2"
+                >
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    {label}
+                  </span>
+                  <strong className="text-sm text-slate-100">{value ?? 0}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800 uppercase text-xs font-bold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4">Material</th>
+                  <th className="px-6 py-4 text-center">Previsto</th>
+                  <th className="px-6 py-4 text-center">Reservado</th>
+                  <th className="px-6 py-4 text-center">Auditado</th>
+                  <th className="px-6 py-4 text-center">Baixado</th>
+                  <th className="px-6 py-4 text-center">Saldo Prev.-Baixado</th>
+                  <th className="px-6 py-4">Timeline</th>
+                  <th className="px-6 py-4">Últimos movimentos</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {rastreabilidadeItens.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan="8"
+                      className="px-6 py-8 text-center text-slate-500"
+                    >
+                      Nenhum material previsto para rastrear nesta OS.
+                    </td>
+                  </tr>
+                ) : (
+                  rastreabilidadeItens.map((item) => {
+                    const saldoBaixado = item.saldoPrevistoBaixado || 0;
+                    const movimentos = item.movimentacoes || [];
+
+                    return (
+                      <tr
+                        key={item.materialItemId}
+                        className="hover:bg-slate-800/50 transition-colors"
+                      >
+                        <td className="px-6 py-4 font-medium text-slate-300">
+                          {item.nome}
+                          {item.partNumber && (
+                            <span className="block text-[10px] font-mono text-slate-500">
+                              {item.partNumber}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono text-slate-300">
+                          {item.previsto}
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono text-blue-300">
+                          {item.reservado}
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono text-slate-200">
+                          {item.auditado}
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono text-rose-300">
+                          {item.baixado}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span
+                            className={`inline-flex px-2.5 py-0.5 rounded text-xs font-bold border ${
+                              saldoBaixado === 0
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : saldoBaixado > 0
+                                  ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                                  : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            }`}
+                          >
+                            {saldoBaixado}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-[10px] text-slate-500">
+                          <div>Solic.: {formatarDataHora(item.dataHoraSolicitacao)}</div>
+                          <div>Ret.: {formatarDataHora(item.dataHoraRetirada)}</div>
+                          <div>Uso: {formatarDataHora(item.dataHoraUso)}</div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {item.itemAdicional && (
+                              <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-bold uppercase text-emerald-400 border border-emerald-500/20">
+                                Adicional
+                              </span>
+                            )}
+                            {item.materialFaltante && (
+                              <span className="rounded bg-amber-500/10 px-2 py-0.5 font-bold uppercase text-amber-300 border border-amber-500/20">
+                                Faltante
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500 max-w-xs">
+                          {movimentos.length === 0 ? (
+                            "Sem movimentação vinculada"
+                          ) : (
+                            movimentos.slice(0, 3).map((movimento) => (
+                              <span
+                                key={movimento.id}
+                                className="mr-1 mb-1 inline-flex rounded bg-slate-950 px-2 py-0.5 font-semibold text-slate-400 border border-slate-800"
+                              >
+                                {movimento.tipo}: {movimento.quantidade}
+                              </span>
+                            ))
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -331,7 +627,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
               <h2 className="text-sm font-bold text-white truncate">
-                Corrigir Consumo: {selectedMaterial?.nome}
+                Lançar Auditado: {selectedMaterial?.nome}
               </h2>
               <button
                 onClick={() => setEditModalOpen(false)}
@@ -356,13 +652,72 @@ export default function AuditoriaMateriaisEAsBuilt() {
                 <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
                   Quantidade Real Utilizada *
                 </label>
-                <input
-                  type="number"
-                  required
-                  value={novaQuantidade}
-                  onChange={(e) => setNovaQuantidade(e.target.value)}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                />
+                <div className="grid grid-cols-[42px_1fr_42px] gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNovaQuantidade(String(Math.max(0, quantidadeAuditadaModal - 1)))
+                    }
+                    className="bg-slate-950 border border-slate-800 rounded-lg text-slate-300 hover:text-white"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={novaQuantidade}
+                    onChange={(e) => setNovaQuantidade(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500 text-center font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNovaQuantidade(String(quantidadeAuditadaModal + 1))}
+                    className="bg-slate-950 border border-slate-800 rounded-lg text-slate-300 hover:text-white"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNovaQuantidade("0")}
+                    className="rounded-lg border border-slate-800 bg-slate-950 py-2 text-xs font-bold text-slate-400 hover:text-white"
+                  >
+                    Zerado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNovaQuantidade(String(selectedMaterial?.previsto || 0))
+                    }
+                    className="rounded-lg border border-slate-800 bg-slate-950 py-2 text-xs font-bold text-slate-400 hover:text-white"
+                  >
+                    Igual Prev.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNovaQuantidade(String((selectedMaterial?.previsto || 0) + 1))
+                    }
+                    className="rounded-lg border border-slate-800 bg-slate-950 py-2 text-xs font-bold text-slate-400 hover:text-white"
+                  >
+                    +1 Falta
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs">
+                {saldoModal === 0 ? (
+                  <span className="font-bold text-emerald-400">Balanço perfeito</span>
+                ) : saldoModal > 0 ? (
+                  <span className="font-bold text-blue-400">
+                    Sobra registrada: {saldoModal} unidade(s)
+                  </span>
+                ) : (
+                  <span className="font-bold text-rose-400">
+                    Falta/excesso registrado: {Math.abs(saldoModal)} unidade(s)
+                  </span>
+                )}
               </div>
               <button
                 type="submit"

@@ -6,5 +6,6 @@ public enum TipoMovimentacao {
     RESERVA,
     ESTORNO_RESERVA,
     TRANSFERENCIA,
-    BAIXA
+    BAIXA,
+    ESTORNO_BAIXA
 }

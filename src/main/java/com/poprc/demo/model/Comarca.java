@@ -61,6 +61,19 @@ public class Comarca {
     @Column(name = "as_built_status")
     private String asBuiltStatus = "PENDENTE";
 
+    @Column(columnDefinition = "TEXT")
+    private String viradaRedeProvasFuncionamento;
+
+    @Column(columnDefinition = "TEXT")
+    private String viradaRedeChecklist;
+
+    private Boolean viradaRedeConcluida = false;
+
+    private Boolean faltouMaterial = false;
+
+    @Column(columnDefinition = "TEXT")
+    private String descricaoMaterialFaltante;
+
     @OneToMany(mappedBy = "comarca", cascade = CascadeType.ALL)
     @JsonIgnoreProperties({ "comarca" })
     private List<MaterialItem> materiais;

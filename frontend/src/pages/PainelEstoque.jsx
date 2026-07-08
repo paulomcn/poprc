@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   FolderPlus,
+  Search,
 } from "lucide-react";
 import api from "../services/api";
 import Modal from "../components/Modal";
@@ -17,10 +18,15 @@ import Alert from "../components/Alert";
 export default function PainelEstoque() {
   const [materiais, setMateriais] = useState([]);
   const [funcionarios, setFuncionarios] = useState([]);
+  const [comarcas, setComarcas] = useState([]);
   const [historico, setHistorico] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [historicoFiltro, setHistoricoFiltro] = useState("");
+  const [historicoTipoFiltro, setHistoricoTipoFiltro] = useState("");
+  const [historicoComarcaFiltro, setHistoricoComarcaFiltro] = useState("");
+  const [historicoProjetoFiltro, setHistoricoProjetoFiltro] = useState("");
 
   // Modais de controle
   const [showEntradaModal, setShowEntradaModal] = useState(false);
@@ -32,6 +38,7 @@ export default function PainelEstoque() {
     materialId: "",
     quantidade: "",
     funcionarioId: "",
+    comarcaId: "",
   });
 
   const [novoMaterialData, setNovoMaterialData] = useState({
@@ -56,6 +63,9 @@ export default function PainelEstoque() {
       const funcionariosResponse = await api.get("/funcionarios");
       setFuncionarios(funcionariosResponse.data);
 
+      const comarcasResponse = await api.get("/comarcas");
+      setComarcas(comarcasResponse.data);
+
       const historicoResponse = await api.get("/estoque/historico");
       setHistorico(historicoResponse.data);
 
@@ -72,7 +82,7 @@ export default function PainelEstoque() {
     setShowEntradaModal(false);
     setShowSaidaModal(false);
     setShowNovoMaterialModal(false);
-    setFormData({ materialId: "", quantidade: "", funcionarioId: "" });
+    setFormData({ materialId: "", quantidade: "", funcionarioId: "", comarcaId: "" });
     setNovoMaterialData({
       nome: "",
       partNumber: "",
@@ -134,6 +144,7 @@ export default function PainelEstoque() {
         materialId: parseInt(formData.materialId),
         quantidade: parseInt(formData.quantidade),
         funcionarioId: parseInt(formData.funcionarioId),
+        comarcaId: parseInt(formData.comarcaId),
       });
       setSuccessMessage("Saída de material registrada com sucesso!");
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -145,7 +156,98 @@ export default function PainelEstoque() {
     }
   };
 
-  const isCriticalStock = (quantidade) => quantidade <= 5;
+  const getReservado = (material) => material.quantidadeReservada ?? 0;
+  const getLivre = (material) =>
+    Math.max(0, (material.quantidadeDisponivel ?? 0) - getReservado(material));
+  const isCriticalStock = (material) => getLivre(material) <= 5;
+  const historicoFiltrado = historico.filter((mov) => {
+    const termo = historicoFiltro.trim().toLowerCase();
+    const correspondeTipo = !historicoTipoFiltro || mov.tipo === historicoTipoFiltro;
+    const correspondeComarca =
+      !historicoComarcaFiltro ||
+      String(mov.comarca?.id || "") === String(historicoComarcaFiltro);
+    const correspondeProjeto =
+      !historicoProjetoFiltro ||
+      String(mov.projeto?.id || "") === String(historicoProjetoFiltro);
+    const correspondeTexto =
+      !termo ||
+      [
+      mov.tipo,
+      mov.material?.nome,
+      mov.material?.partNumber,
+      mov.funcionario?.nome,
+      mov.projeto?.id ? `Projeto ${mov.projeto.id}` : null,
+      mov.ordemServico?.numeroOs,
+      mov.comarca?.nomeComarca,
+      mov.observacao,
+      ]
+        .filter(Boolean)
+        .some((valor) => String(valor).toLowerCase().includes(termo));
+
+    return correspondeTipo && correspondeComarca && correspondeProjeto && correspondeTexto;
+  });
+  const tiposHistorico = [...new Set(historico.map((mov) => mov.tipo).filter(Boolean))];
+  const projetosHistorico = [
+    ...new Map(
+      historico
+        .filter((mov) => mov.projeto?.id)
+        .map((mov) => [mov.projeto.id, mov.projeto]),
+    ).values(),
+  ];
+
+  const getMovimentacaoStyle = (tipo) => {
+    const styles = {
+      ENTRADA: {
+        label: "Entrada",
+        icon: ArrowDownLeft,
+        className: "text-green-600 bg-green-50",
+      },
+      SAIDA: {
+        label: "Saída",
+        icon: ArrowUpRight,
+        className: "text-blue-600 bg-blue-50",
+      },
+      RESERVA: {
+        label: "Reserva",
+        icon: Package,
+        className: "text-amber-700 bg-amber-50",
+      },
+      ESTORNO_RESERVA: {
+        label: "Estorno Reserva",
+        icon: ArrowDownLeft,
+        className: "text-slate-600 bg-slate-100",
+      },
+      BAIXA: {
+        label: "Baixa OS",
+        icon: ArrowUpRight,
+        className: "text-rose-600 bg-rose-50",
+      },
+      ESTORNO_BAIXA: {
+        label: "Estorno Baixa",
+        icon: ArrowDownLeft,
+        className: "text-purple-700 bg-purple-50",
+      },
+    };
+    return styles[tipo] || {
+      label: tipo || "Movimento",
+      icon: History,
+      className: "text-slate-600 bg-slate-100",
+    };
+  };
+
+  const getComarcaOptionLabel = (comarca) => {
+    const numeroOs = comarca.ordemServico?.numeroOs || "OS não vinculada";
+    const projeto = comarca.projeto?.id ? `Projeto #${comarca.projeto.id}` : "Projeto não vinculado";
+    return `${numeroOs} - ${comarca.nomeComarca} - ${projeto}`;
+  };
+
+  const getReferenciaOperacional = (mov) => {
+    const partes = [];
+    if (mov.ordemServico?.numeroOs) partes.push(mov.ordemServico.numeroOs);
+    if (mov.comarca?.nomeComarca) partes.push(mov.comarca.nomeComarca);
+    if (mov.projeto?.id) partes.push(`Projeto #${mov.projeto.id}`);
+    return partes;
+  };
 
   if (loading) return <LoadingSpinner />;
 
@@ -206,7 +308,13 @@ export default function PainelEstoque() {
                 Localização
               </th>
               <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
-                Qtd. Disponível
+                Disponível
+              </th>
+              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
+                Reservado
+              </th>
+              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
+                Livre
               </th>
             </tr>
           </thead>
@@ -214,7 +322,7 @@ export default function PainelEstoque() {
             {materiais.map((material) => (
               <tr
                 key={material.id}
-                className={`border-b border-slate-200 hover:bg-slate-50 transition-colors ${isCriticalStock(material.quantidadeDisponivel) ? "bg-red-50/50" : ""}`}
+                className={`border-b border-slate-200 hover:bg-slate-50 transition-colors ${isCriticalStock(material) ? "bg-red-50/50" : ""}`}
               >
                 <td className="px-6 py-4 text-sm text-slate-800 flex items-center gap-2">
                   <Package size={16} className="text-slate-400" />{" "}
@@ -231,12 +339,24 @@ export default function PainelEstoque() {
                 </td>
                 <td className="px-6 py-4 text-center">
                   <span
-                    className={`inline-flex items-center justify-center min-w-[3rem] py-1 px-3 rounded-full font-semibold text-sm ${isCriticalStock(material.quantidadeDisponivel) ? "bg-red-200 text-red-800" : "bg-green-100 text-green-800"}`}
+                    className="inline-flex items-center justify-center min-w-[3rem] py-1 px-3 rounded-full font-semibold text-sm bg-slate-100 text-slate-800"
                   >
-                    {isCriticalStock(material.quantidadeDisponivel) && (
+                    {material.quantidadeDisponivel ?? 0}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className="inline-flex items-center justify-center min-w-[3rem] py-1 px-3 rounded-full font-semibold text-sm bg-amber-100 text-amber-800">
+                    {getReservado(material)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[3rem] py-1 px-3 rounded-full font-semibold text-sm ${isCriticalStock(material) ? "bg-red-200 text-red-800" : "bg-green-100 text-green-800"}`}
+                  >
+                    {isCriticalStock(material) && (
                       <AlertCircle size={14} className="mr-1" />
                     )}
-                    {material.quantidadeDisponivel}
+                    {getLivre(material)}
                   </span>
                 </td>
               </tr>
@@ -247,11 +367,61 @@ export default function PainelEstoque() {
 
       {/* Histórico */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden border border-slate-200">
-        <div className="p-5 border-b border-slate-200 flex items-center gap-2 bg-slate-50/50">
-          <History size={18} className="text-slate-500" />
-          <h2 className="font-bold text-slate-800">
-            Histórico Recente de Retiradas e Entradas
-          </h2>
+        <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <History size={18} className="text-slate-500" />
+            <h2 className="font-bold text-slate-800">
+              Histórico de Movimentações
+            </h2>
+          </div>
+          <div className="grid w-full gap-2 md:w-auto md:grid-cols-[220px_160px_220px_160px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+              <input
+                type="text"
+                value={historicoFiltro}
+                onChange={(e) => setHistoricoFiltro(e.target.value)}
+                placeholder="Material, OS, comarca..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <select
+              value={historicoTipoFiltro}
+              onChange={(e) => setHistoricoTipoFiltro(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos os tipos</option>
+              {tiposHistorico.map((tipo) => (
+                <option key={tipo} value={tipo}>
+                  {getMovimentacaoStyle(tipo).label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={historicoComarcaFiltro}
+              onChange={(e) => setHistoricoComarcaFiltro(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todas as OS/comarcas</option>
+              {comarcas.map((comarca) => (
+                <option key={comarca.id} value={comarca.id}>
+                  {getComarcaOptionLabel(comarca)}
+                </option>
+              ))}
+            </select>
+            <select
+              value={historicoProjetoFiltro}
+              onChange={(e) => setHistoricoProjetoFiltro(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos os projetos</option>
+              {projetosHistorico.map((projeto) => (
+                <option key={projeto.id} value={projeto.id}>
+                  Projeto #{projeto.id}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 text-xs font-bold uppercase">
@@ -260,36 +430,69 @@ export default function PainelEstoque() {
               <th className="px-6 py-4">Material</th>
               <th className="px-6 py-4 text-center">Qtd.</th>
               <th className="px-6 py-4">Responsável</th>
+              <th className="px-6 py-4">Referência</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {historico.map((mov) => (
-              <tr
-                key={mov.id}
-                className="hover:bg-slate-50/50 transition-colors"
-              >
-                <td className="px-6 py-4">
-                  {mov.tipo === "SAIDA" || mov.tipo === "SAÍDA" ? (
-                    <span className="inline-flex items-center gap-1 text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-xs">
-                      <ArrowUpRight size={14} /> Retirada
+            {historicoFiltrado.map((mov) => {
+              const style = getMovimentacaoStyle(mov.tipo);
+              const Icon = style.icon;
+              const referencias = getReferenciaOperacional(mov);
+
+              return (
+                <tr
+                  key={mov.id}
+                  className="hover:bg-slate-50/50 transition-colors"
+                >
+                  <td className="px-6 py-4">
+                    <span
+                      className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded text-xs ${style.className}`}
+                    >
+                      <Icon size={14} /> {style.label}
                     </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded text-xs">
-                      <ArrowDownLeft size={14} /> Entrada
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-slate-700 font-medium">
-                  {mov.material?.nome || "Insumo"}
-                </td>
-                <td className="px-6 py-4 text-center font-semibold text-slate-800">
-                  {mov.quantidade}
-                </td>
-                <td className="px-6 py-4 text-slate-600">
-                  {mov.funcionario?.nome || "Sistema"}
+                  </td>
+                  <td className="px-6 py-4 text-slate-700 font-medium">
+                    {mov.material?.nome || "Insumo"}
+                    {mov.material?.partNumber && (
+                      <span className="block text-[10px] font-mono text-slate-400">
+                        {mov.material.partNumber}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-center font-semibold text-slate-800">
+                    {mov.quantidade}
+                  </td>
+                  <td className="px-6 py-4 text-slate-600">
+                    {mov.funcionario?.nome || "Sistema"}
+                  </td>
+                  <td className="px-6 py-4 text-xs text-slate-500 max-w-sm">
+                    {referencias.length > 0 && (
+                      <div className="mb-1 flex flex-wrap gap-1">
+                        {referencias.map((referencia) => (
+                          <span
+                            key={referencia}
+                            className="rounded bg-slate-100 px-2 py-0.5 font-semibold text-slate-700"
+                          >
+                            {referencia}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span>{mov.observacao || "Movimentação manual"}</span>
+                  </td>
+                </tr>
+              );
+            })}
+            {historicoFiltrado.length === 0 && (
+              <tr>
+                <td
+                  colSpan="5"
+                  className="px-6 py-8 text-center text-slate-400"
+                >
+                  Nenhuma movimentação encontrada para o filtro informado.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -488,7 +691,7 @@ export default function PainelEstoque() {
               <option value="">-- Selecione um material --</option>
               {materiais.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.nome} - Disp: {m.quantidadeDisponivel}
+                  {m.nome} - Livre: {getLivre(m)}
                 </option>
               ))}
             </select>
@@ -522,6 +725,25 @@ export default function PainelEstoque() {
               {funcionarios.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
+              Destino Operacional
+            </label>
+            <select
+              name="comarcaId"
+              value={formData.comarcaId}
+              onChange={handleInputChange}
+              required
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg"
+            >
+              <option value="">-- Selecione a OS / Comarca --</option>
+              {comarcas.map((comarca) => (
+                <option key={comarca.id} value={comarca.id}>
+                  {getComarcaOptionLabel(comarca)}
                 </option>
               ))}
             </select>

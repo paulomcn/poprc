@@ -1,5 +1,6 @@
 package com.poprc.demo.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -45,4 +46,19 @@ public class MovimentacaoEstoque {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "funcionario_id")
     private Funcionario funcionario;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "projeto_id")
+    @JsonIgnoreProperties({ "materiais", "contrato", "responsavel", "hibernateLazyInitializer", "handler" })
+    private Projeto projeto;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ordem_servico_id")
+    @JsonIgnoreProperties({ "contrato", "projeto", "hibernateLazyInitializer", "handler" })
+    private OrdemServico ordemServico;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "comarca_id")
+    @JsonIgnoreProperties({ "materiais", "projeto", "ordemServico", "hibernateLazyInitializer", "handler" })
+    private Comarca comarca;
 }

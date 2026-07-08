@@ -33,6 +33,9 @@ public class EstoqueController {
         if (material.getQuantidadeDisponivel() == null) {
             material.setQuantidadeDisponivel(0);
         }
+        if (material.getQuantidadeReservada() == null) {
+            material.setQuantidadeReservada(0);
+        }
         Material salvo = materialRepository.save(material);
         return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
     }
@@ -58,7 +61,8 @@ public class EstoqueController {
         MovimentacaoEstoque movimentacao = estoqueService.registrarSaida(
                 request.getMaterialId(),
                 request.getQuantidade(),
-                request.getFuncionarioId());
+                request.getFuncionarioId(),
+                request.getComarcaId());
         return ResponseEntity.status(HttpStatus.CREATED).body(movimentacao);
     }
 
@@ -74,5 +78,6 @@ public class EstoqueController {
         private Long materialId;
         private Integer quantidade;
         private Long funcionarioId;
+        private Long comarcaId;
     }
 }

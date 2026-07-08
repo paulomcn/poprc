@@ -39,7 +39,23 @@ export default function GestaoComarcas() {
     materialId: "",
     nomeMaterial: "",
     quantidadePrevista: "",
+    itemAdicional: false,
   });
+  const [showFaltantesModal, setShowFaltantesModal] = useState(false);
+  const [comarcaFaltantesAtual, setComarcaFaltantesAtual] = useState(null);
+  const [faltantesForm, setFaltantesForm] = useState({
+    faltouMaterial: false,
+    materialItemIds: [],
+    descricao: "",
+  });
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [timelineMaterialAtual, setTimelineMaterialAtual] = useState(null);
+  const [timelineForm, setTimelineForm] = useState({
+    dataHoraSolicitacao: "",
+    dataHoraRetirada: "",
+    dataHoraUso: "",
+  });
+  const [viradaForms, setViradaForms] = useState({});
 
   // 💥 Controles reativos de validação para a Etapa 1 (Vistoria)
   const [fotosVistoria, setFotosVistoria] = useState({});
@@ -158,8 +174,11 @@ export default function GestaoComarcas() {
     try {
       const response = await api.patch(`/comarcas/${comarca.id}/avancar-etapa`);
       atualizarComarcaNaLista(response.data);
+      const proximaEtapa = response.data.etapaAtual;
       alert(
-        `🚀 Sucesso! Etapa 2 (Infraestrutura) desbloqueada para a comarca de ${comarca.nomeComarca}`,
+        proximaEtapa === 3
+          ? `Virada de Rede liberada para a comarca de ${comarca.nomeComarca}.`
+          : `Etapa 2 (Infraestrutura) desbloqueada para a comarca de ${comarca.nomeComarca}.`,
       );
     } catch (err) {
       alert(
@@ -219,6 +238,19 @@ export default function GestaoComarcas() {
       materialId: material?.material?.id || material?.materialId || "",
       nomeMaterial: material?.nomeMaterial || "",
       quantidadePrevista: material?.quantidadePrevista || "",
+      itemAdicional: Boolean(material?.itemAdicional),
+    });
+    setShowMaterialModal(true);
+  };
+
+  const abrirModalItemAdicional = (comarca) => {
+    setComarcaMaterialAtual(comarca);
+    setMaterialEmEdicao(null);
+    setMaterialForm({
+      materialId: "",
+      nomeMaterial: "",
+      quantidadePrevista: "",
+      itemAdicional: true,
     });
     setShowMaterialModal(true);
   };
@@ -227,7 +259,12 @@ export default function GestaoComarcas() {
     setShowMaterialModal(false);
     setComarcaMaterialAtual(null);
     setMaterialEmEdicao(null);
-    setMaterialForm({ materialId: "", nomeMaterial: "", quantidadePrevista: "" });
+    setMaterialForm({
+      materialId: "",
+      nomeMaterial: "",
+      quantidadePrevista: "",
+      itemAdicional: false,
+    });
   };
 
   const handleMaterialFormChange = (e) => {
@@ -266,6 +303,11 @@ export default function GestaoComarcas() {
             `/comarcas/materiais-previstos/${materialEmEdicao.id}`,
             payload,
           )
+        : materialForm.itemAdicional
+          ? await api.post(
+              `/comarcas/${comarcaMaterialAtual.id}/itens-adicionais`,
+              payload,
+            )
         : await api.post(
             `/comarcas/${comarcaMaterialAtual.id}/materiais-previstos`,
             payload,
@@ -279,6 +321,174 @@ export default function GestaoComarcas() {
           "Erro ao salvar material previsto para esta comarca.",
       );
       console.error("Erro ao salvar material previsto", err);
+    }
+  };
+
+  const abrirModalFaltantes = (comarca) => {
+    const materiaisFaltantes = (comarca.materiais || [])
+      .filter((material) => material.materialFaltante)
+      .map((material) => material.id);
+    setComarcaFaltantesAtual(comarca);
+    setFaltantesForm({
+      faltouMaterial: Boolean(comarca.faltouMaterial || materiaisFaltantes.length),
+      materialItemIds: materiaisFaltantes,
+      descricao:
+        comarca.descricaoMaterialFaltante ||
+        (comarca.materiais || []).find((material) => material.descricaoFaltante)
+          ?.descricaoFaltante ||
+        "",
+    });
+    setShowFaltantesModal(true);
+  };
+
+  const fecharModalFaltantes = () => {
+    setShowFaltantesModal(false);
+    setComarcaFaltantesAtual(null);
+    setFaltantesForm({ faltouMaterial: false, materialItemIds: [], descricao: "" });
+  };
+
+  const toggleMaterialFaltante = (materialId) => {
+    setFaltantesForm((prev) => {
+      const selecionados = prev.materialItemIds.includes(materialId)
+        ? prev.materialItemIds.filter((id) => id !== materialId)
+        : [...prev.materialItemIds, materialId];
+      return { ...prev, materialItemIds: selecionados };
+    });
+  };
+
+  const handleSalvarFaltantes = async (e) => {
+    e.preventDefault();
+    if (!comarcaFaltantesAtual) return;
+    if (
+      faltantesForm.faltouMaterial &&
+      (!faltantesForm.descricao.trim() || faltantesForm.materialItemIds.length === 0)
+    ) {
+      alert("Selecione ao menos um material e descreva o que está faltando.");
+      return;
+    }
+
+    try {
+      const response = await api.patch(
+        `/comarcas/${comarcaFaltantesAtual.id}/materiais-faltantes`,
+        {
+          faltouMaterial: faltantesForm.faltouMaterial,
+          materialItemIds: faltantesForm.faltouMaterial
+            ? faltantesForm.materialItemIds
+            : [],
+          descricao: faltantesForm.faltouMaterial
+            ? faltantesForm.descricao.trim()
+            : "",
+        },
+      );
+      atualizarComarcaNaLista(response.data);
+      fecharModalFaltantes();
+    } catch (err) {
+      alert(
+        err.response?.data?.erro ||
+          "Erro ao salvar controle de materiais faltantes.",
+      );
+      console.error(err);
+    }
+  };
+
+  const toDatetimeLocal = (value) => {
+    if (!value) return "";
+    return String(value).slice(0, 16);
+  };
+
+  const fromDatetimeLocal = (value) => (value ? `${value}:00` : null);
+
+  const formatarDataHora = (value) => {
+    if (!value) return "-";
+    return new Date(value).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const abrirModalTimeline = (material) => {
+    setTimelineMaterialAtual(material);
+    setTimelineForm({
+      dataHoraSolicitacao: toDatetimeLocal(material.dataHoraSolicitacao),
+      dataHoraRetirada: toDatetimeLocal(material.dataHoraRetirada),
+      dataHoraUso: toDatetimeLocal(material.dataHoraUso),
+    });
+    setShowTimelineModal(true);
+  };
+
+  const fecharModalTimeline = () => {
+    setShowTimelineModal(false);
+    setTimelineMaterialAtual(null);
+    setTimelineForm({
+      dataHoraSolicitacao: "",
+      dataHoraRetirada: "",
+      dataHoraUso: "",
+    });
+  };
+
+  const handleSalvarTimeline = async (e) => {
+    e.preventDefault();
+    if (!timelineMaterialAtual) return;
+
+    try {
+      const response = await api.patch(
+        `/comarcas/materiais-previstos/${timelineMaterialAtual.id}/timeline`,
+        {
+          dataHoraSolicitacao: fromDatetimeLocal(timelineForm.dataHoraSolicitacao),
+          dataHoraRetirada: fromDatetimeLocal(timelineForm.dataHoraRetirada),
+          dataHoraUso: fromDatetimeLocal(timelineForm.dataHoraUso),
+        },
+      );
+      atualizarComarcaNaLista(response.data);
+      fecharModalTimeline();
+    } catch (err) {
+      alert(err.response?.data?.erro || "Erro ao salvar timeline do material.");
+      console.error(err);
+    }
+  };
+
+  const getViradaForm = (comarca) => ({
+      provasFuncionamento: comarca.viradaRedeProvasFuncionamento || "",
+      checklist: comarca.viradaRedeChecklist || "",
+      concluida: Boolean(comarca.viradaRedeConcluida),
+      ...(viradaForms[comarca.id] || {}),
+    });
+
+  const setViradaFormValue = (comarcaId, campo, valor) => {
+    setViradaForms((prev) => ({
+      ...prev,
+      [comarcaId]: {
+        ...(prev[comarcaId] || {}),
+        [campo]: valor,
+      },
+    }));
+  };
+
+  const handleSalvarViradaRede = async (comarca) => {
+    const form = getViradaForm(comarca);
+
+    if (
+      form.concluida &&
+      !form.provasFuncionamento &&
+      !comarca.viradaRedeProvasFuncionamento
+    ) {
+      alert("Envie a foto da prova de funcionamento antes de concluir.");
+      return;
+    }
+
+    try {
+      const response = await api.patch(`/comarcas/${comarca.id}/virada-rede`, form);
+      atualizarComarcaNaLista(response.data);
+      setViradaForms((prev) => {
+        const next = { ...prev };
+        delete next[comarca.id];
+        return next;
+      });
+    } catch (err) {
+      alert(err.response?.data?.erro || "Erro ao salvar Virada de Rede.");
+      console.error(err);
     }
   };
 
@@ -300,6 +510,46 @@ export default function GestaoComarcas() {
           "Erro ao remover material previsto desta comarca.",
       );
       console.error("Erro ao remover material previsto", err);
+    }
+  };
+
+  const handleProvaViradaRedeChange = async (e, comarcaId) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      alert("Selecione uma imagem válida nos formatos JPEG ou PNG.");
+      e.target.value = "";
+      return;
+    }
+
+    const payload = new FormData();
+    payload.append("foto", file);
+
+    try {
+      const response = await api.post(
+        `/comarcas/${comarcaId}/virada-rede/prova`,
+        payload,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        },
+      );
+
+      atualizarComarcaNaLista(response.data);
+      setViradaForms((prev) => {
+        const next = { ...prev };
+        delete next[comarcaId];
+        return next;
+      });
+    } catch (err) {
+      alert(
+        err.response?.data?.erro ||
+          "Não foi possível salvar a prova da Virada de Rede.",
+      );
+      console.error(err);
+    } finally {
+      e.target.value = "";
     }
   };
 
@@ -451,6 +701,12 @@ export default function GestaoComarcas() {
       return progressoVistoria;
     }
 
+    if (comarca.etapaAtual === 3) {
+      return comarca.viradaRedeConcluida
+        ? 100
+        : Math.max(comarca.percentualConcluido ?? 0, 85);
+    }
+
     return Math.min(comarca.percentualConcluido ?? progressoVistoria, 100);
   };
 
@@ -510,6 +766,11 @@ export default function GestaoComarcas() {
           const fotoVistoriaConcluida = !!fotoVistoriaPreview;
           const assinaturaConcluida = !!assinaturaPreview;
           const percentualConcluido = getPercentualConcluido(comarca);
+          const etapaAtual = comarca.etapaAtual || 1;
+          const materiaisFaltantes = materiaisPrevistos.filter(
+            (material) => material.materialFaltante,
+          );
+          const viradaForm = getViradaForm(comarca);
 
           return (
           <div
@@ -532,17 +793,23 @@ export default function GestaoComarcas() {
                 </div>
 
                 {/* Indicador de Passos / Status do Fluxo Linear */}
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
                   <span
-                    className={`px-2 py-0.5 rounded ${comarca.etapaAtual !== 2 ? "bg-amber-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
+                    className={`px-2 py-0.5 rounded ${etapaAtual === 1 ? "bg-amber-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
                   >
                     1. Vistoria
                   </span>
                   <ChevronRight size={10} className="text-slate-400" />
                   <span
-                    className={`px-2 py-0.5 rounded ${comarca.etapaAtual === 2 ? "bg-emerald-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
+                    className={`px-2 py-0.5 rounded ${etapaAtual === 2 ? "bg-emerald-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
                   >
                     2. Infra
+                  </span>
+                  <ChevronRight size={10} className="text-slate-400" />
+                  <span
+                    className={`px-2 py-0.5 rounded ${etapaAtual === 3 ? "bg-blue-600 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
+                  >
+                    3. Virada
                   </span>
                 </div>
               </div>
@@ -586,18 +853,36 @@ export default function GestaoComarcas() {
                     className="text-yellow-500 mt-0.5 flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs font-bold text-slate-400 uppercase">
                         Painel de Previsão de Materiais
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => abrirModalMaterial(comarca)}
-                        className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700 hover:bg-blue-100"
-                      >
-                        <Plus size={12} />
-                        Adicionar
-                      </button>
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          onClick={() => abrirModalFaltantes(comarca)}
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 hover:bg-amber-100"
+                        >
+                          <AlertTriangle size={12} />
+                          Faltantes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalItemAdicional(comarca)}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 hover:bg-emerald-100"
+                        >
+                          <Plus size={12} />
+                          Item adicional
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalMaterial(comarca)}
+                          className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700 hover:bg-blue-100"
+                        >
+                          <Plus size={12} />
+                          Adicionar
+                        </button>
+                      </div>
                     </div>
                     {materiaisPrevistos.length > 0 ? (
                       <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden">
@@ -608,14 +893,28 @@ export default function GestaoComarcas() {
                             {totalMateriaisAuditados} audit.
                           </span>
                         </div>
+                        <div className="grid grid-cols-[1.1fr_auto_auto_minmax(8rem,1fr)_auto_auto_auto] gap-3 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                          <span>Material</span>
+                          <span>Prev.</span>
+                          <span>Aud.</span>
+                          <span>O que está faltando</span>
+                          <span>Status</span>
+                          <span>Timeline</span>
+                          <span>Ações</span>
+                        </div>
                         <div className="divide-y divide-slate-100">
                           {materiaisPrevistos.map((material) => (
                             <div
                               key={material.id || material.nomeMaterial}
-                              className="px-3 py-2 grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 items-center text-xs"
+                              className="px-3 py-2 grid grid-cols-[1.1fr_auto_auto_minmax(8rem,1fr)_auto_auto_auto] gap-3 items-center text-xs"
                             >
                               <span className="font-semibold text-slate-700 truncate">
                                 {material.nomeMaterial || "Material sem nome"}
+                                {material.itemAdicional && (
+                                  <span className="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
+                                    Adicional
+                                  </span>
+                                )}
                               </span>
                               <span className="text-slate-500">
                                 Prev.:{" "}
@@ -629,6 +928,18 @@ export default function GestaoComarcas() {
                                   {material.quantidadeAuditada || 0}
                                 </strong>
                               </span>
+                              <span className="text-slate-500 whitespace-normal">
+                                {material.materialFaltante ? (
+                                  <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                    {material.descricaoFaltante ||
+                                      comarca.descricaoMaterialFaltante ||
+                                      "Material faltante"}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">-</span>
+                                )}
+                              </span>
+                              <span className="inline-flex flex-wrap gap-1">
                               {material.estoqueReservado && !material.estoqueBaixado && (
                                 <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-700">
                                   Reservado
@@ -639,6 +950,14 @@ export default function GestaoComarcas() {
                                   Baixado
                                 </span>
                               )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => abrirModalTimeline(material)}
+                                className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold uppercase text-slate-600 hover:bg-slate-50"
+                              >
+                                Horários
+                              </button>
                               <span className="inline-flex items-center gap-1">
                                 <button
                                   type="button"
@@ -665,6 +984,26 @@ export default function GestaoComarcas() {
                               </span>
                             </div>
                           ))}
+                        </div>
+                        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2">
+                          <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-400">
+                            Timeline logística
+                          </p>
+                          <div className="space-y-1">
+                            {materiaisPrevistos.map((material) => (
+                              <div
+                                key={`timeline-${material.id || material.nomeMaterial}`}
+                                className="grid grid-cols-[1fr_auto_auto_auto] gap-2 text-[10px] text-slate-500"
+                              >
+                                <span className="font-semibold text-slate-700 truncate">
+                                  {material.nomeMaterial}
+                                </span>
+                                <span>Solic.: {formatarDataHora(material.dataHoraSolicitacao)}</span>
+                                <span>Ret.: {formatarDataHora(material.dataHoraRetirada)}</span>
+                                <span>Uso: {formatarDataHora(material.dataHoraUso)}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -725,6 +1064,97 @@ export default function GestaoComarcas() {
                 </div>
               )}
 
+              {etapaAtual === 3 && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wide text-blue-800">
+                        3. Virada de Rede
+                      </p>
+                      <p className="text-xs text-blue-700">
+                        Provas de funcionamento, conectividade e validação final.
+                      </p>
+                    </div>
+                    {comarca.viradaRedeConcluida && (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">
+                        <CheckCircle2 size={12} /> Concluída
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Provas de funcionamento
+                      </label>
+                      <label
+                        className={`border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 text-xs font-bold ${
+                          comarca.viradaRedeProvasFuncionamento
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                            : "bg-white hover:border-blue-400 text-slate-500"
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleProvaViradaRedeChange(e, comarca.id)
+                          }
+                        />
+                        <span className="flex items-center justify-center gap-1">
+                          <Upload size={14} />
+                          {comarca.viradaRedeProvasFuncionamento
+                            ? "Prova Carregada"
+                            : "Enviar Foto da Prova"}
+                        </span>
+                        {comarca.viradaRedeProvasFuncionamento && (
+                          <img
+                            src={getArquivoUrl(
+                              comarca.viradaRedeProvasFuncionamento,
+                            )}
+                            alt={`Prova de funcionamento ${comarca.nomeComarca}`}
+                            className="h-24 w-full rounded-md object-cover border border-emerald-200"
+                          />
+                        )}
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Checklist de validação
+                      </label>
+                      <textarea
+                        rows="3"
+                        value={viradaForm.checklist}
+                        onChange={(e) =>
+                          setViradaFormValue(comarca.id, "checklist", e.target.value)
+                        }
+                        className="w-full rounded-lg border border-blue-100 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        placeholder="Ex: ping ok, rota ok, link ativo, acesso validado..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={viradaForm.concluida}
+                        onChange={(e) =>
+                          setViradaFormValue(comarca.id, "concluida", e.target.checked)
+                        }
+                      />
+                      Virada de Rede concluída
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleSalvarViradaRede(comarca)}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                    >
+                      Salvar Virada
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Barra de Progresso Operacional */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -754,16 +1184,38 @@ export default function GestaoComarcas() {
                   </p>
                 </div>
               )}
+
+              {materiaisFaltantes.length > 0 && (
+                <div className="bg-amber-100 border border-amber-300 rounded-lg p-3 text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">O que está faltando</p>
+                    <p>{comarca.descricaoMaterialFaltante}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide">
+                      {materiaisFaltantes
+                        .map((material) => material.nomeMaterial)
+                        .join(", ")}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ações dinâmicas com trava de avanço baseada na etapa */}
             <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex flex-col sm:flex-row gap-2">
-              {!comarca.etapaAtual || comarca.etapaAtual === 1 ? (
+              {etapaAtual === 1 ? (
                 <button
                   onClick={() => handleAvancarFase(comarca)}
                   className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
                 >
                   Homologar Vistoria e Liberar Obras
+                </button>
+              ) : etapaAtual === 2 ? (
+                <button
+                  onClick={() => handleAvancarFase(comarca)}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
+                >
+                  Liberar Virada de Rede
                 </button>
               ) : (
                 <button
@@ -844,7 +1296,7 @@ export default function GestaoComarcas() {
       <Modal
         isOpen={showMaterialModal}
         onClose={fecharModalMaterial}
-        title={`${materialEmEdicao ? "Editar" : "Adicionar"} Material Previsto - ${comarcaMaterialAtual?.nomeComarca || ""}`}
+        title={`${materialEmEdicao ? "Editar" : materialForm.itemAdicional ? "Adicionar Item Adicional" : "Adicionar Material Previsto"} - ${comarcaMaterialAtual?.nomeComarca || ""}`}
       >
         <form onSubmit={handleSalvarMaterialPrevisto} className="space-y-5">
           <div>
@@ -921,7 +1373,144 @@ export default function GestaoComarcas() {
               type="submit"
               className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
             >
-              {materialEmEdicao ? "Salvar Material" : "Adicionar Material"}
+              {materialEmEdicao
+                ? "Salvar Material"
+                : materialForm.itemAdicional
+                  ? "Adicionar Item Adicional"
+                  : "Adicionar Material"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={showFaltantesModal}
+        onClose={fecharModalFaltantes}
+        title={`Materiais Faltantes - ${comarcaFaltantesAtual?.nomeComarca || ""}`}
+      >
+        <form onSubmit={handleSalvarFaltantes} className="space-y-5">
+          <label className="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={faltantesForm.faltouMaterial}
+              onChange={(e) =>
+                setFaltantesForm((prev) => ({
+                  ...prev,
+                  faltouMaterial: e.target.checked,
+                  materialItemIds: e.target.checked ? prev.materialItemIds : [],
+                  descricao: e.target.checked ? prev.descricao : "",
+                }))
+              }
+            />
+            Faltou material?
+          </label>
+
+          {faltantesForm.faltouMaterial && (
+            <>
+              <div>
+                <p className="block text-sm font-semibold text-slate-700 mb-2">
+                  Materiais que faltaram *
+                </p>
+                <div className="max-h-48 overflow-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                  {(comarcaFaltantesAtual?.materiais || []).map((material) => (
+                    <label
+                      key={material.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium text-slate-700">
+                        {material.nomeMaterial}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={faltantesForm.materialItemIds.includes(material.id)}
+                        onChange={() => toggleMaterialFaltante(material.id)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Descrição detalhada *
+                </label>
+                <textarea
+                  rows="4"
+                  required
+                  value={faltantesForm.descricao}
+                  onChange={(e) =>
+                    setFaltantesForm((prev) => ({
+                      ...prev,
+                      descricao: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                  placeholder="Descreva exatamente o que faltou, quantidade, impacto e providência necessária..."
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={fecharModalFaltantes}
+              className="px-5 py-2 border rounded-lg text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition-colors"
+            >
+              Salvar Faltantes
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={showTimelineModal}
+        onClose={fecharModalTimeline}
+        title={`Timeline - ${timelineMaterialAtual?.nomeMaterial || ""}`}
+      >
+        <form onSubmit={handleSalvarTimeline} className="space-y-5">
+          {[
+            ["dataHoraSolicitacao", "Data/Hora de Solicitação"],
+            ["dataHoraRetirada", "Data/Hora de Retirada"],
+            ["dataHoraUso", "Data/Hora de Uso"],
+          ].map(([campo, label]) => (
+            <div key={campo}>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {label}
+              </label>
+              <input
+                type="datetime-local"
+                value={timelineForm[campo]}
+                onChange={(e) =>
+                  setTimelineForm((prev) => ({
+                    ...prev,
+                    [campo]: e.target.value,
+                  }))
+                }
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          ))}
+
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={fecharModalTimeline}
+              className="px-5 py-2 border rounded-lg text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+            >
+              Salvar Timeline
             </button>
           </div>
         </form>
