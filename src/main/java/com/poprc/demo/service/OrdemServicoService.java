@@ -6,6 +6,7 @@ import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.model.MaterialProjeto;
+import com.poprc.demo.model.OrdemRetirada;
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.StatusOS;
@@ -40,7 +41,7 @@ public class OrdemServicoService {
     private final MaterialProjetoRepository materialProjetoRepository;
     private final MaterialItemRepository materialItemRepository;
     private final ComarcaService comarcaService;
-    private final OrdemRetiradaService ordemRetiradaService;
+    private final OrdemRetiradaPort ordemRetiradaPort;
 
     @Transactional
     public OrdemServico criar(CriarOrdemServicoRequest request) {
@@ -159,7 +160,7 @@ public class OrdemServicoService {
         cadastrarMateriaisDaOs(comarca, materiaisPrevistos);
         Comarca comarcaComMateriais = comarcaRepository.findById(comarca.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada após criação da OS."));
-        ordemRetiradaService.criarParaOrdemServico(ordemServico, comarcaComMateriais, "Sistema");
+        ordemRetiradaPort.criarParaOrdemServico(ordemServico, comarcaComMateriais, "Sistema");
     }
 
     private void cadastrarMateriaisDaOs(Comarca comarca,
@@ -217,7 +218,7 @@ public class OrdemServicoService {
                 : comarca.getMateriais().stream()
                         .map(MaterialItem::getNomeMaterial)
                         .filter(nome -> nome != null && !nome.isBlank())
-                        .map(String::toLowerCase)
+                        .map(nome -> nome.toLowerCase())
                         .collect(Collectors.toSet());
         int criados = 0;
         int atualizados = 0;
@@ -275,4 +276,8 @@ public class OrdemServicoService {
 
     private record SincronizacaoMateriais(int criados, int atualizados) {
     }
+}
+
+interface OrdemRetiradaPort {
+    OrdemRetirada criarParaOrdemServico(OrdemServico ordemServico, Comarca comarca, String geradoPor);
 }

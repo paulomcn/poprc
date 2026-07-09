@@ -199,6 +199,12 @@ export default function GestaoOrdensServico() {
       return;
     }
 
+    const validacaoSaldo = validarSaldoMateriaisPrevistos();
+    if (!validacaoSaldo.ok) {
+      alert(validacaoSaldo.mensagem);
+      return;
+    }
+
     try {
       await api.post("/ordens-servico", {
         ...formData,
@@ -238,6 +244,43 @@ export default function GestaoOrdensServico() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const quantidadeMaterial = (valor) => Number(valor || 0);
+
+  const saldoLivreMaterial = (material) => {
+    if (!material) return 0;
+    return Math.max(
+      0,
+      quantidadeMaterial(material.quantidadeDisponivel) -
+        quantidadeMaterial(material.quantidadeReservada),
+    );
+  };
+
+  const materialPorId = (materialId) =>
+    materiaisEstoque.find((material) => Number(material.id) === Number(materialId));
+
+  const validarSaldoMateriaisPrevistos = () => {
+    const totaisPorMaterial = formData.materiais.reduce((acc, item) => {
+      const materialId = Number(item.materialId);
+      if (!materialId) return acc;
+      acc[materialId] =
+        (acc[materialId] || 0) + quantidadeMaterial(item.quantidadePrevista);
+      return acc;
+    }, {});
+
+    for (const [materialId, totalPrevisto] of Object.entries(totaisPorMaterial)) {
+      const material = materialPorId(materialId);
+      const saldoLivre = saldoLivreMaterial(material);
+      if (totalPrevisto > saldoLivre) {
+        return {
+          ok: false,
+          mensagem: `Estoque livre insuficiente para ${material?.nome || "material selecionado"}. Disponível para nova OS: ${saldoLivre}. Quantidade prevista: ${totalPrevisto}.`,
+        };
+      }
+    }
+
+    return { ok: true };
   };
 
   const abrirModalStatus = (ordem) => {
@@ -755,53 +798,82 @@ export default function GestaoOrdensServico() {
                 </div>
 
                 <div className="space-y-2">
-                  {formData.materiais.map((item, index) => (
-                    <div
-                      key={index}
-                      className="grid grid-cols-[1fr_92px_32px] items-center gap-2"
-                    >
-                      <select
-                        required
-                        value={item.materialId}
-                        onChange={(e) =>
-                          atualizarMaterialOs(index, "materialId", e.target.value)
-                        }
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Selecione o material</option>
-                        {materiaisEstoque.map((material) => (
-                          <option key={material.id} value={material.id}>
-                            {material.nome} ({material.quantidadeDisponivel ?? 0} em estoque)
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        required
-                        value={item.quantidadePrevista}
-                        onChange={(e) =>
-                          atualizarMaterialOs(
-                            index,
-                            "quantidadePrevista",
-                            e.target.value,
-                          )
-                        }
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Qtd."
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removerLinhaMaterialOs(index)}
-                        disabled={formData.materiais.length === 1}
-                        className="flex h-9 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-white hover:text-rose-600 disabled:opacity-30"
-                        title="Remover material"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
+                  {formData.materiais.map((item, index) => {
+                    const materialSelecionado = materialPorId(item.materialId);
+                    const saldoLivreSelecionado = saldoLivreMaterial(materialSelecionado);
+                    const quantidadePrevista = quantidadeMaterial(item.quantidadePrevista);
+                    const quantidadeInvalida =
+                      materialSelecionado && quantidadePrevista > saldoLivreSelecionado;
+
+                    return (
+                      <div key={index} className="space-y-1">
+                        <div className="grid grid-cols-[1fr_92px_32px] items-center gap-2">
+                          <select
+                            required
+                            value={item.materialId}
+                            onChange={(e) =>
+                              atualizarMaterialOs(index, "materialId", e.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Selecione o material</option>
+                            {materiaisEstoque.map((material) => {
+                              const saldoLivre = saldoLivreMaterial(material);
+                              const reservado = quantidadeMaterial(material.quantidadeReservada);
+                              const emEstoque = quantidadeMaterial(material.quantidadeDisponivel);
+                              return (
+                                <option key={material.id} value={material.id}>
+                                  {material.nome} ({saldoLivre} disponível para OS, {reservado} reservado, {emEstoque} em estoque)
+                                </option>
+                              );
+                            })}
+                          </select>
+                          <input
+                            type="number"
+                            min="1"
+                            max={materialSelecionado ? saldoLivreSelecionado : undefined}
+                            step="1"
+                            required
+                            value={item.quantidadePrevista}
+                            onChange={(e) =>
+                              atualizarMaterialOs(
+                                index,
+                                "quantidadePrevista",
+                                e.target.value,
+                              )
+                            }
+                            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 ${
+                              quantidadeInvalida
+                                ? "border-rose-300 focus:ring-rose-500"
+                                : "border-gray-300 focus:ring-blue-500"
+                            }`}
+                            placeholder="Qtd."
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removerLinhaMaterialOs(index)}
+                            disabled={formData.materiais.length === 1}
+                            className="flex h-9 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-white hover:text-rose-600 disabled:opacity-30"
+                            title="Remover material"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        {materialSelecionado && (
+                          <p
+                            className={`text-[10px] font-semibold ${
+                              quantidadeInvalida ? "text-rose-600" : "text-gray-500"
+                            }`}
+                          >
+                            Disponível para nova OS: {saldoLivreSelecionado}. Em estoque:{" "}
+                            {quantidadeMaterial(materialSelecionado.quantidadeDisponivel)}.
+                            Reservado:{" "}
+                            {quantidadeMaterial(materialSelecionado.quantidadeReservada)}.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

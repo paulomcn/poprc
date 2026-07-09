@@ -24,12 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class OrdemRetiradaService {
+public class OrdemRetiradaService implements OrdemRetiradaPort {
 
     private static final String STATUS_GERADA = "GERADA";
     private static final String STATUS_RETIRADA = "RETIRADA";
@@ -172,7 +171,7 @@ public class OrdemRetiradaService {
                         .filter(item -> item.getItemId() != null)
                         .collect(Collectors.toMap(
                                 DevolverOrdemRetiradaRequest.ItemDevolucaoRequest::getItemId,
-                                Function.identity(),
+                                item -> item,
                                 (a, b) -> b));
 
         for (OrdemRetiradaItem item : ordemRetirada.getItens()) {

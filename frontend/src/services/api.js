@@ -1,6 +1,5 @@
 import axios from 'axios'
-
-const API_BASE_URL = 'http://localhost:8085/api'
+import { API_BASE_URL, API_ORIGIN } from './runtimeConfig'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,7 +10,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      window.location.href = 'http://localhost:8085/login'
+      window.location.href = `${API_ORIGIN}/login`
     }
     return Promise.reject(error)
   }

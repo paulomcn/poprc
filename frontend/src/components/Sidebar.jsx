@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { API_ORIGIN } from "../services/runtimeConfig";
 import {
   LayoutDashboard,
   FileText,
@@ -59,7 +60,7 @@ export default function Sidebar() {
   const isActive = (path) => location.pathname === path;
 
   const handleLogout = () => {
-    window.location.href = "http://localhost:8085/logout";
+    window.location.href = `${API_ORIGIN}/logout`;
   };
 
   return (

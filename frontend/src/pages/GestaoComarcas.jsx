@@ -19,8 +19,7 @@ import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca";
-
-const API_FILE_BASE_URL = "http://localhost:8085";
+import { buildApiFileUrl } from "../services/runtimeConfig";
 
 const getCategoriaMaterialLabel = (categoria) =>
   categoria === "FERRAMENTA" ? "Ferramenta" : "Material de Consumo";
@@ -189,15 +188,7 @@ export default function GestaoComarcas() {
 
   const getArquivoUrl = (caminho) => {
     if (!caminho) return null;
-    if (
-      caminho.startsWith("data:") ||
-      caminho.startsWith("http://") ||
-      caminho.startsWith("https://") ||
-      caminho.startsWith("blob:")
-    ) {
-      return caminho;
-    }
-    return `${API_FILE_BASE_URL}${caminho}`;
+    return buildApiFileUrl(caminho);
   };
 
   const atualizarComarcaNaLista = (comarcaAtualizada) => {

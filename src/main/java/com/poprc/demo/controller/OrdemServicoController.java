@@ -1,6 +1,7 @@
 package com.poprc.demo.controller;
 
 import com.poprc.demo.dto.CriarOrdemServicoRequest;
+import com.poprc.demo.exception.SaldoInsuficienteException;
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.service.OrdemServicoService;
@@ -99,8 +100,8 @@ public class OrdemServicoController {
         }
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException ex) {
+    @ExceptionHandler({ IllegalArgumentException.class, SaldoInsuficienteException.class })
+    public ResponseEntity<Map<String, String>> handleBadRequest(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erro", ex.getMessage()));
     }
 }

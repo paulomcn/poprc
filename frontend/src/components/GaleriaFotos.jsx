@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { X, ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
-
-const API_FILE_BASE_URL = "http://localhost:8085";
+import { buildApiFileUrl } from "../services/runtimeConfig";
 
 export default function GaleriaFotos({ fotos = [] }) {
   const [indiceAberto, setIndiceAberto] = useState(null);
@@ -14,7 +13,7 @@ export default function GaleriaFotos({ fotos = [] }) {
     );
   }
 
-  const urlCompleta = (caminho) => `${API_FILE_BASE_URL}${caminho}`;
+  const urlCompleta = (caminho) => buildApiFileUrl(caminho);
 
   const irParaProxima = () => setIndiceAberto((i) => (i + 1) % fotos.length);
   const irParaAnterior = () =>

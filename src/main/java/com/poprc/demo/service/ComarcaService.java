@@ -607,7 +607,7 @@ public class ComarcaService {
                 .map(item -> item.get(campo))
                 .filter(Number.class::isInstance)
                 .map(Number.class::cast)
-                .mapToInt(Number::intValue)
+                .mapToInt(numero -> numero.intValue())
                 .sum();
     }
 
