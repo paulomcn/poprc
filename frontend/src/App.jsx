@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard"; // Dashboard antigo
 import Contratos from "./pages/Contratos";
@@ -67,13 +67,14 @@ function App() {
           }
         />
         <Route
-          path="/comarcas"
+          path="/obras"
           element={
             <Layout userName={userName}>
               <GestaoComarcas />
             </Layout>
           }
         />
+        <Route path="/comarcas" element={<Navigate to="/obras" replace />} />
         <Route
           path="/estoque"
           element={

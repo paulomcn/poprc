@@ -58,6 +58,11 @@ public class MovimentacaoEstoque {
     private OrdemServico ordemServico;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ordem_retirada_id")
+    @JsonIgnoreProperties({ "ordemServico", "comarca", "itens", "hibernateLazyInitializer", "handler" })
+    private OrdemRetirada ordemRetirada;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "comarca_id")
     @JsonIgnoreProperties({ "materiais", "projeto", "ordemServico", "hibernateLazyInitializer", "handler" })
     private Comarca comarca;

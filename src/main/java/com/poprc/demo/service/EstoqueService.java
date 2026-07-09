@@ -48,6 +48,8 @@ public class EstoqueService {
 
     @Transactional
     public MovimentacaoEstoque registrarSaida(Long materialId, Integer quantidade, Long funcionarioId, Long comarcaId) {
+        throw new IllegalArgumentException("Saída de material exige uma Ordem de Retirada executada e assinada.");
+        /*
         Material material = materialRepository.findById(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado"));
         
@@ -60,7 +62,7 @@ public class EstoqueService {
 
         if (livre < quantidade) {
             throw new SaldoInsuficienteException(
-                    "Saldo livre de estoque insuficiente. Livre: " + livre +
+                    "Saldo disponível de estoque insuficiente. Disponível: " + livre +
                     ", Reservado: " + reservado +
                     ", Solicitado: " + quantidade);
         }
@@ -78,6 +80,7 @@ public class EstoqueService {
         movimentacao.setObservacao(montarObservacaoSaidaManual(movimentacao));
 
         return movimentacaoEstoqueRepository.save(movimentacao);
+        */
     }
 
     private void vincularDestinoOperacional(MovimentacaoEstoque movimentacao, Long comarcaId) {

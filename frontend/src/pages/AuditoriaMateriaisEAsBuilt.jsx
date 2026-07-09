@@ -18,6 +18,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const [selectedComarcaId, setSelectedComarcaId] = useState("");
   const [dados, setDados] = useState(null);
   const [rastreabilidade, setRastreabilidade] = useState(null);
+  const [ordensRetirada, setOrdensRetirada] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -45,12 +46,14 @@ export default function AuditoriaMateriaisEAsBuilt() {
     if (!id) return;
     try {
       setLoading(true);
-      const [auditoriaResponse, rastreabilidadeResponse] = await Promise.all([
+      const [auditoriaResponse, rastreabilidadeResponse, ordensRetiradaResponse] = await Promise.all([
         api.get(`/comarcas/${id}/auditoria`),
         api.get(`/comarcas/${id}/rastreabilidade-estoque`),
+        api.get(`/ordens-retirada/comarca/${id}`),
       ]);
       setDados(auditoriaResponse.data);
       setRastreabilidade(rastreabilidadeResponse.data);
+      setOrdensRetirada(ordensRetiradaResponse.data || []);
       setError(null);
     } catch (err) {
       setError("Erro ao carregar os dados de engenharia do servidor.");
@@ -247,10 +250,10 @@ export default function AuditoriaMateriaisEAsBuilt() {
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-black tracking-tight text-white flex items-center gap-2">
-              Auditoria de Materiais & As-Built
+              Auditoria de Retirada/Devolução
             </h1>
             <p className="text-slate-400 text-sm mt-0.5">
-              Módulo 15 e 16 - Conciliação por OS, comarca e execução de campo
+              Conciliação por OR, OS, estoque e documentação As-Built
             </p>
           </div>
 
@@ -470,6 +473,79 @@ export default function AuditoriaMateriaisEAsBuilt() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+          <div className="p-6 border-b border-slate-800 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-bold text-white">Ciclo da Ordem de Retirada</h2>
+              <p className="text-xs text-slate-500">
+                Quem retirou, quando retirou, o que levou e o que devolveu.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-slate-400 border border-slate-800">
+              {ordensRetirada.length} ORs
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800 uppercase text-xs font-bold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4">OR</th>
+                  <th className="px-6 py-4">Retirada</th>
+                  <th className="px-6 py-4">Devolução</th>
+                  <th className="px-6 py-4">Itens</th>
+                  <th className="px-6 py-4 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {ordensRetirada.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
+                      Nenhuma OR vinculada a esta OS/comarca.
+                    </td>
+                  </tr>
+                ) : (
+                  ordensRetirada.map((or) => (
+                    <tr key={or.id} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="px-6 py-4 font-black text-slate-100">
+                        {or.numeroOr}
+                        <span className="block text-[10px] font-medium text-slate-500">
+                          Gerada: {formatarDataHora(or.dataGeracao)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-400">
+                        <p>Levou: {or.levadoPor || "-"}</p>
+                        <p>Conferiu: {or.conferidoPor || "-"}</p>
+                        <p>Quando: {formatarDataHora(or.dataRetirada)}</p>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-400">
+                        <p>Devolveu: {or.devolvidoPor || "-"}</p>
+                        <p>Recebeu: {or.recebidoPor || "-"}</p>
+                        <p>Quando: {formatarDataHora(or.dataDevolucao)}</p>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-400 max-w-md">
+                        {(or.itens || []).map((item) => (
+                          <span
+                            key={item.id}
+                            className="mr-1 mb-1 inline-flex rounded bg-slate-950 px-2 py-0.5 font-semibold border border-slate-800"
+                          >
+                            {item.nomeMaterial}: ret. {item.quantidadeRetirada || 0} / dev.{" "}
+                            {item.quantidadeDevolvida || 0}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="rounded bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold uppercase text-indigo-300 border border-indigo-500/20">
+                          {or.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 

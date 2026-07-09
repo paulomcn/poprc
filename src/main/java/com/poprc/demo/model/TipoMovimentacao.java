@@ -7,5 +7,7 @@ public enum TipoMovimentacao {
     ESTORNO_RESERVA,
     TRANSFERENCIA,
     BAIXA,
-    ESTORNO_BAIXA
+    ESTORNO_BAIXA,
+    RETIRADA_OR,
+    DEVOLUCAO_OR
 }

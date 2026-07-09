@@ -36,8 +36,33 @@ public class EstoqueController {
         if (material.getQuantidadeReservada() == null) {
             material.setQuantidadeReservada(0);
         }
+        if (material.getCategoria() == null || material.getCategoria().isBlank()) {
+            material.setCategoria("MATERIAL_CONSUMO");
+        }
         Material salvo = materialRepository.save(material);
         return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
+    }
+
+    @PutMapping("/materiais/{id}")
+    public ResponseEntity<Material> atualizarMaterial(@PathVariable Long id, @RequestBody Material materialAtualizado) {
+        return materialRepository.findById(id)
+                .map(material -> {
+                    material.setNome(materialAtualizado.getNome());
+                    material.setPartNumber(materialAtualizado.getPartNumber());
+                    material.setCategoria(materialAtualizado.getCategoria() == null || materialAtualizado.getCategoria().isBlank()
+                            ? "MATERIAL_CONSUMO"
+                            : materialAtualizado.getCategoria());
+                    material.setDescricao(materialAtualizado.getDescricao());
+                    material.setFotoProdutoUrl(materialAtualizado.getFotoProdutoUrl());
+                    material.setFabricante(materialAtualizado.getFabricante());
+                    material.setFornecedor(materialAtualizado.getFornecedor());
+                    material.setLocalizacao(materialAtualizado.getLocalizacao());
+                    if (materialAtualizado.getQuantidadeDisponivel() != null) {
+                        material.setQuantidadeDisponivel(materialAtualizado.getQuantidadeDisponivel());
+                    }
+                    return ResponseEntity.ok(materialRepository.save(material));
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     // ROTA DO HISTÓRICO CORRIGIDA: Buscando direto do banco pelo repository

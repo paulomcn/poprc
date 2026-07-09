@@ -8,66 +8,190 @@ import {
   AlertCircle,
   CheckCircle2,
   Navigation,
-  CheckSquare,
   Camera,
-  RefreshCw
+  RefreshCw,
+  Save,
+  Clock,
+  ListChecks
 } from 'lucide-react'
 import api from '../services/api'
 
-export default function ExecutarOrdemServico() {
-  const { id } = useParams() // Pega o ID da OS vindo da URL (ex: /tecnico/os/1)
-  const navigate = useNavigate()
+const osFallbackBase = {
+  cliente: 'Tribunal de Justiça - Comarca Centro',
+  status: 'EM_EXECUCAO',
+  descricao: 'Instalação de racks de telecomunicação, cabeamento estruturado Cat6 e certificação de 24 pontos de rede.',
+  endereco: 'Praça D. Pedro II, s/n - Centro, Salvador - BA',
+  prioridade: 'Alta',
+  dataExecucao: '2026-06-15',
+  contato: 'Carlos Souza (Coordenador de TI) - (71) 99888-7766',
+  dataHoraInicio: '2026-06-15T08:00:00',
+  dataHoraFim: '2026-06-15T17:00:00',
+  deadline: '2026-06-16T18:00:00'
+}
 
-  // Estados da Página
-  const [os, setOs] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [uploadingFoto, setUploadingFoto] = useState(false)
-  const [feedbackMsg, setFeedbackMsg] = useState({ tipo: '', texto: '' })
+function parseChecklistIds(checklist) {
+  if (!checklist) return []
 
-  // Dados mocados idênticos aos da lista para caso o banco não tenha essa OS ainda
-  const osFallback = {
-    id: parseInt(id) || 1,
-    numeroOs: `OS-2026-04${id || '2'}`,
-    cliente: 'Tribunal de Justiça - Comarca Centro',
-    status: 'EM_EXECUCAO',
-    descricao: 'Instalação de racks de telecomunicação, cabeamento estruturado Cat6 e certificação de 24 pontos de rede.',
-    endereco: 'Praça D. Pedro II, s/n - Centro, Salvador - BA',
-    prioridade: 'Alta',
-    dataExecucao: '2026-06-15',
-    contato: 'Carlos Souza (Coordenador de TI) - (71) 99888-7766',
-    tarefas: [
-      { id: 1, texto: 'Vistoria técnica do local e infraestrutura', concluida: true },
-      { id: 2, texto: 'Instalação física do Rack de rede de 19"', concluida: false },
-      { id: 3, texto: 'Lançamento e crimpagem de cabos Cat6', concluida: false },
-      { id: 4, texto: 'Certificação e testes de conectividade', concluida: false }
-    ]
+  try {
+    const parsed = typeof checklist === 'string' ? JSON.parse(checklist) : checklist
+    if (!Array.isArray(parsed?.atividades)) return []
+    return parsed.atividades
+      .map((atividade) => Number(atividade.id))
+      .filter((atividadeId) => Number.isFinite(atividadeId))
+  } catch (err) {
+    return []
+  }
+}
+
+function formatDate(value) {
+  if (!value) return 'Não informado'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Não informado'
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function getTemporalAlerts(os) {
+  if (!os) return []
+
+  const now = new Date()
+  const inicio = os.dataHoraInicio ? new Date(os.dataHoraInicio) : null
+  const fim = os.dataHoraFim ? new Date(os.dataHoraFim) : null
+  const deadline = os.deadline ? new Date(os.deadline) : null
+  const alerts = []
+
+  if (deadline && !Number.isNaN(deadline.getTime())) {
+    const diffMs = deadline.getTime() - now.getTime()
+    const diffHours = diffMs / (1000 * 60 * 60)
+
+    if (diffMs < 0) {
+      alerts.push({
+        tipo: 'atrasada',
+        titulo: 'OS atrasada',
+        texto: `Prazo limite vencido em ${formatDate(os.deadline)}. Acionar operação, estoque e responsável técnico.`,
+        className: 'bg-rose-950/40 border-rose-500/30 text-rose-100',
+        iconClassName: 'text-rose-300'
+      })
+    } else if (diffHours <= 24) {
+      alerts.push({
+        tipo: 'prazo',
+        titulo: 'OS próxima do prazo',
+        texto: `Deadline em menos de 24h: ${formatDate(os.deadline)}. Priorizar fechamento das pendências.`,
+        className: 'bg-amber-950/40 border-amber-500/30 text-amber-100',
+        iconClassName: 'text-amber-300'
+      })
+    }
   }
 
+  if (inicio && !Number.isNaN(inicio.getTime()) && now.getTime() < inicio.getTime()) {
+    alerts.push({
+      tipo: 'agendada',
+      titulo: 'OS agendada',
+      texto: `Início previsto para ${formatDate(os.dataHoraInicio)}.`,
+      className: 'bg-sky-950/40 border-sky-500/30 text-sky-100',
+      iconClassName: 'text-sky-300'
+    })
+  }
+
+  if (fim && !Number.isNaN(fim.getTime()) && now.getTime() > fim.getTime() && os.status !== 'CONCLUIDA') {
+    alerts.push({
+      tipo: 'janela',
+      titulo: 'Janela de execução encerrada',
+      texto: `Fim previsto era ${formatDate(os.dataHoraFim)}. Validar se a OS deve ser prorrogada ou concluída.`,
+      className: 'bg-orange-950/40 border-orange-500/30 text-orange-100',
+      iconClassName: 'text-orange-300'
+    })
+  }
+
+  return alerts
+}
+
+export default function ExecutarOrdemServico() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+
+  const [os, setOs] = useState(null)
+  const [atividadesPadrao, setAtividadesPadrao] = useState([])
+  const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploadingFoto, setUploadingFoto] = useState(false)
+  const [savingChecklist, setSavingChecklist] = useState(false)
+  const [feedbackMsg, setFeedbackMsg] = useState({ tipo: '', texto: '' })
+
   useEffect(() => {
-    async function puxarDetalhesOS() {
+    async function puxarDadosDaTela() {
       try {
         setLoading(true)
-        const response = await api.get(`/ordens-servico/${id}`)
-        setOs(response.data)
+        const [osResponse, atividadesResponse] = await Promise.all([
+          api.get(`/ordens-servico/${id}`),
+          api.get('/atividades-padrao/ativas')
+        ])
+
+        setOs(osResponse.data)
+        setAtividadesSelecionadas(parseChecklistIds(osResponse.data?.checklist))
+        setAtividadesPadrao(atividadesResponse.data || [])
       } catch (err) {
-        console.warn('OS não encontrada no banco, aplicando mock de segurança para testes na UI.')
-        setOs(osFallback)
+        console.warn('Falha ao carregar dados completos da OS, aplicando fallback para manter a tela testável.', err)
+        setOs({
+          ...osFallbackBase,
+          id: Number(id) || 1,
+          numeroOs: `OS-2026-04${id || '2'}`
+        })
+        setAtividadesSelecionadas([])
+        try {
+          const atividadesResponse = await api.get('/atividades-padrao/ativas')
+          setAtividadesPadrao(atividadesResponse.data || [])
+        } catch (atividadeErr) {
+          setAtividadesPadrao([])
+        }
       } finally {
         setLoading(false)
       }
     }
-    puxarDetalhesOS()
+    puxarDadosDaTela()
   }, [id])
 
-  // Alternar a conclusão de uma tarefa localmente
-  const handleToggleTarefa = (tarefaId) => {
-    setOs(prev => ({
-      ...prev,
-      tarefas: prev.tarefas.map(t => t.id === tarefaId ? { ...t, concluida: !t.concluida } : t)
-    }))
+  const handleToggleAtividade = (atividadeId) => {
+    setAtividadesSelecionadas((prev) => {
+      if (prev.includes(atividadeId)) {
+        return prev.filter((idSelecionado) => idSelecionado !== atividadeId)
+      }
+      return [...prev, atividadeId]
+    })
   }
 
-  // Mudar status da OS direto no backend
+  const handleSalvarChecklist = async () => {
+    const atividades = atividadesPadrao
+      .filter((atividade) => atividadesSelecionadas.includes(atividade.id))
+      .map((atividade) => ({
+        id: atividade.id,
+        nome: atividade.nome,
+        categoria: atividade.categoria || 'Geral'
+      }))
+
+    const checklist = JSON.stringify({
+      registradoEm: new Date().toISOString(),
+      registradoPor: 'Técnico',
+      atividades
+    })
+
+    try {
+      setSavingChecklist(true)
+      const response = await api.put(`/ordens-servico/${id}/checklist`, { checklist })
+      setOs(response.data)
+      mostrarFeedback('sucesso', 'Atividades realizadas registradas na OS.')
+    } catch (err) {
+      mostrarFeedback('erro', 'Falha ao salvar o checklist da OS.')
+    } finally {
+      setSavingChecklist(false)
+    }
+  }
+
   const handleMudarStatus = async (novoStatus) => {
     try {
       await api.put(`/ordens-servico/${id}/status`, { status: novoStatus })
@@ -79,7 +203,6 @@ export default function ExecutarOrdemServico() {
     }
   }
 
-  //  CONEXÃO REAL COM O BACKEND JAVA (Módulo 12 - Evidências Fotográficas)
   const handleUploadFotoEvidencia = async (e) => {
     const file = e.target.files[0]
     if (!file) return
@@ -87,22 +210,19 @@ export default function ExecutarOrdemServico() {
     setUploadingFoto(true)
     setFeedbackMsg({ tipo: '', texto: '' })
 
-    // Captura o GPS na hora exata do upload para enviar ao Java
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const lat = position.coords.latitude.toFixed(6)
         const lon = position.coords.longitude.toFixed(6)
 
-        // Monta o FormData exatamente como o nosso 'MobilidadeController.java' espera!
         const formData = new FormData()
         formData.append('file', file)
         formData.append('ordemServicoId', os.id)
-        formData.append('funcionarioId', 1) // Usando ID 1 do funcionário que criamos no pgAdmin
+        formData.append('funcionarioId', 1)
         formData.append('latitude', lat)
         formData.append('longitude', lon)
 
         try {
-          console.log('Disparando foto real para o backend Spring Boot...')
           const response = await api.post('/campo/upload-foto', formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
           })
@@ -115,7 +235,7 @@ export default function ExecutarOrdemServico() {
           setUploadingFoto(false)
         }
       },
-      (error) => {
+      () => {
         setUploadingFoto(false)
         mostrarFeedback('erro', 'Obrigatório ativar o GPS para registrar a evidência fotográfica da OS.')
       },
@@ -141,12 +261,15 @@ export default function ExecutarOrdemServico() {
     )
   }
 
+  const temporalAlerts = getTemporalAlerts(os)
+  const cliente = os.cliente || os.contrato?.cliente || os.projeto?.nome || 'Ordem de Serviço'
+  const endereco = os.endereco || os.projeto?.endereco || 'Endereço não informado'
+  const contato = os.contato || 'Contato não informado'
+
   return (
     <div className="bg-slate-950 min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8 font-sans antialiased">
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Botão de Voltar Volante */}
-        <button 
+        <button
           onClick={() => navigate('/tecnico')}
           className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white transition group"
         >
@@ -154,26 +277,30 @@ export default function ExecutarOrdemServico() {
           Voltar para o Painel
         </button>
 
-        {/* Header Principal da OS */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
           <div>
             <span className="text-indigo-400 text-xs font-black tracking-widest uppercase">{os.numeroOs}</span>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">{os.cliente}</h1>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2">
-              <Calendar className="w-4 h-4 text-slate-500" />
-              <span>Agendado para: {new Date(os.dataExecucao).toLocaleDateString('pt-BR')}</span>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">{cliente}</h1>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400 mt-3">
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-slate-500" />
+                Início: {formatDate(os.dataHoraInicio || os.dataExecucao)}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-slate-500" />
+                Deadline: {formatDate(os.deadline)}
+              </span>
             </div>
           </div>
           <span className={`text-xs font-black px-3 py-1 rounded-full border ${
-            os.status === 'CONCLUIDA' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-            os.status === 'EM_EXECUCAO' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 
+            os.status === 'CONCLUIDA' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+            os.status === 'EM_EXECUCAO' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
             'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
           }`}>
-            {os.status.replace('_', ' ')}
+            {(os.status || 'ABERTA').replace('_', ' ')}
           </span>
         </div>
 
-        {/* Toasts de Notificação */}
         {feedbackMsg.texto && (
           <div className={`border p-4 rounded-xl flex gap-3 animate-fadeIn text-xs ${
             feedbackMsg.tipo === 'sucesso' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' : 'bg-rose-950/40 border-rose-500/30 text-rose-200'
@@ -183,57 +310,86 @@ export default function ExecutarOrdemServico() {
           </div>
         )}
 
-        {/* Corpo em Grid Duplo Responsivo (Fica 1 coluna no celular e 2 colunas no PC) */}
+        {temporalAlerts.length > 0 && (
+          <div className="space-y-3">
+            {temporalAlerts.map((alerta) => (
+              <div key={alerta.tipo} className={`border p-4 rounded-xl flex gap-3 text-xs ${alerta.className}`}>
+                <AlertCircle className={`w-5 h-5 flex-shrink-0 ${alerta.iconClassName}`} />
+                <div>
+                  <p className="font-black uppercase tracking-wide">{alerta.titulo}</p>
+                  <p className="font-semibold mt-1 leading-relaxed">{alerta.texto}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          {/* LADO ESQUERDO: Informações e Metadados (Ocupa 2 colunas no PC) */}
           <div className="md:col-span-2 space-y-6">
-            
-            {/* Box de Descrição */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-md">
               <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-indigo-400" /> Instruções do Serviço
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
-                {os.descricao}
+                {os.descricao || 'Sem descrição técnica cadastrada.'}
               </p>
             </div>
 
-            {/* Checklist de Atividades */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
-              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Checklist de Atividades</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-indigo-400" />
+                  Atividades Realizadas
+                </h3>
+                <button
+                  onClick={handleSalvarChecklist}
+                  disabled={savingChecklist}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs rounded-xl transition"
+                >
+                  {savingChecklist ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {savingChecklist ? 'Salvando...' : 'Salvar checklist'}
+                </button>
+              </div>
+
               <div className="space-y-2 bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
-                {os.tarefas.map(tarefa => (
-                  <div 
-                    key={tarefa.id}
-                    onClick={() => handleToggleTarefa(tarefa.id)}
-                    className="flex items-start gap-3 py-2.5 cursor-pointer select-none transition hover:bg-slate-900/40 px-2 rounded-lg"
-                  >
-                    <div className="mt-0.5">
-                      {tarefa.concluida ? (
-                        <CheckSquare className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <div className="w-4 h-4 border border-slate-600 rounded-sm" />
-                      )}
-                    </div>
-                    <span className={`text-sm ${tarefa.concluida ? 'line-through text-slate-500' : 'text-slate-300'}`}>
-                      {tarefa.texto}
-                    </span>
-                  </div>
-                ))}
+                {atividadesPadrao.length === 0 && (
+                  <p className="text-xs text-slate-400 text-center py-4">
+                    Nenhuma atividade padrão ativa cadastrada pelo Admin.
+                  </p>
+                )}
+
+                {atividadesPadrao.map((atividade) => {
+                  const checked = atividadesSelecionadas.includes(atividade.id)
+                  return (
+                    <label
+                      key={atividade.id}
+                      className="flex items-start gap-3 py-2.5 cursor-pointer select-none transition hover:bg-slate-900/40 px-2 rounded-lg"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleToggleAtividade(atividade.id)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
+                      />
+                      <span className={`text-sm ${checked ? 'text-white' : 'text-slate-300'}`}>
+                        {atividade.nome}
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          {atividade.categoria || 'Geral'}
+                        </span>
+                      </span>
+                    </label>
+                  )
+                })}
               </div>
             </div>
           </div>
 
-          {/* LADO DIREITO: Endereço, Contato e Upload da Câmera */}
           <div className="md:col-span-1 space-y-6">
-            
-            {/* Box de Endereço */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
               <div className="flex justify-between items-center">
                 <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Localização</h4>
-                <button 
-                  onClick={() => abrirNoMaps(os.endereco)}
+                <button
+                  onClick={() => abrirNoMaps(endereco)}
                   className="text-[10px] text-indigo-400 font-bold hover:underline flex items-center gap-1"
                 >
                   <Navigation className="w-3 h-3" /> Rota GPS
@@ -241,15 +397,14 @@ export default function ExecutarOrdemServico() {
               </div>
               <div className="bg-slate-950/40 p-3.5 border border-slate-800 rounded-xl flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                <span className="text-xs text-slate-300 leading-normal">{os.endereco}</span>
+                <span className="text-xs text-slate-300 leading-normal">{endereco}</span>
               </div>
               <div className="bg-slate-950/20 p-3 border border-slate-800/60 rounded-xl text-xs text-slate-400">
                 <span className="font-bold text-slate-300 block mb-1">Contato Responsável:</span>
-                {os.contato}
+                {contato}
               </div>
             </div>
 
-            {/* Upload de Relatório Fotográfico */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
               <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Relatório Fotográfico</h4>
               <div className="bg-slate-950/40 p-4 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-3 text-center">
@@ -266,11 +421,11 @@ export default function ExecutarOrdemServico() {
                     </span>
                     <label className="w-full text-center py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl cursor-pointer border border-slate-700 transition active:scale-95">
                       Capturar Câmera
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        capture="environment" //  Força os navegadores mobile a abrirem direto a câmera do celular
-                        className="hidden" 
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
                         onChange={handleUploadFotoEvidencia}
                       />
                     </label>
@@ -279,7 +434,6 @@ export default function ExecutarOrdemServico() {
               </div>
             </div>
 
-            {/* Ações de Status da OS */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2 shadow-md">
               {os.status === 'ABERTA' && (
                 <button
@@ -289,7 +443,7 @@ export default function ExecutarOrdemServico() {
                   Iniciar Atendimento
                 </button>
               )}
-              
+
               {os.status === 'EM_EXECUCAO' && (
                 <button
                   onClick={() => handleMudarStatus('CONCLUIDA')}
@@ -306,9 +460,7 @@ export default function ExecutarOrdemServico() {
                 </div>
               )}
             </div>
-
           </div>
-
         </div>
       </div>
     </div>

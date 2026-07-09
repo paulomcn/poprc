@@ -62,6 +62,8 @@ const STATUS_COLUMNS = [
 export default function GestaoOrdensServico() {
   const [ordensServico, setOrdensServico] = useState([]);
   const [projetos, setProjetos] = useState([]);
+  const [comarcas, setComarcas] = useState([]);
+  const [materiaisEstoque, setMateriaisEstoque] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -76,24 +78,34 @@ export default function GestaoOrdensServico() {
   const [ordemChecklistFoco, setOrdemChecklistFoco] = useState(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    numeroOs: "",
     descricao: "",
-    status: "ABERTA",
-    projeto: { id: "" },
-    contrato: { id: "" },
+    projetoId: "",
+    contratoId: "",
+    dataHoraInicio: "",
+    dataHoraFim: "",
+    deadline: "",
+    materiais: [{ materialId: "", quantidadePrevista: "" }],
   });
 
-  // 💥 1. Carrega a lista estática de projetos APENAS uma vez no mount da tela
+  const carregarAlvosNovaOs = async () => {
+    try {
+      const [projetosResponse, comarcasResponse, materiaisResponse] = await Promise.all([
+        api.get("/projetos"),
+        api.get("/comarcas"),
+        api.get("/estoque/materiais"),
+      ]);
+      setProjetos(projetosResponse.data || []);
+      setComarcas(comarcasResponse.data || []);
+      setMateriaisEstoque(materiaisResponse.data || []);
+    } catch (err) {
+      console.error("Erro ao puxar árvore de projetos/comarcas:", err);
+      setError("Não foi possível carregar os projetos/comarcas para abertura de OS.");
+    }
+  };
+
+  // 💥 1. Carrega a lista estática de projetos/comarcas no mount da tela
   useEffect(() => {
-    const carregarProjetosIniciais = async () => {
-      try {
-        const res = await api.get("/projetos");
-        setProjetos(res.data || []);
-      } catch (err) {
-        console.error("Erro ao puxar árvore de projetos:", err);
-      }
-    };
-    carregarProjetosIniciais();
+    carregarAlvosNovaOs();
   }, []);
 
   // 💥 2. ENGINE DE DEBOUNCE: Aguarda 400ms após o término da digitação para consultar o Postgres
@@ -173,19 +185,36 @@ export default function GestaoOrdensServico() {
   const handleCriarOS = async (e) => {
     e.preventDefault();
     if (
-      !formData.numeroOs.trim() ||
-      !formData.projeto.id ||
-      !formData.contrato.id
-    )
+      !formData.projetoId ||
+      !formData.contratoId ||
+      !formData.dataHoraInicio ||
+      !formData.dataHoraFim ||
+      !formData.deadline ||
+      !formData.materiais.length ||
+      formData.materiais.some(
+        (item) => !item.materialId || Number(item.quantidadePrevista) <= 0,
+      )
+    ) {
+      alert("Preencha projeto, prazos e ao menos um material previsto.");
       return;
+    }
 
     try {
-      await api.post("/ordens-servico", formData);
+      await api.post("/ordens-servico", {
+        ...formData,
+        materiais: formData.materiais.map((item) => ({
+          materialId: Number(item.materialId),
+          quantidadePrevista: Number(item.quantidadePrevista),
+        })),
+      });
       setCreateModalOpen(false);
-      buscarOrdensFilttradas();
+      await Promise.all([buscarOrdensFilttradas(), carregarAlvosNovaOs()]);
     } catch (err) {
       console.error(err);
-      alert("Erro ao salvar ordem de serviço vinculada no banco.");
+      alert(
+        err.response?.data?.erro ||
+          "Erro ao salvar ordem de serviço vinculada no banco.",
+      );
     }
   };
 
@@ -195,7 +224,7 @@ export default function GestaoOrdensServico() {
       const response = await api.post(
         "/ordens-servico/reparar-vinculos-comarcas",
       );
-      await buscarOrdensFilttradas();
+      await Promise.all([buscarOrdensFilttradas(), carregarAlvosNovaOs()]);
       const resumo = response.data || {};
       alert(
         `Sincronização concluída. OS vinculadas: ${resumo.ordensVinculadas || 0}. Materiais criados: ${resumo.materiaisCriados || 0}. Materiais atualizados: ${resumo.materiaisAtualizados || 0}. Conflitos: ${resumo.conflitos || 0}.`,
@@ -285,6 +314,60 @@ export default function GestaoOrdensServico() {
   };
 
   const ordensPorStatus = agruparPorStatus();
+  const comarcasPorProjetoId = new Map(
+    comarcas
+      .filter((comarca) => comarca.projeto?.id)
+      .map((comarca) => [Number(comarca.projeto.id), comarca]),
+  );
+  const projetosDisponiveis = projetos.filter((projeto) => {
+    const comarca = comarcasPorProjetoId.get(Number(projeto.id));
+    return comarca && !comarca.ordemServico;
+  });
+
+  const atualizarMaterialOs = (index, campo, valor) => {
+    setFormData((prev) => ({
+      ...prev,
+      materiais: prev.materiais.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [campo]: valor } : item,
+      ),
+    }));
+  };
+
+  const adicionarLinhaMaterialOs = () => {
+    setFormData((prev) => ({
+      ...prev,
+      materiais: [...prev.materiais, { materialId: "", quantidadePrevista: "" }],
+    }));
+  };
+
+  const removerLinhaMaterialOs = (index) => {
+    setFormData((prev) => ({
+      ...prev,
+      materiais:
+        prev.materiais.length > 1
+          ? prev.materiais.filter((_, itemIndex) => itemIndex !== index)
+          : prev.materiais,
+    }));
+  };
+
+  const abrirModalCriacao = () => {
+    const pInicial = projetosDisponiveis[0];
+    if (!pInicial) {
+      alert("Não há projeto/comarca livre para abrir nova OS. As comarcas listadas já possuem OS vinculada.");
+      return;
+    }
+
+    setFormData({
+      descricao: "",
+      projetoId: pInicial.id,
+      contratoId: pInicial.contrato?.id || "",
+      dataHoraInicio: "",
+      dataHoraFim: "",
+      deadline: "",
+      materiais: [{ materialId: "", quantidadePrevista: "" }],
+    });
+    setCreateModalOpen(true);
+  };
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
@@ -327,22 +410,20 @@ export default function GestaoOrdensServico() {
             </button>
 
             <button
-              onClick={() => {
-                const pInicial = projetos[0];
-                setFormData({
-                  numeroOs: "",
-                  descricao: "",
-                  status: "ABERTA",
-                  projeto: { id: pInicial?.id || "" },
-                  contrato: { id: pInicial?.contrato?.id || "" },
-                });
-                setCreateModalOpen(true);
-              }}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center justify-center gap-2 text-sm shadow-sm"
+              onClick={abrirModalCriacao}
+              disabled={projetosDisponiveis.length === 0}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 text-sm shadow-sm"
             >
               <Plus className="w-4 h-4" /> Nova OS
             </button>
           </div>
+
+          {projetosDisponiveis.length === 0 && (
+            <div className="mt-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Nenhuma comarca livre para nova OS. Use uma comarca sem OS vinculada
+              ou sincronize os vínculos se houver dados antigos.
+            </div>
+          )}
 
           {loading && (filterNumeroOS || filterCliente) && (
             <div className="mt-2 text-[10px] text-blue-500 animate-pulse font-bold uppercase tracking-wider">
@@ -537,7 +618,7 @@ export default function GestaoOrdensServico() {
       {/* MODAL CRIAÇÃO */}
       {createModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl border w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-xl shadow-xl border w-full max-w-2xl overflow-hidden">
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                 <FileText size={18} className="text-blue-600" /> Abrir Nova
@@ -550,21 +631,14 @@ export default function GestaoOrdensServico() {
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleCriarOS} className="p-6 space-y-4">
+            <form onSubmit={handleCriarOS} className="max-h-[78vh] space-y-4 overflow-y-auto p-6">
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Código / Número da OS *
+                  Código / Número da OS
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.numeroOs}
-                  onChange={(e) =>
-                    setFormData({ ...formData, numeroOs: e.target.value })
-                  }
-                  className="w-full mt-1 p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ex: OS-2026-991"
-                />
+                <div className="mt-1 rounded-lg border border-dashed border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
+                  Gerado automaticamente pelo contrato: Contrato - OS sequencial
+                </div>
               </div>
 
               <div>
@@ -573,27 +647,76 @@ export default function GestaoOrdensServico() {
                 </label>
                 <select
                   required
-                  value={formData.projeto.id}
+                  value={formData.projetoId}
                   onChange={(e) => {
                     const projId = e.target.value;
-                    const projSelecionado = projetos.find(
+                    const projSelecionado = projetosDisponiveis.find(
                       (p) => p.id == projId,
                     );
                     setFormData({
                       ...formData,
-                      projeto: { id: projId },
-                      contrato: { id: projSelecionado?.contrato?.id || "" },
+                      projetoId: projId,
+                      contratoId: projSelecionado?.contrato?.id || "",
                     });
                   }}
                   className="w-full mt-1 p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {projetos.map((p) => (
+                  {projetosDisponiveis.map((p) => {
+                    const comarca = comarcasPorProjetoId.get(Number(p.id));
+                    return (
                     <option key={p.id} value={p.id}>
-                      Projeto #{p.id} - {p.nomeComarcaVinculada || "Infra"} (
+                      Projeto #{p.id} -{" "}
+                      {comarca?.nomeComarca || p.nomeComarcaVinculada || "Infra"} (
                       {p.contrato?.cliente})
                     </option>
-                  ))}
+                    );
+                  })}
                 </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Início *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formData.dataHoraInicio}
+                    onChange={(e) =>
+                      setFormData({ ...formData, dataHoraInicio: e.target.value })
+                    }
+                    className="w-full mt-1 p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Fim *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formData.dataHoraFim}
+                    onChange={(e) =>
+                      setFormData({ ...formData, dataHoraFim: e.target.value })
+                    }
+                    className="w-full mt-1 p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Deadline *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formData.deadline}
+                    onChange={(e) =>
+                      setFormData({ ...formData, deadline: e.target.value })
+                    }
+                    className="w-full mt-1 p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
               <div>
@@ -611,6 +734,77 @@ export default function GestaoOrdensServico() {
                   placeholder="Descreva o escopo da manutenção..."
                 ></textarea>
               </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-gray-600">
+                      Materiais previstos *
+                    </h3>
+                    <p className="text-[11px] text-gray-500">
+                      Defina os materiais da obra antes de emitir a OS.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={adicionarLinhaMaterialOs}
+                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm ring-1 ring-blue-100 hover:bg-blue-50"
+                  >
+                    + Material
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {formData.materiais.map((item, index) => (
+                    <div
+                      key={index}
+                      className="grid grid-cols-[1fr_92px_32px] items-center gap-2"
+                    >
+                      <select
+                        required
+                        value={item.materialId}
+                        onChange={(e) =>
+                          atualizarMaterialOs(index, "materialId", e.target.value)
+                        }
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Selecione o material</option>
+                        {materiaisEstoque.map((material) => (
+                          <option key={material.id} value={material.id}>
+                            {material.nome} ({material.quantidadeDisponivel ?? 0} em estoque)
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        value={item.quantidadePrevista}
+                        onChange={(e) =>
+                          atualizarMaterialOs(
+                            index,
+                            "quantidadePrevista",
+                            e.target.value,
+                          )
+                        }
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Qtd."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removerLinhaMaterialOs(index)}
+                        disabled={formData.materiais.length === 1}
+                        className="flex h-9 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-white hover:text-rose-600 disabled:opacity-30"
+                        title="Remover material"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <button
                 type="submit"
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold text-sm transition-all shadow-sm"

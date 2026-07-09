@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -31,6 +32,12 @@ public class OrdemServico {
     private String numeroOs;
 
     private LocalDate dataExecucao;
+
+    private LocalDateTime dataHoraInicio;
+
+    private LocalDateTime dataHoraFim;
+
+    private LocalDateTime deadline;
 
     @Column(columnDefinition = "TEXT")
     private String descricao;

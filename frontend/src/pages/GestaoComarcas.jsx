@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle,
-  Edit2,
   MapPin,
   User,
   Zap,
   History,
   FileText,
+  Printer,
   Upload,
   CheckCircle2,
   ChevronRight,
   PenTool,
-  Plus,
-  Trash2,
+  Package,
+  ShieldCheck,
 } from "lucide-react";
 import api from "../services/api";
 import Modal from "../components/Modal";
@@ -22,14 +22,58 @@ import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca
 
 const API_FILE_BASE_URL = "http://localhost:8085";
 
+const getCategoriaMaterialLabel = (categoria) =>
+  categoria === "FERRAMENTA" ? "Ferramenta" : "Material de Consumo";
+
+const USUARIO_ATUAL = "Paulo Morais";
+
+const OBJETO_SERVICO_OPCOES = [
+  "Instalação de cabeamento estruturado",
+  "Instalação de eletrocalhas",
+  "Instalação de canaletas",
+  "Instalação de eletrodutos",
+  "Instalação de patch panel e conectorização de pontos",
+  "Conectorização de patch cords nos ativos",
+  "Organização e identificação de racks",
+  "Lançamento de cabos de rede CAT6A",
+  "Lançamento de cabos de fibra",
+  "Instalação de DIO e/ou Cassete",
+  "Organização de equipamentos no rack",
+];
+
+const ESTADO_INICIAL_OPCOES = [
+  "Foi realizado registro fotográfico completo do ambiente",
+  "Foram registradas anomalias estruturais pré-existentes",
+  "Eventuais irregularidades foram comunicadas formalmente à gestão do projeto",
+  "Foram registradas as condições de funcionamento dos equipamentos",
+  "Computadores, impressoras e telefones foram verificados",
+];
+
+const ESTADO_FINAL_OPCOES = [
+  "O ambiente foi entregue limpo e organizado",
+  "Não houve dano estrutural decorrente da execução",
+  "O forro foi reinstalado adequadamente",
+  "O telhado foi restabelecido ao estado original de acesso",
+  "As canaletas e eletrocalhas/eletrodutos foram fixadas conforme padrão técnico",
+  "Os cabos foram identificados conforme manual do fabricante",
+  "O ambiente foi apresentado ao gerente do fórum",
+  "Todos os equipamentos presentes nas salas estão no mesmo estado da entrada",
+  "Foi realizado registro fotográfico final antes e depois",
+];
+
 export default function GestaoComarcas() {
   const [comarcas, setComarcas] = useState([]);
   const [materiaisEstoque, setMateriaisEstoque] = useState([]);
+  const [ordensRetirada, setOrdensRetirada] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedComarca, setSelectedComarca] = useState(null);
   const [comarcaHistorico, setComarcaHistorico] = useState(null);
+  const [documentoVisualizacao, setDocumentoVisualizacao] = useState(null);
+  const [documentoVistoria, setDocumentoVistoria] = useState(null);
+  const [documentoVistoriaForm, setDocumentoVistoriaForm] = useState(null);
+  const [documentoAssinaturaAtual, setDocumentoAssinaturaAtual] = useState(null);
   const [showAssinaturaModal, setShowAssinaturaModal] = useState(false);
   const [comarcaAssinaturaAtual, setComarcaAssinaturaAtual] = useState(null);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
@@ -73,6 +117,7 @@ export default function GestaoComarcas() {
   useEffect(() => {
     fetchComarcas();
     fetchMateriaisEstoque();
+    fetchOrdensRetirada();
   }, []);
 
   useEffect(() => {
@@ -130,6 +175,15 @@ export default function GestaoComarcas() {
       setMateriaisEstoque(response.data || []);
     } catch (err) {
       console.error("Erro ao carregar materiais do estoque", err);
+    }
+  };
+
+  const fetchOrdensRetirada = async () => {
+    try {
+      const response = await api.get("/ordens-retirada");
+      setOrdensRetirada(response.data || []);
+    } catch (err) {
+      console.error("Erro ao carregar ordens de retirada", err);
     }
   };
 
@@ -408,6 +462,225 @@ export default function GestaoComarcas() {
     });
   };
 
+  const formatarDataDocumento = (value) => {
+    if (!value) return "";
+    return String(value).slice(0, 10);
+  };
+
+  const abrirDocumento = (tipo, comarca) => {
+    setDocumentoVisualizacao({ tipo, comarca });
+  };
+
+  const gerarOrAdicional = async (comarca) => {
+    const ordemServicoId = comarca.ordemServico?.id;
+    if (!ordemServicoId) {
+      alert("Esta obra ainda não possui OS vinculada para gerar OR.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Gerar uma nova Ordem de Retirada para ${comarca.ordemServico.numeroOs}?`,
+    );
+    if (!confirmar) return;
+
+    try {
+      await api.post(`/ordens-retirada/os/${ordemServicoId}`);
+      await fetchOrdensRetirada();
+      alert("OR adicional gerada com sucesso.");
+    } catch (err) {
+      alert(
+        err.response?.data?.erro ||
+          "Não foi possível gerar a OR adicional para esta OS.",
+      );
+      console.error("Erro ao gerar OR adicional", err);
+    }
+  };
+
+  const criarDocumentoVistoriaForm = (comarca) => {
+    const os = comarca.ordemServico || {};
+    const contrato = os.contrato || comarca.projeto?.contrato || {};
+    return {
+      contrato: contrato.contrato || "",
+      projeto:
+        "Execução de serviços de Cabeamento de Rede e Fibra junto ao Tribunal de Justiça da Paraíba",
+      numeroOs: os.numeroOs || `OS-2026-0${comarca.id}`,
+      comarcaForum: comarca.nomeComarca || "",
+      endereco: comarca.endereco || "",
+      dataInicio: formatarDataDocumento(os.dataHoraInicio),
+      dataConclusao: formatarDataDocumento(os.dataHoraFim),
+      equipeResponsavel: "",
+      gestorRc: contrato.gestorContrato?.nome || "",
+      gerenteForum: "",
+      recebidoPor: "",
+      tecnicoResponsavel: comarca.projeto?.responsavel?.nome || "",
+      cpfTecnico: "",
+      gestorProjetoRc: contrato.gestorContrato?.nome || "",
+      cargoGerente: "",
+      objetoServicos: [],
+      outrosObjeto: "",
+      descricaoServicos: os.descricao || "",
+      estadoInicial: [],
+      anomaliasPreExistentes: "",
+      protocoloComunicacao: "",
+      estadoFinal: [],
+      observacoesFinais: "",
+      ressalvas: "",
+      responsavelDesignadoNome: "",
+      responsavelDesignadoCargo: "",
+      declaracaoDesignacao: "",
+    };
+  };
+
+  const abrirDocumentoVistoria = (comarca) => {
+    setDocumentoVistoria({ comarca, documentoSalvo: null });
+    setDocumentoVistoriaForm(criarDocumentoVistoriaForm(comarca));
+  };
+
+  const atualizarDocumentoVistoria = (campo, valor) => {
+    setDocumentoVistoriaForm((prev) => ({ ...prev, [campo]: valor }));
+  };
+
+  const alternarOpcaoDocumento = (campo, opcao) => {
+    setDocumentoVistoriaForm((prev) => {
+      const selecionados = prev[campo] || [];
+      return {
+        ...prev,
+        [campo]: selecionados.includes(opcao)
+          ? selecionados.filter((item) => item !== opcao)
+          : [...selecionados, opcao],
+      };
+    });
+  };
+
+  const montarConteudoDocumentoVistoria = () => ({
+    modelo: "ORDEM DE SERVIÇO - ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA",
+    empresa: "RC TECHNOLOGY AND INTEGRATION LTDA",
+    cnpj: "33.910.895/0001-50",
+    preenchidoEm: new Date().toISOString(),
+    ...documentoVistoriaForm,
+  });
+
+  const salvarDocumentoVistoria = async () => {
+    if (!documentoVistoria?.comarca || !documentoVistoriaForm) return null;
+    const conteudo = montarConteudoDocumentoVistoria();
+    const response = await api.post(
+      "/documentos-internos/vistoria",
+      {
+        comarcaId: documentoVistoria.comarca.id,
+        conteudoJson: JSON.stringify(conteudo),
+        recebidoPor:
+          documentoVistoriaForm.recebidoPor ||
+          documentoVistoriaForm.gerenteForum ||
+          "Responsável da Unidade",
+      },
+      { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
+    );
+    setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: response.data }));
+    return response.data;
+  };
+
+  const imprimirDocumentoVistoria = () => {
+    if (!documentoVistoriaForm) return;
+    const conteudo = montarConteudoDocumentoVistoria();
+    const lista = (titulo, itens) => `
+      <section><h2>${titulo}</h2><ul>${itens
+        .map((item) => `<li>${item}</li>`)
+        .join("")}</ul></section>`;
+    const janela = window.open("", "_blank", "width=900,height=900");
+    if (!janela) return;
+    janela.document.write(`
+      <html>
+        <head>
+          <title>${conteudo.numeroOs} - Documento de Vistoria</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; color: #111827; margin: 32px; line-height: 1.35; }
+            h1 { font-size: 20px; text-align: center; margin: 0 0 4px; }
+            h2 { font-size: 13px; margin: 18px 0 8px; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+            .sub { text-align: center; font-size: 12px; margin-bottom: 20px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 12px; }
+            .field { border-bottom: 1px solid #94a3b8; padding: 4px 0; min-height: 22px; }
+            .label { font-weight: 700; color: #475569; }
+            ul { margin: 0; padding-left: 18px; font-size: 12px; }
+            p { font-size: 12px; white-space: pre-wrap; }
+            .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
+            .line { border-top: 1px solid #111827; padding-top: 6px; text-align: center; font-size: 12px; }
+            @media print { body { margin: 18mm; } button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <h1>ORDEM DE SERVIÇO (OS)</h1>
+          <div class="sub">ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA<br/>RC TECHNOLOGY AND INTEGRATION LTDA - CNPJ: 33.910.895/0001-50</div>
+          <div class="grid">
+            <div class="field"><span class="label">Contrato:</span> ${conteudo.contrato}</div>
+            <div class="field"><span class="label">OS:</span> ${conteudo.numeroOs}</div>
+            <div class="field"><span class="label">Comarca/Fórum:</span> ${conteudo.comarcaForum}</div>
+            <div class="field"><span class="label">Endereço:</span> ${conteudo.endereco}</div>
+            <div class="field"><span class="label">Data de Início:</span> ${conteudo.dataInicio}</div>
+            <div class="field"><span class="label">Data de Conclusão:</span> ${conteudo.dataConclusao}</div>
+            <div class="field"><span class="label">Equipe Responsável:</span> ${conteudo.equipeResponsavel}</div>
+            <div class="field"><span class="label">Gerente do Fórum:</span> ${conteudo.gerenteForum}</div>
+          </div>
+          ${lista("1. Objeto da Ordem de Serviço", conteudo.objetoServicos)}
+          <p><strong>Outros:</strong> ${conteudo.outrosObjeto || "-"}</p>
+          <p><strong>Descrição detalhada:</strong><br/>${conteudo.descricaoServicos || "-"}</p>
+          ${lista("2. Registro de Condição Predial - Estado Inicial", conteudo.estadoInicial)}
+          <p><strong>Anomalias pré-existentes:</strong><br/>${conteudo.anomaliasPreExistentes || "-"}</p>
+          <p><strong>Protocolo de comunicação:</strong> ${conteudo.protocoloComunicacao || "-"}</p>
+          ${lista("3. Declaração de Conformidade Técnica - Estado Final", conteudo.estadoFinal)}
+          <p><strong>Observações finais:</strong><br/>${conteudo.observacoesFinais || "-"}</p>
+          <h2>4. Declaração de Aceite e Ciência</h2>
+          <p>O Gerente do Fórum declara que acompanhou ou tomou ciência da conclusão dos serviços, que o ambiente foi vistoriado, que os serviços foram executados conforme descrito e que não há pendências aparentes no momento da vistoria.</p>
+          <p><strong>Ressalvas:</strong><br/>${conteudo.ressalvas || "-"}</p>
+          <h2>5. Cláusula de Resguardo Técnico</h2>
+          <p>A presente Ordem de Serviço e a vistoria prévia realizada conjuntamente têm como finalidade registrar as condições aparentes dos ambientes e equipamentos existentes antes e após a execução dos serviços.</p>
+          <div class="sign">
+            <div class="line">Técnico Responsável<br/>${conteudo.tecnicoResponsavel || ""}</div>
+            <div class="line">Gerente do Fórum<br/>${conteudo.gerenteForum || ""}</div>
+          </div>
+        </body>
+      </html>
+    `);
+    janela.document.close();
+    janela.focus();
+    janela.print();
+  };
+
+  const assinarDocumentoVistoria = async () => {
+    try {
+      const documento = documentoVistoria?.documentoSalvo || (await salvarDocumentoVistoria());
+      if (!documento) return;
+      setDocumentoAssinaturaAtual(documento);
+      setComarcaAssinaturaAtual(documentoVistoria.comarca);
+      setShowAssinaturaModal(true);
+    } catch (err) {
+      alert(err.response?.data?.erro || "Não foi possível gerar o documento para assinatura.");
+      console.error(err);
+    }
+  };
+
+  const validarOrdemTimeline = () => {
+    const solicitacao = timelineForm.dataHoraSolicitacao
+      ? new Date(timelineForm.dataHoraSolicitacao)
+      : null;
+    const retirada = timelineForm.dataHoraRetirada
+      ? new Date(timelineForm.dataHoraRetirada)
+      : null;
+    const uso = timelineForm.dataHoraUso ? new Date(timelineForm.dataHoraUso) : null;
+
+    if (solicitacao && retirada && retirada < solicitacao) {
+      return "A retirada não pode acontecer antes da solicitação.";
+    }
+    if (retirada && uso && uso < retirada) {
+      return "O uso não pode acontecer antes da retirada.";
+    }
+    if (solicitacao && uso && uso < solicitacao) {
+      return "O uso não pode acontecer antes da solicitação.";
+    }
+
+    return null;
+  };
+
   const abrirModalTimeline = (material) => {
     setTimelineMaterialAtual(material);
     setTimelineForm({
@@ -431,6 +704,12 @@ export default function GestaoComarcas() {
   const handleSalvarTimeline = async (e) => {
     e.preventDefault();
     if (!timelineMaterialAtual) return;
+
+    const erroTimeline = validarOrdemTimeline();
+    if (erroTimeline) {
+      alert(erroTimeline);
+      return;
+    }
 
     try {
       const response = await api.patch(
@@ -538,9 +817,14 @@ export default function GestaoComarcas() {
 
       atualizarComarcaNaLista(response.data);
       setViradaForms((prev) => {
-        const next = { ...prev };
-        delete next[comarcaId];
-        return next;
+        const formAtual = prev[comarcaId] || {};
+        return {
+          ...prev,
+          [comarcaId]: {
+            ...formAtual,
+            provasFuncionamento: response.data.viradaRedeProvasFuncionamento || "",
+          },
+        };
       });
     } catch (err) {
       alert(
@@ -599,6 +883,7 @@ export default function GestaoComarcas() {
   };
 
   const abrirModalAssinatura = (comarca) => {
+    setDocumentoAssinaturaAtual(null);
     setComarcaAssinaturaAtual(comarca);
     setShowAssinaturaModal(true);
   };
@@ -606,6 +891,7 @@ export default function GestaoComarcas() {
   const fecharModalAssinatura = () => {
     setShowAssinaturaModal(false);
     setComarcaAssinaturaAtual(null);
+    setDocumentoAssinaturaAtual(null);
     setAssinaturaEmEdicao(false);
   };
 
@@ -671,6 +957,20 @@ export default function GestaoComarcas() {
     const assinaturaBase64 = canvas.toDataURL("image/png");
 
     try {
+      if (documentoAssinaturaAtual) {
+        const response = await api.patch(
+          `/documentos-internos/${documentoAssinaturaAtual.id}/assinar`,
+          { assinaturaBase64 },
+          { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
+        );
+        setDocumentoVistoria((prev) => ({
+          ...prev,
+          documentoSalvo: response.data,
+        }));
+        fecharModalAssinatura();
+        return;
+      }
+
       const response = await api.patch(
         `/comarcas/${comarcaAssinaturaAtual.id}/vistoria/assinatura`,
         { assinaturaBase64 },
@@ -735,7 +1035,7 @@ export default function GestaoComarcas() {
       <div className="mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-800">
-            Gestão de Comarcas
+            Gestão de Obras
           </h1>
           <p className="text-slate-600 mt-2">
             Monitore o progresso, vistorias obrigatórias e liberação de
@@ -789,6 +1089,30 @@ export default function GestaoComarcas() {
                   <div className="mt-1 inline-flex items-center gap-1 text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                     <FileText size={12} /> OS:{" "}
                     {comarca.ordemServico?.numeroOs || `OS-2026-0${comarca.id}`}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => abrirDocumento("os", comarca)}
+                      className="rounded-md border border-blue-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700 hover:bg-blue-50"
+                    >
+                      Visualizar OS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => abrirDocumento("retirada", comarca)}
+                      className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-slate-700 hover:bg-slate-50"
+                    >
+                      Visualizar Ordem de Retirada
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => gerarOrAdicional(comarca)}
+                      disabled={!comarca.ordemServico?.id}
+                      className="rounded-md border border-emerald-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
+                    >
+                      Gerar OR Adicional
+                    </button>
                   </div>
                 </div>
 
@@ -866,26 +1190,10 @@ export default function GestaoComarcas() {
                           <AlertTriangle size={12} />
                           Faltantes
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => abrirModalItemAdicional(comarca)}
-                          className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 hover:bg-emerald-100"
-                        >
-                          <Plus size={12} />
-                          Item adicional
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => abrirModalMaterial(comarca)}
-                          className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700 hover:bg-blue-100"
-                        >
-                          <Plus size={12} />
-                          Adicionar
-                        </button>
                       </div>
                     </div>
                     {materiaisPrevistos.length > 0 ? (
-                      <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
                         <div className="bg-slate-50 px-3 py-2 flex items-center justify-between gap-2 text-xs font-bold text-slate-600">
                           <span>{materiaisPrevistos.length} itens previstos</span>
                           <span>
@@ -893,28 +1201,55 @@ export default function GestaoComarcas() {
                             {totalMateriaisAuditados} audit.
                           </span>
                         </div>
-                        <div className="grid grid-cols-[1.1fr_auto_auto_minmax(8rem,1fr)_auto_auto_auto] gap-3 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                        <div className="grid min-w-[760px] grid-cols-[1.1fr_auto_auto_minmax(8rem,1fr)_auto_auto_auto] gap-3 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400 border-b border-slate-100">
                           <span>Material</span>
                           <span>Prev.</span>
                           <span>Aud.</span>
                           <span>O que está faltando</span>
                           <span>Status</span>
                           <span>Timeline</span>
-                          <span>Ações</span>
+                          <span>Origem</span>
                         </div>
                         <div className="divide-y divide-slate-100">
                           {materiaisPrevistos.map((material) => (
                             <div
                               key={material.id || material.nomeMaterial}
-                              className="px-3 py-2 grid grid-cols-[1.1fr_auto_auto_minmax(8rem,1fr)_auto_auto_auto] gap-3 items-center text-xs"
+                              className="grid min-w-[760px] grid-cols-[1.1fr_auto_auto_minmax(8rem,1fr)_auto_auto_auto] items-center gap-3 px-3 py-2 text-xs"
                             >
-                              <span className="font-semibold text-slate-700 truncate">
-                                {material.nomeMaterial || "Material sem nome"}
-                                {material.itemAdicional && (
-                                  <span className="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
-                                    Adicional
+                              <span className="flex min-w-0 items-center gap-2">
+                                {material.material?.fotoProdutoUrl ? (
+                                  <img
+                                    src={getArquivoUrl(material.material.fotoProdutoUrl)}
+                                    alt={`Foto de ${material.nomeMaterial}`}
+                                    className="h-9 w-9 flex-shrink-0 rounded-md border border-slate-200 object-cover"
+                                  />
+                                ) : (
+                                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-400">
+                                    <Package size={16} />
                                   </span>
                                 )}
+                                <span className="min-w-0">
+                                  <span className="block truncate font-semibold text-slate-700">
+                                    {material.nomeMaterial || "Material sem nome"}
+                                  </span>
+                                  <span className="mt-0.5 flex flex-wrap gap-1">
+                                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">
+                                      {getCategoriaMaterialLabel(
+                                        material.material?.categoria,
+                                      )}
+                                    </span>
+                                    {material.itemAdicional && (
+                                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
+                                        Adicional
+                                      </span>
+                                    )}
+                                  </span>
+                                  {material.material?.descricao && (
+                                    <span className="mt-0.5 block truncate text-[10px] font-normal text-slate-400">
+                                      {material.material.descricao}
+                                    </span>
+                                  )}
+                                </span>
                               </span>
                               <span className="text-slate-500">
                                 Prev.:{" "}
@@ -958,29 +1293,8 @@ export default function GestaoComarcas() {
                               >
                                 Horários
                               </button>
-                              <span className="inline-flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    abrirModalMaterial(comarca, material)
-                                  }
-                                  disabled={material.estoqueBaixado}
-                                  className="p-1 rounded text-slate-500 hover:bg-slate-100 hover:text-blue-600"
-                                  title="Editar material previsto"
-                                >
-                                  <Edit2 size={12} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleRemoverMaterialPrevisto(material)
-                                  }
-                                  disabled={material.estoqueBaixado}
-                                  className="p-1 rounded text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-                                  title="Remover material previsto"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                              <span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-500">
+                                Definido na OS
                               </span>
                             </div>
                           ))}
@@ -993,7 +1307,7 @@ export default function GestaoComarcas() {
                             {materiaisPrevistos.map((material) => (
                               <div
                                 key={`timeline-${material.id || material.nomeMaterial}`}
-                                className="grid grid-cols-[1fr_auto_auto_auto] gap-2 text-[10px] text-slate-500"
+                                className="grid min-w-[620px] grid-cols-[1fr_auto_auto_auto] gap-2 text-[10px] text-slate-500"
                               >
                                 <span className="font-semibold text-slate-700 truncate">
                                   {material.nomeMaterial}
@@ -1019,7 +1333,7 @@ export default function GestaoComarcas() {
 
               {/* 🛑 SEÇÃO DE VISTORIA COM GERENTE COM CARDS DE UPLOAD/ASSINATURA (ETAPA 1) */}
               {(!comarca.etapaAtual || comarca.etapaAtual === 1) && (
-                <div className="bg-amber-50/40 border border-amber-200/70 rounded-xl p-3 grid grid-cols-2 gap-3 text-xs font-bold tracking-wide">
+                <div className="bg-amber-50/40 border border-amber-200/70 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-bold tracking-wide">
                   <label
                     className={`border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${fotoVistoriaConcluida ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white hover:border-blue-400 text-slate-500"}`}
                   >
@@ -1061,6 +1375,14 @@ export default function GestaoComarcas() {
                       />
                     )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => abrirDocumentoVistoria(comarca)}
+                    className="sm:col-span-2 flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-blue-700 transition hover:bg-blue-50"
+                  >
+                    <FileText size={14} />
+                    Documento de Vistoria
+                  </button>
                 </div>
               )}
 
@@ -1321,25 +1643,52 @@ export default function GestaoComarcas() {
                     (material.quantidadeDisponivel ?? 0) -
                       (material.quantidadeReservada ?? 0),
                   )}{" "}
-                  livre)
+                  disponível)
                 </option>
               ))}
             </select>
             {materialEstoqueSelecionado && (
-              <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                <span className="rounded bg-slate-50 px-2 py-1 text-slate-500">
-                  Total:{" "}
-                  <strong className="text-slate-800">
-                    {materialEstoqueSelecionado.quantidadeDisponivel ?? 0}
-                  </strong>
-                </span>
-                <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">
-                  Reservado:{" "}
-                  <strong>{materialEstoqueSelecionado.quantidadeReservada ?? 0}</strong>
-                </span>
-                <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">
-                  Livre: <strong>{quantidadeLivreMaterialSelecionado}</strong>
-                </span>
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                <div className="mb-3 flex gap-3">
+                  {materialEstoqueSelecionado.fotoProdutoUrl ? (
+                    <img
+                      src={getArquivoUrl(materialEstoqueSelecionado.fotoProdutoUrl)}
+                      alt={`Foto de ${materialEstoqueSelecionado.nome}`}
+                      className="h-14 w-14 flex-shrink-0 rounded-md border border-slate-200 object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400">
+                      <Package size={18} />
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                      {getCategoriaMaterialLabel(
+                        materialEstoqueSelecionado.categoria,
+                      )}
+                    </span>
+                    {materialEstoqueSelecionado.descricao && (
+                      <p className="mt-1 line-clamp-2 text-slate-600">
+                        {materialEstoqueSelecionado.descricao}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="rounded bg-white px-2 py-1 text-slate-500">
+                    Em estoque:{" "}
+                    <strong className="text-slate-800">
+                      {materialEstoqueSelecionado.quantidadeDisponivel ?? 0}
+                    </strong>
+                  </span>
+                  <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">
+                    Reservado:{" "}
+                    <strong>{materialEstoqueSelecionado.quantidadeReservada ?? 0}</strong>
+                  </span>
+                  <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">
+                    Disponível: <strong>{quantidadeLivreMaterialSelecionado}</strong>
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -1517,9 +1866,236 @@ export default function GestaoComarcas() {
       </Modal>
 
       <Modal
+        isOpen={!!documentoVistoria && !!documentoVistoriaForm}
+        onClose={() => {
+          setDocumentoVistoria(null);
+          setDocumentoVistoriaForm(null);
+        }}
+        title={`Documento de Vistoria - ${documentoVistoria?.comarca?.nomeComarca || ""}`}
+      >
+        {documentoVistoriaForm && (
+          <div className="max-h-[76vh] space-y-5 overflow-y-auto pr-1 text-sm">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <p className="text-center text-base font-black text-slate-800">
+                ORDEM DE SERVIÇO (OS)
+              </p>
+              <p className="text-center text-xs font-bold uppercase text-slate-500">
+                Encerramento, aceite e conformidade técnica
+              </p>
+              {documentoVistoria.documentoSalvo?.status === "REGISTRADO" && (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs font-bold text-emerald-800">
+                  Documento assinado e registrado. Hash:{" "}
+                  <span className="font-mono">
+                    {documentoVistoria.documentoSalvo.hashRegistro}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {[
+                ["contrato", "Contrato"],
+                ["numeroOs", "Ordem de Serviço"],
+                ["comarcaForum", "Comarca/Fórum"],
+                ["endereco", "Endereço"],
+                ["dataInicio", "Data de Início", "date"],
+                ["dataConclusao", "Data de Conclusão", "date"],
+                ["equipeResponsavel", "Equipe Responsável"],
+                ["gestorRc", "Gestor RC Technology"],
+                ["gerenteForum", "Gerente do Fórum"],
+                ["recebidoPor", "Quem recebeu o acesso"],
+                ["tecnicoResponsavel", "Técnico Responsável"],
+                ["cpfTecnico", "CPF do Técnico"],
+                ["gestorProjetoRc", "Gestor do Projeto RC"],
+                ["cargoGerente", "Cargo do Gerente"],
+              ].map(([campo, label, type = "text"]) => (
+                <label key={campo} className="block">
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
+                    {label}
+                  </span>
+                  <input
+                    type={type}
+                    value={documentoVistoriaForm[campo] || ""}
+                    onChange={(e) =>
+                      atualizarDocumentoVistoria(campo, e.target.value)
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
+                1. Objeto da Ordem de Serviço
+              </h3>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {OBJETO_SERVICO_OPCOES.map((opcao) => (
+                  <label key={opcao} className="flex items-start gap-2 text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={documentoVistoriaForm.objetoServicos.includes(opcao)}
+                      onChange={() => alternarOpcaoDocumento("objetoServicos", opcao)}
+                    />
+                    {opcao}
+                  </label>
+                ))}
+              </div>
+              <input
+                value={documentoVistoriaForm.outrosObjeto}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("outrosObjeto", e.target.value)
+                }
+                className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Outros serviços"
+              />
+              <textarea
+                rows="3"
+                value={documentoVistoriaForm.descricaoServicos}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("descricaoServicos", e.target.value)
+                }
+                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Descrição detalhada dos serviços executados"
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
+                2. Registro de Condição Predial - Estado Inicial
+              </h3>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {ESTADO_INICIAL_OPCOES.map((opcao) => (
+                  <label key={opcao} className="flex items-start gap-2 text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={documentoVistoriaForm.estadoInicial.includes(opcao)}
+                      onChange={() => alternarOpcaoDocumento("estadoInicial", opcao)}
+                    />
+                    {opcao}
+                  </label>
+                ))}
+              </div>
+              <textarea
+                rows="2"
+                value={documentoVistoriaForm.anomaliasPreExistentes}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("anomaliasPreExistentes", e.target.value)
+                }
+                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Anomalias pré-existentes identificadas"
+              />
+              <input
+                value={documentoVistoriaForm.protocoloComunicacao}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("protocoloComunicacao", e.target.value)
+                }
+                className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Protocolo de comunicação, se aplicável"
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
+                3. Declaração de Conformidade Técnica - Estado Final
+              </h3>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {ESTADO_FINAL_OPCOES.map((opcao) => (
+                  <label key={opcao} className="flex items-start gap-2 text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={documentoVistoriaForm.estadoFinal.includes(opcao)}
+                      onChange={() => alternarOpcaoDocumento("estadoFinal", opcao)}
+                    />
+                    {opcao}
+                  </label>
+                ))}
+              </div>
+              <textarea
+                rows="3"
+                value={documentoVistoriaForm.observacoesFinais}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("observacoesFinais", e.target.value)
+                }
+                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Observações finais"
+              />
+              <textarea
+                rows="2"
+                value={documentoVistoriaForm.ressalvas}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("ressalvas", e.target.value)
+                }
+                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Ressalvas, caso existam"
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
+                Responsável designado para acompanhamento
+              </h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  value={documentoVistoriaForm.responsavelDesignadoNome}
+                  onChange={(e) =>
+                    atualizarDocumentoVistoria(
+                      "responsavelDesignadoNome",
+                      e.target.value,
+                    )
+                  }
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Nome"
+                />
+                <input
+                  value={documentoVistoriaForm.responsavelDesignadoCargo}
+                  onChange={(e) =>
+                    atualizarDocumentoVistoria(
+                      "responsavelDesignadoCargo",
+                      e.target.value,
+                    )
+                  }
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Cargo/Função"
+                />
+              </div>
+              <textarea
+                rows="3"
+                value={documentoVistoriaForm.declaracaoDesignacao}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("declaracaoDesignacao", e.target.value)
+                }
+                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Declaração de designação"
+              />
+            </div>
+
+            <div className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={imprimirDocumentoVistoria}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <Printer size={16} />
+                Imprimir Documento
+              </button>
+              <button
+                type="button"
+                onClick={assinarDocumentoVistoria}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+              >
+                <ShieldCheck size={16} />
+                Assinar pelo Site
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
         isOpen={showAssinaturaModal}
         onClose={fecharModalAssinatura}
-        title={`Coletar Assinatura - ${comarcaAssinaturaAtual?.nomeComarca || ""}`}
+        title={`${documentoAssinaturaAtual ? "Assinar Documento" : "Coletar Assinatura"} - ${comarcaAssinaturaAtual?.nomeComarca || ""}`}
       >
         <div className="space-y-4">
           <canvas
@@ -1552,6 +2128,180 @@ export default function GestaoComarcas() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!documentoVisualizacao}
+        onClose={() => setDocumentoVisualizacao(null)}
+        title={
+          documentoVisualizacao?.tipo === "retirada"
+            ? "Ordem de Retirada"
+            : "Ordem de Serviço"
+        }
+      >
+        {documentoVisualizacao &&
+          (() => {
+            const comarca = documentoVisualizacao.comarca;
+            const os = comarca.ordemServico || {};
+            const materiais = Array.isArray(comarca.materiais)
+              ? comarca.materiais
+              : [];
+            const orsDaComarca = ordensRetirada.filter(
+              (or) =>
+                or.comarca?.id === comarca.id ||
+                or.ordemServico?.id === os.id,
+            );
+
+            if (documentoVisualizacao.tipo === "retirada") {
+              return (
+                <div className="space-y-4 text-sm">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                      OS / OR
+                    </p>
+                    <p className="font-bold text-slate-800">
+                      {os.numeroOs || `OS-2026-0${comarca.id}`}
+                    </p>
+                    <p className="text-slate-500">{comarca.nomeComarca}</p>
+                  </div>
+                  {orsDaComarca.map((or) => (
+                    <div key={or.id} className="rounded-lg border border-slate-200">
+                      <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-black text-slate-800">{or.numeroOr}</p>
+                          <p className="text-xs text-slate-500">
+                            Gerada: {formatarDataHora(or.dataGeracao)} | Status: {or.status}
+                          </p>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {or.levadoPor && <p>Levou: {or.levadoPor}</p>}
+                          {or.devolvidoPor && <p>Devolveu: {or.devolvidoPor}</p>}
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-left text-xs">
+                          <thead className="bg-white text-[10px] font-black uppercase tracking-wide text-slate-400">
+                            <tr>
+                              <th className="px-3 py-2">Material</th>
+                              <th className="px-3 py-2">Solic.</th>
+                              <th className="px-3 py-2">Ret.</th>
+                              <th className="px-3 py-2">Dev.</th>
+                              <th className="px-3 py-2">Categoria</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {(or.itens || []).map((item) => (
+                              <tr key={item.id}>
+                                <td className="px-3 py-2 font-semibold text-slate-700">
+                                  {item.nomeMaterial}
+                                </td>
+                                <td className="px-3 py-2">{item.quantidadeSolicitada}</td>
+                                <td className="px-3 py-2">{item.quantidadeRetirada}</td>
+                                <td className="px-3 py-2">{item.quantidadeDevolvida}</td>
+                                <td className="px-3 py-2">{getCategoriaMaterialLabel(item.categoria)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                  {orsDaComarca.length === 0 && (
+                    <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
+                      Nenhuma OR encontrada para esta OS.
+                    </p>
+                  )}
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Material</th>
+                          <th className="px-3 py-2">Qtd.</th>
+                          <th className="px-3 py-2">Retirada</th>
+                          <th className="px-3 py-2">Uso</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {materiais.map((material) => (
+                          <tr key={material.id || material.nomeMaterial}>
+                            <td className="px-3 py-2 font-semibold text-slate-700">
+                              {material.nomeMaterial}
+                            </td>
+                            <td className="px-3 py-2">
+                              {material.quantidadePrevista}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatarDataHora(material.dataHoraRetirada)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatarDataHora(material.dataHoraUso)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {material.estoqueBaixado
+                                ? "Baixado"
+                                : material.estoqueReservado
+                                  ? "Reservado"
+                                  : "Pendente"}
+                            </td>
+                          </tr>
+                        ))}
+                        {materiais.length === 0 && (
+                          <tr>
+                            <td className="px-3 py-6 text-center text-slate-400" colSpan="5">
+                              Nenhum material previsto nesta OS.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4 text-sm text-slate-700">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-blue-500">
+                    Identificador
+                  </p>
+                  <p className="text-lg font-black text-blue-900">
+                    {os.numeroOs || `OS-2026-0${comarca.id}`}
+                  </p>
+                  <p className="font-semibold">{comarca.nomeComarca}</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[10px] font-black uppercase text-slate-400">
+                      Início
+                    </p>
+                    <p>{formatarDataHora(os.dataHoraInicio)}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[10px] font-black uppercase text-slate-400">
+                      Fim
+                    </p>
+                    <p>{formatarDataHora(os.dataHoraFim)}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[10px] font-black uppercase text-slate-400">
+                      Deadline
+                    </p>
+                    <p>{formatarDataHora(os.deadline)}</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <p className="text-[10px] font-black uppercase text-slate-400">
+                    Descrição
+                  </p>
+                  <p className="whitespace-pre-line">
+                    {os.descricao || "Sem descrição informada."}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
       </Modal>
 
       {/* Modal Histórico */}

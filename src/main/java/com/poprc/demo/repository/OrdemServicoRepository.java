@@ -13,4 +13,8 @@ public interface OrdemServicoRepository extends JpaRepository<OrdemServico, Long
             "(:numeroOs IS NULL OR :numeroOs = '' OR LOWER(o.numeroOs) LIKE LOWER(CONCAT('%', :numeroOs, '%'))) AND " +
             "(:cliente IS NULL OR :cliente = '' OR LOWER(c.cliente) LIKE LOWER(CONCAT('%', :cliente, '%')))")
     List<OrdemServico> buscarComFiltros(@Param("numeroOs") String numeroOs, @Param("cliente") String cliente);
+
+    long countByContratoId(Long contratoId);
+
+    boolean existsByNumeroOs(String numeroOs);
 }

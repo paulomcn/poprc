@@ -31,6 +31,14 @@ public class Material {
 
     private String fornecedor;
 
+    private String categoria = "MATERIAL_CONSUMO";
+
+    @Column(columnDefinition = "TEXT")
+    private String descricao;
+
+    @Column(columnDefinition = "TEXT")
+    private String fotoProdutoUrl;
+
     private Integer quantidadeDisponivel;
     private Integer quantidadeReservada = 0;
 

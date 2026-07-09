@@ -1,5 +1,6 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.dto.CriarOrdemServicoRequest;
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.service.OrdemServicoService;
@@ -25,8 +26,8 @@ public class OrdemServicoController {
      * 🛠️ POST: Criar nova Ordem de Serviço amarrada ao contrato
      */
     @PostMapping
-    public ResponseEntity<OrdemServico> criar(@RequestBody OrdemServico ordemServico) {
-        OrdemServico novaOrdem = ordemServicoService.criar(ordemServico);
+    public ResponseEntity<OrdemServico> criar(@RequestBody CriarOrdemServicoRequest request) {
+        OrdemServico novaOrdem = ordemServicoService.criar(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(novaOrdem);
     }
 
@@ -65,6 +66,13 @@ public class OrdemServicoController {
         // Adeus findAll() genérico! Agora a busca vai blindada e cirúrgica
         List<OrdemServico> ordens = ordemServicoRepository.buscarComFiltros(numeroOs, cliente);
         return ResponseEntity.ok(ordens);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<OrdemServico> buscarPorId(@PathVariable Long id) {
+        return ordemServicoRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     public static class StatusUpdateRequest {

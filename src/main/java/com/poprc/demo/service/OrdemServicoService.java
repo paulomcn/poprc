@@ -1,18 +1,26 @@
 package com.poprc.demo.service;
 
+import com.poprc.demo.dto.CriarOrdemServicoRequest;
 import com.poprc.demo.model.Comarca;
+import com.poprc.demo.model.Contrato;
+import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.model.MaterialProjeto;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.repository.ComarcaRepository;
+import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.MaterialItemRepository;
 import com.poprc.demo.repository.MaterialProjetoRepository;
+import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.ProjetoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,21 +34,45 @@ public class OrdemServicoService {
 
     private final OrdemServicoRepository ordemServicoRepository;
     private final ComarcaRepository comarcaRepository;
+    private final ContratoRepository contratoRepository;
+    private final ProjetoRepository projetoRepository;
+    private final MaterialRepository materialRepository;
     private final MaterialProjetoRepository materialProjetoRepository;
     private final MaterialItemRepository materialItemRepository;
+    private final ComarcaService comarcaService;
+    private final OrdemRetiradaService ordemRetiradaService;
 
     @Transactional
-    public OrdemServico criar(OrdemServico ordemServico) {
-        if (ordemServico.getNumeroOs() == null || ordemServico.getNumeroOs().isBlank()) {
-            throw new IllegalArgumentException("Código da OS é obrigatório.");
-        }
-        if (ordemServico.getProjeto() == null || ordemServico.getProjeto().getId() == null) {
+    public OrdemServico criar(CriarOrdemServicoRequest request) {
+        if (request.getProjetoId() == null) {
             throw new IllegalArgumentException("Projeto/Comarca alvo é obrigatório para criar a OS.");
         }
+        if (request.getContratoId() == null) {
+            throw new IllegalArgumentException("Contrato é obrigatório para criar a OS.");
+        }
+        validarDatasObrigatorias(request.getDataHoraInicio(), request.getDataHoraFim(), request.getDeadline());
+        if (request.getMateriais() == null || request.getMateriais().isEmpty()) {
+            throw new IllegalArgumentException("Defina ao menos um material previsto para emitir a OS.");
+        }
 
+        Contrato contrato = contratoRepository.findById(request.getContratoId())
+                .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado."));
+        Projeto projeto = projetoRepository.findById(request.getProjetoId())
+                .orElseThrow(() -> new IllegalArgumentException("Projeto/Comarca alvo não encontrado."));
+
+        OrdemServico ordemServico = new OrdemServico();
+        ordemServico.setNumeroOs(gerarNumeroOs(contrato));
+        ordemServico.setContrato(contrato);
+        ordemServico.setProjeto(projeto);
+        ordemServico.setDescricao(request.getDescricao());
+        ordemServico.setDataHoraInicio(request.getDataHoraInicio());
+        ordemServico.setDataHoraFim(request.getDataHoraFim());
+        ordemServico.setDeadline(request.getDeadline());
+        ordemServico.setDataExecucao(request.getDataHoraInicio().toLocalDate());
         ordemServico.setStatus(StatusOS.ABERTA);
+
         OrdemServico ordemSalva = ordemServicoRepository.save(ordemServico);
-        vincularComarcaEPrepararAuditoria(ordemSalva);
+        vincularComarcaEPrepararAuditoria(ordemSalva, request.getMateriais());
         return ordemSalva;
     }
 
@@ -112,7 +144,8 @@ public class OrdemServicoService {
         return resultado;
     }
 
-    private void vincularComarcaEPrepararAuditoria(OrdemServico ordemServico) {
+    private void vincularComarcaEPrepararAuditoria(OrdemServico ordemServico,
+            List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisPrevistos) {
         Comarca comarca = comarcaRepository.findByProjetoId(ordemServico.getProjeto().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Nenhuma comarca foi encontrada para o projeto informado."));
 
@@ -122,8 +155,59 @@ public class OrdemServicoService {
         }
 
         comarca.setOrdemServico(ordemServico);
-        sincronizarMateriaisPrevistos(comarca);
         comarcaRepository.save(comarca);
+        cadastrarMateriaisDaOs(comarca, materiaisPrevistos);
+        Comarca comarcaComMateriais = comarcaRepository.findById(comarca.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada após criação da OS."));
+        ordemRetiradaService.criarParaOrdemServico(ordemServico, comarcaComMateriais, "Sistema");
+    }
+
+    private void cadastrarMateriaisDaOs(Comarca comarca,
+            List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisPrevistos) {
+        for (CriarOrdemServicoRequest.MaterialPrevistoRequest materialPrevisto : materiaisPrevistos) {
+            if (materialPrevisto.getMaterialId() == null) {
+                throw new IllegalArgumentException("Todos os materiais previstos precisam estar vinculados ao estoque.");
+            }
+            if (materialPrevisto.getQuantidadePrevista() == null || materialPrevisto.getQuantidadePrevista() <= 0) {
+                throw new IllegalArgumentException("A quantidade prevista dos materiais deve ser maior que zero.");
+            }
+
+            Material material = materialRepository.findById(materialPrevisto.getMaterialId())
+                    .orElseThrow(() -> new IllegalArgumentException("Material do estoque não encontrado."));
+            comarcaService.adicionarMaterialPrevisto(
+                    comarca.getId(),
+                    material.getId(),
+                    material.getNome(),
+                    materialPrevisto.getQuantidadePrevista());
+        }
+    }
+
+    private void validarDatasObrigatorias(LocalDateTime inicio, LocalDateTime fim, LocalDateTime deadline) {
+        if (inicio == null) {
+            throw new IllegalArgumentException("Data e Hora de Início é obrigatória.");
+        }
+        if (fim == null) {
+            throw new IllegalArgumentException("Data e Hora de Fim é obrigatória.");
+        }
+        if (deadline == null) {
+            throw new IllegalArgumentException("Prazo limite é obrigatório.");
+        }
+        if (fim.isBefore(inicio)) {
+            throw new IllegalArgumentException("Data e Hora de Fim não pode ser anterior ao início.");
+        }
+    }
+
+    private String gerarNumeroOs(Contrato contrato) {
+        String numeroContrato = contrato.getContrato() != null && !contrato.getContrato().isBlank()
+                ? contrato.getContrato().trim()
+                : "Contrato " + contrato.getId();
+        long sequencial = ordemServicoRepository.countByContratoId(contrato.getId()) + 1;
+        String numeroOs;
+        do {
+            numeroOs = numeroContrato + " - OS " + String.format("%02d", sequencial);
+            sequencial++;
+        } while (ordemServicoRepository.existsByNumeroOs(numeroOs));
+        return numeroOs;
     }
 
     private SincronizacaoMateriais sincronizarMateriaisPrevistos(Comarca comarca) {

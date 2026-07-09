@@ -356,6 +356,8 @@ public class ComarcaService {
     @Transactional
     public Comarca atualizarTimelineMaterial(Long materialItemId, LocalDateTime dataHoraSolicitacao,
             LocalDateTime dataHoraRetirada, LocalDateTime dataHoraUso) {
+        validarOrdemTimeline(dataHoraSolicitacao, dataHoraRetirada, dataHoraUso);
+
         MaterialItem material = materialItemRepository.findById(materialItemId)
                 .orElseThrow(() -> new IllegalArgumentException("Material previsto não encontrado."));
         material.setDataHoraSolicitacao(dataHoraSolicitacao);
@@ -363,6 +365,20 @@ public class ComarcaService {
         material.setDataHoraUso(dataHoraUso);
         MaterialItem materialSalvo = materialItemRepository.save(material);
         return recarregarComarca(materialSalvo.getComarca().getId());
+    }
+
+    private void validarOrdemTimeline(LocalDateTime dataHoraSolicitacao, LocalDateTime dataHoraRetirada,
+            LocalDateTime dataHoraUso) {
+        if (dataHoraSolicitacao != null && dataHoraRetirada != null
+                && dataHoraRetirada.isBefore(dataHoraSolicitacao)) {
+            throw new IllegalArgumentException("A retirada não pode acontecer antes da solicitação.");
+        }
+        if (dataHoraRetirada != null && dataHoraUso != null && dataHoraUso.isBefore(dataHoraRetirada)) {
+            throw new IllegalArgumentException("O uso não pode acontecer antes da retirada.");
+        }
+        if (dataHoraSolicitacao != null && dataHoraUso != null && dataHoraUso.isBefore(dataHoraSolicitacao)) {
+            throw new IllegalArgumentException("O uso não pode acontecer antes da solicitação.");
+        }
     }
 
     @Transactional
@@ -482,6 +498,9 @@ public class ComarcaService {
         if (material.getMaterial() != null) {
             materialMap.put("materialId", material.getMaterial().getId());
             materialMap.put("partNumber", material.getMaterial().getPartNumber());
+            materialMap.put("categoria", material.getMaterial().getCategoria());
+            materialMap.put("descricaoProduto", material.getMaterial().getDescricao());
+            materialMap.put("fotoProdutoUrl", material.getMaterial().getFotoProdutoUrl());
             materialMap.put("estoqueDisponivel", material.getMaterial().getQuantidadeDisponivel());
             materialMap.put("estoqueReservadoTotal", quantidadeReservada(material.getMaterial()));
             materialMap.put("estoqueLivre", saldoLivreParaPlanejamento(material.getMaterial()));
@@ -547,6 +566,9 @@ public class ComarcaService {
         itemMap.put("materialId", item.getMaterial() != null ? item.getMaterial().getId() : null);
         itemMap.put("nome", item.getNomeMaterial());
         itemMap.put("partNumber", item.getMaterial() != null ? item.getMaterial().getPartNumber() : null);
+        itemMap.put("categoria", item.getMaterial() != null ? item.getMaterial().getCategoria() : null);
+        itemMap.put("descricaoProduto", item.getMaterial() != null ? item.getMaterial().getDescricao() : null);
+        itemMap.put("fotoProdutoUrl", item.getMaterial() != null ? item.getMaterial().getFotoProdutoUrl() : null);
         itemMap.put("previsto", previsto);
         itemMap.put("reservado", reservado);
         itemMap.put("auditado", auditado);
@@ -575,6 +597,8 @@ public class ComarcaService {
         movimentacaoMap.put("observacao", movimentacao.getObservacao());
         movimentacaoMap.put("materialId", movimentacao.getMaterial() != null ? movimentacao.getMaterial().getId() : null);
         movimentacaoMap.put("materialNome", movimentacao.getMaterial() != null ? movimentacao.getMaterial().getNome() : null);
+        movimentacaoMap.put("numeroOr",
+                movimentacao.getOrdemRetirada() != null ? movimentacao.getOrdemRetirada().getNumeroOr() : null);
         return movimentacaoMap;
     }
 
@@ -678,7 +702,7 @@ public class ComarcaService {
             int disponivel = material.getQuantidadeDisponivel() != null ? material.getQuantidadeDisponivel() : 0;
             if (quantidadeBaixa > disponivel) {
                 throw new SaldoInsuficienteException(
-                        "Estoque insuficiente para baixar " + material.getNome() + ". Disponível: "
+                        "Estoque insuficiente para baixar " + material.getNome() + ". Em estoque: "
                                 + disponivel + ", auditado: " + quantidadeBaixa + ".");
             }
 

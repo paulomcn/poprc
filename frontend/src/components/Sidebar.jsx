@@ -35,7 +35,7 @@ export default function Sidebar() {
       label: "Ordens de Serviço",
     }, // 💥 LINK INJETADO AQUI!
     { path: "/funcionarios", icon: Users, label: "Funcionários" },
-    { path: "/comarcas", icon: Building2, label: "Gestão de Comarcas" },
+    { path: "/obras", icon: Building2, label: "Gestão de Obras" },
     { path: "/estoque", icon: Package, label: "Estoque de Materiais" },
 
     // Novas páginas do financeiro, logística e engenharia
@@ -50,7 +50,7 @@ export default function Sidebar() {
       label: "Gestão Faturamento",
     },
     { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos" },
-    { path: "/auditoria/tecnica", icon: Layers, label: "Auditoria Técnica" },
+    { path: "/auditoria/tecnica", icon: Layers, label: "Auditoria de Retirada/Devolução" },
     { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações" },
 
     { path: "/tecnico", icon: Smartphone, label: "Área do Técnico" },
