@@ -8,4 +8,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface MovimentacaoEstoqueRepository extends JpaRepository<MovimentacaoEstoque, Long> {
     List<MovimentacaoEstoque> findByComarcaIdOrderByDataMovimentacaoDesc(Long comarcaId);
+    List<MovimentacaoEstoque> findAllByOrderByDataMovimentacaoDesc();
 }

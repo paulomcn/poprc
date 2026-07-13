@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface DocumentoInternoRepository extends JpaRepository<DocumentoInterno, Long> {
     List<DocumentoInterno> findByComarcaIdAndTipoOrderByDataGeracaoDesc(Long comarcaId, String tipo);
+
+    List<DocumentoInterno> findByComarcaIdOrderByDataGeracaoDesc(Long comarcaId);
 }

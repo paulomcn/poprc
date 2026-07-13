@@ -42,6 +42,27 @@ public class DocumentoInterno {
     @Column(columnDefinition = "TEXT")
     private String assinaturaBase64;
 
+    @Column(columnDefinition = "TEXT")
+    private String assinaturaTecnicoBase64;
+
+    private String tecnicoAssinadoPor;
+
+    private LocalDateTime dataAssinaturaTecnico;
+
+    @Column(columnDefinition = "TEXT")
+    private String assinaturaGestorBase64;
+
+    private String gestorAssinadoPor;
+
+    private LocalDateTime dataAssinaturaGestor;
+
+    @Column(columnDefinition = "TEXT")
+    private String assinaturaGerenteBase64;
+
+    private String gerenteAssinadoPor;
+
+    private LocalDateTime dataAssinaturaGerente;
+
     private String criadoPor;
 
     private String recebidoPor;

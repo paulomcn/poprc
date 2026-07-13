@@ -20,6 +20,33 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca";
 import { buildApiFileUrl } from "../services/runtimeConfig";
+import rcLogo from "../assets/rclogo.jpg";
+
+const DOCUMENTO_INICIAL = "VISTORIA_INICIAL_OS";
+const DOCUMENTO_FINAL = "ENCERRAMENTO_OS";
+const ASSINATURAS_DOCUMENTO = [
+  {
+    papel: "TECNICO",
+    label: "Técnico responsável",
+    campoAssinatura: "assinaturaTecnicoBase64",
+    campoNome: "tecnicoAssinadoPor",
+    campoData: "dataAssinaturaTecnico",
+  },
+  {
+    papel: "GESTOR_RC",
+    label: "Gestor do projeto RC",
+    campoAssinatura: "assinaturaGestorBase64",
+    campoNome: "gestorAssinadoPor",
+    campoData: "dataAssinaturaGestor",
+  },
+  {
+    papel: "GERENTE_FORUM",
+    label: "Gerente do fórum",
+    campoAssinatura: "assinaturaGerenteBase64",
+    campoNome: "gerenteAssinadoPor",
+    campoData: "dataAssinaturaGerente",
+  },
+];
 
 const getCategoriaMaterialLabel = (categoria) =>
   categoria === "FERRAMENTA" ? "Ferramenta" : "Material de Consumo";
@@ -72,7 +99,12 @@ export default function GestaoComarcas() {
   const [documentoVisualizacao, setDocumentoVisualizacao] = useState(null);
   const [documentoVistoria, setDocumentoVistoria] = useState(null);
   const [documentoVistoriaForm, setDocumentoVistoriaForm] = useState(null);
+  const [documentosVistoriaHistorico, setDocumentosVistoriaHistorico] = useState([]);
+  const [documentoAssinaturasLog, setDocumentoAssinaturasLog] = useState([]);
+  const [documentoIntegridade, setDocumentoIntegridade] = useState(null);
   const [documentoAssinaturaAtual, setDocumentoAssinaturaAtual] = useState(null);
+  const [papelAssinaturaAtual, setPapelAssinaturaAtual] = useState(null);
+  const [nomeAssinanteAtual, setNomeAssinanteAtual] = useState("");
   const [showAssinaturaModal, setShowAssinaturaModal] = useState(false);
   const [comarcaAssinaturaAtual, setComarcaAssinaturaAtual] = useState(null);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
@@ -339,7 +371,7 @@ export default function GestaoComarcas() {
         ? parseInt(materialForm.materialId, 10)
         : null,
       nomeMaterial: materialForm.nomeMaterial.trim(),
-      quantidadePrevista: parseInt(materialForm.quantidadePrevista, 10),
+      quantidadePrevista: parseFloat(materialForm.quantidadePrevista),
     };
 
     try {
@@ -487,7 +519,7 @@ export default function GestaoComarcas() {
     }
   };
 
-  const criarDocumentoVistoriaForm = (comarca) => {
+  const criarDocumentoVistoriaForm = (comarca, tipo, conteudoSalvo = {}) => {
     const os = comarca.ordemServico || {};
     const contrato = os.contrato || comarca.projeto?.contrato || {};
     return {
@@ -519,12 +551,96 @@ export default function GestaoComarcas() {
       responsavelDesignadoNome: "",
       responsavelDesignadoCargo: "",
       declaracaoDesignacao: "",
+      ...conteudoSalvo,
+      tipoDocumento: tipo,
     };
   };
 
-  const abrirDocumentoVistoria = (comarca) => {
-    setDocumentoVistoria({ comarca, documentoSalvo: null });
-    setDocumentoVistoriaForm(criarDocumentoVistoriaForm(comarca));
+  const lerConteudoDocumento = (documento) => {
+    if (!documento?.conteudoJson) return {};
+    try {
+      return JSON.parse(documento.conteudoJson);
+    } catch {
+      return {};
+    }
+  };
+
+  const abrirDocumentoVistoria = async (comarca, tipo) => {
+    let documentos = [];
+    try {
+      const response = await api.get(`/documentos-internos/comarca/${comarca.id}`, {
+        headers: { "X-Usuario-Atual": USUARIO_ATUAL },
+      });
+      documentos = response.data || [];
+    } catch (err) {
+      console.error("Não foi possível carregar os documentos anteriores", err);
+    }
+
+    const documentoSalvo = documentos.find((documento) =>
+      tipo === DOCUMENTO_INICIAL
+        ? [DOCUMENTO_INICIAL, "VISTORIA_OS"].includes(documento.tipo)
+        : documento.tipo === DOCUMENTO_FINAL,
+    );
+    const documentoInicial = documentos.find((documento) =>
+      [DOCUMENTO_INICIAL, "VISTORIA_OS"].includes(documento.tipo),
+    );
+    const conteudoBase = lerConteudoDocumento(
+      documentoSalvo || (tipo === DOCUMENTO_FINAL ? documentoInicial : null),
+    );
+
+    setDocumentosVistoriaHistorico(documentos);
+    setDocumentoVistoria({ tipo, comarca, documentoSalvo: documentoSalvo || null });
+    setDocumentoVistoriaForm(criarDocumentoVistoriaForm(comarca, tipo, conteudoBase));
+    carregarAuditoriaDocumento(documentoSalvo);
+  };
+
+  const abrirVersaoDocumento = (documento) => {
+    const tipo = documento.tipo === DOCUMENTO_FINAL ? DOCUMENTO_FINAL : DOCUMENTO_INICIAL;
+    setDocumentoVistoria((prev) => ({ ...prev, tipo, documentoSalvo: documento }));
+    setDocumentoVistoriaForm(
+      criarDocumentoVistoriaForm(
+        documentoVistoria.comarca,
+        tipo,
+        lerConteudoDocumento(documento),
+      ),
+    );
+    carregarAuditoriaDocumento(documento);
+  };
+
+  const carregarAuditoriaDocumento = async (documento) => {
+    if (!documento?.id || !documento.hashRegistro) {
+      setDocumentoAssinaturasLog([]);
+      setDocumentoIntegridade(null);
+      return;
+    }
+    try {
+      const headers = { "X-Usuario-Atual": USUARIO_ATUAL };
+      const [logsResponse, integridadeResponse] = await Promise.all([
+        api.get(`/documentos-internos/${documento.id}/assinaturas/log`, { headers }),
+        api.get(`/documentos-internos/${documento.id}/integridade`, { headers }),
+      ]);
+      setDocumentoAssinaturasLog(logsResponse.data || []);
+      setDocumentoIntegridade(integridadeResponse.data || null);
+    } catch (err) {
+      setDocumentoAssinaturasLog([]);
+      setDocumentoIntegridade(null);
+      console.error("Não foi possível verificar a auditoria do documento", err);
+    }
+  };
+
+  const criarNovaVersaoDocumento = () => {
+    if (!documentoVistoria?.comarca) return;
+    setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: null }));
+    setDocumentoAssinaturasLog([]);
+    setDocumentoIntegridade(null);
+    setDocumentoVistoriaForm((prev) => ({
+      ...criarDocumentoVistoriaForm(
+        documentoVistoria.comarca,
+        documentoVistoria.tipo,
+      ),
+      ...prev,
+      tipoDocumento: documentoVistoria.tipo,
+    }));
   };
 
   const atualizarDocumentoVistoria = (campo, valor) => {
@@ -544,7 +660,11 @@ export default function GestaoComarcas() {
   };
 
   const montarConteudoDocumentoVistoria = () => ({
-    modelo: "ORDEM DE SERVIÇO - ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA",
+    modelo:
+      documentoVistoria?.tipo === DOCUMENTO_FINAL
+        ? "ORDEM DE SERVIÇO - ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA"
+        : "ORDEM DE SERVIÇO - ABERTURA E VISTORIA TÉCNICA INICIAL",
+    tipoDocumento: documentoVistoria?.tipo || DOCUMENTO_INICIAL,
     empresa: "RC TECHNOLOGY AND INTEGRATION LTDA",
     cnpj: "33.910.895/0001-50",
     preenchidoEm: new Date().toISOString(),
@@ -558,6 +678,7 @@ export default function GestaoComarcas() {
       "/documentos-internos/vistoria",
       {
         comarcaId: documentoVistoria.comarca.id,
+        tipo: documentoVistoria.tipo,
         conteudoJson: JSON.stringify(conteudo),
         recebidoPor:
           documentoVistoriaForm.recebidoPor ||
@@ -567,81 +688,222 @@ export default function GestaoComarcas() {
       { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
     );
     setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: response.data }));
+    setDocumentoAssinaturasLog([]);
+    setDocumentoIntegridade(null);
+    setDocumentosVistoriaHistorico((prev) => [
+      response.data,
+      ...prev.filter((documento) => documento.id !== response.data.id),
+    ]);
     return response.data;
   };
 
   const imprimirDocumentoVistoria = () => {
     if (!documentoVistoriaForm) return;
     const conteudo = montarConteudoDocumentoVistoria();
-    const lista = (titulo, itens) => `
-      <section><h2>${titulo}</h2><ul>${itens
-        .map((item) => `<li>${item}</li>`)
-        .join("")}</ul></section>`;
+    const escaparHtml = (valor) =>
+      String(valor ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    const valor = (texto) => escaparHtml(texto) || "&nbsp;";
+    const linha = (texto = "", classe = "") =>
+      `<span class="fill ${classe}">${valor(texto)}</span>`;
+    const marcado = (campo, opcao) =>
+      (conteudo[campo] || []).includes(opcao) ? "X" : "";
+    const opcao = (campo, texto) => `
+      <div class="check-row"><span class="box">${marcado(campo, texto)}</span><span>${escaparHtml(texto)}</span></div>`;
+    const cabecalho = `
+      <header class="document-header">
+        <img src="${new URL(rcLogo, window.location.origin).href}" alt="RC Technology" />
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+      </header>`;
+    const rodape = (pagina) => `
+      <footer class="document-footer">
+        <div><strong>MATRIZ:</strong><br/>Natal/RN - Rua Raimundo Chaves, 1892 - Candelária - CEP:59064-390<br/>
+        <strong>FILIAIS:</strong><br/>Manaus/AM - Av. Djalma Batista, 3000 - LJ 43 - Parque 10 de Novembro - CEP:69055-038<br/>
+        Boa Vista/RR - Av. Capitão Julio Bezerra, 272 - LJ 12 - Centro - CEP:69301-410<br/>
+        Fone: +55 (84) 3343-1227 &nbsp; E-mail: comercial@rctechnology.com.br</div>
+        <strong>Página ${pagina} de 5</strong>
+      </footer>`;
+    const pagina = (numero, corpo, classe = "") => `
+      <section class="page ${classe}">${cabecalho}<main>${corpo}</main>${rodape(numero)}</section>`;
+    const documentoFinal = documentoVistoria?.tipo === DOCUMENTO_FINAL;
+    const documentoSalvo = documentoVistoria?.documentoSalvo || {};
+    const assinaturaImpressa = (imagem, nome) =>
+      imagem?.startsWith("data:image/")
+        ? `<span class="digital-signature"><img src="${escaparHtml(imagem)}" alt="Assinatura digital"/><small>${valor(nome)}</small></span>`
+        : linha("");
+    const subtitulo = documentoFinal
+      ? "ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA"
+      : "ABERTURA E VISTORIA TÉCNICA INICIAL";
+    const descricaoServicos = documentoFinal
+      ? "Descrição detalhada dos serviços executados:"
+      : "Descrição detalhada dos serviços previstos:";
+    const anoOs = String(conteudo.numeroOs || "").match(/20\d{2}/)?.[0] || new Date().getFullYear();
+    const numeroOsSemAno = String(conteudo.numeroOs || "").replace(/\/?20\d{2}/, "");
+    const paginas = [
+      pagina(1, `
+        <div class="cover-title"><h1>ORDEM DE SERVIÇO (OS)</h1><h2>${subtitulo}</h2></div>
+        <div class="company"><strong>RC TECHNOLOGY AND INTEGRATION LTDA</strong><br/><br/>CNPJ: 33.910.895/0001-50</div>
+        <p><strong>Contrato:</strong> ${linha(conteudo.contrato, "wide")}</p>
+        <p><strong>Projeto:</strong> ${linha(conteudo.projeto, "wide")}</p>
+        <div class="os-number">ORDEM DE SERVIÇO Nº ${linha(numeroOsSemAno, "short")} / ${anoOs}</div>
+        <div class="form-lines">
+          <p>Comarca/Fórum: ${linha(conteudo.comarcaForum)}</p>
+          <p>Endereço: ${linha(conteudo.endereco)}</p>
+          <p>Data de Início: ${linha(conteudo.dataInicio, "date")}</p>
+          <p>Data de Conclusão: ${linha(conteudo.dataConclusao, "date")}</p>
+          <p class="multiline">Equipe Responsável: ${linha(conteudo.equipeResponsavel)}</p>
+          <p>Gestor RC Technology: ${linha(conteudo.gestorRc)}</p>
+          <p>Gerente do Fórum: ${linha(conteudo.gerenteForum)}</p>
+        </div>`, "cover"),
+      pagina(2, `
+        <h3>1. OBJETO DA ORDEM DE SERVIÇO</h3>
+        <p>Execução de serviços de infraestrutura tecnológica, incluindo (marcar conforme aplicável):</p>
+        <div class="checks">${OBJETO_SERVICO_OPCOES.map((item) => opcao("objetoServicos", item)).join("")}</div>
+        <p>Outros: ${linha(conteudo.outrosObjeto)}</p>
+        <p class="writing-label">${descricaoServicos}</p>
+        <div class="writing-lines">${valor(conteudo.descricaoServicos)}</div>
+        <h3>2. REGISTRO DE CONDIÇÃO PREDIAL - ESTADO INICIAL</h3>
+        <p>Declara-se que, antes do início dos serviços:</p>
+        <div class="checks">${ESTADO_INICIAL_OPCOES.slice(0, 4).map((item) => opcao("estadoInicial", item)).join("")}</div>`),
+      pagina(3, `
+        <div class="checks">${ESTADO_INICIAL_OPCOES.slice(4).map((item) => opcao("estadoInicial", item)).join("")}</div>
+        <p class="writing-label">Anomalias pré-existentes identificadas (se houver):</p>
+        <div class="writing-lines compact">${valor(conteudo.anomaliasPreExistentes)}</div>
+        <p>Protocolo de comunicação (se aplicável): ${linha(conteudo.protocoloComunicacao)}</p>
+        <h3>3. DECLARAÇÃO DE CONFORMIDADE TÉCNICA - ESTADO FINAL</h3>
+        <div class="checks">${ESTADO_FINAL_OPCOES.map((item) => opcao("estadoFinal", item)).join("")}</div>
+        <p class="writing-label">Observações finais:</p>
+        <div class="writing-lines compact">${valor(conteudo.observacoesFinais)}</div>
+        <h3>4. DECLARAÇÃO DE ACEITE E CIÊNCIA</h3>
+        <p>O Gerente do Fórum declara que:</p>
+        <p>- Acompanhou ou tomou ciência da conclusão dos serviços;</p>`),
+      pagina(4, `
+        <p>- O ambiente foi vistoriado;</p>
+        <p>- Os serviços foram executados conforme descrito;</p>
+        <p>- Não há pendências aparentes no momento da vistoria.</p>
+        <p class="writing-label">Ressalvas (caso existam):</p>
+        <div class="writing-lines compact">${valor(conteudo.ressalvas)}</div>
+        <h3>5. CLÁUSULA DE RESGUARDO TÉCNICO</h3>
+        <p class="justified">A presente Ordem de Serviço e a vistoria prévia realizada conjuntamente têm como finalidade registrar as condições aparentes dos ambientes e equipamentos existentes antes da execução dos serviços, incluindo computadores, impressoras e telefones.</p>
+        <p class="justified">Fica estabelecido que eventuais defeitos, falhas, vícios, desgastes naturais, irregularidades ou danos preexistentes não poderão ser imputados à equipe técnica da RC Technology, assim como qualquer dano futuro não poderá ser atribuído à execução dos serviços realizados, salvo mediante comprovação técnica de dolo ou culpa grave.</p>
+        <p class="justified">A assinatura deste documento pelas partes envolvidas formaliza a ciência, concordância e validação das condições verificadas no ato da vistoria e da conclusão dos serviços executados.</p>
+        <h3>6. ASSINATURAS</h3>
+        <p><strong>Pela RC Technology:</strong></p>
+        <p>Técnico Responsável:</p>
+        <p>Nome: ${linha(conteudo.tecnicoResponsavel)}</p>
+        <p>CPF: ${linha(conteudo.cpfTecnico)}</p>
+        <p class="signature-space">Assinatura: ${assinaturaImpressa(documentoSalvo.assinaturaTecnicoBase64, documentoSalvo.tecnicoAssinadoPor)}</p>`),
+      pagina(5, `
+        <p><strong>Gestor do Projeto RC Technology:</strong></p>
+        <p>Nome: ${linha(conteudo.gestorProjetoRc)}</p>
+        <p class="signature-space">Assinatura: ${assinaturaImpressa(documentoSalvo.assinaturaGestorBase64, documentoSalvo.gestorAssinadoPor)}</p>
+        <p class="group-title"><strong>Pelo Fórum / Unidade:</strong></p>
+        <p>Gerente do Fórum:</p>
+        <p>Nome: ${linha(conteudo.gerenteForum)}</p>
+        <p>Cargo: ${linha(conteudo.cargoGerente)}</p>
+        <p class="signature-space">Assinatura: ${assinaturaImpressa(documentoSalvo.assinaturaGerenteBase64, documentoSalvo.gerenteAssinadoPor)}</p>
+        <p>Data: ${linha("", "date")} &nbsp;&nbsp; Carimbo (se aplicável): ${linha("")}</p>
+        <h4>RESPONSÁVEL DESIGNADO PARA ACOMPANHAMENTO DA VISTORIA:</h4>
+        <p><em>(Preencher apenas caso a vistoria não seja acompanhada diretamente pelo(a) Gerente da Unidade)</em></p>
+        <p>Nome: ${linha(conteudo.responsavelDesignadoNome)}</p>
+        <p>Cargo/Função: ${linha(conteudo.responsavelDesignadoCargo)}</p>
+        <p class="signature-space">Assinatura: ${linha("")}</p>
+        <p>Data: ${linha("", "date")}</p>
+        <h4>DECLARAÇÃO DE DESIGNAÇÃO:</h4>
+        <p class="justified">Eu, ${linha("", "medium")}, na condição de Gerente da Comarca/Unidade, declaro para os devidos fins que designo o(a) servidor(a)/colaborador(a) acima identificado(a) para acompanhar a vistoria prévia e os procedimentos relacionados à execução dos serviços, conferindo-lhe autorização para atuar em minha representação durante todo o processo de inspeção inicial dos ambientes.</p>
+        <p>Assinatura do(a) Gerente: ${linha("")}</p>
+        <p>Data: ${linha("", "date")}</p>`),
+    ].join("");
     const janela = window.open("", "_blank", "width=900,height=900");
     if (!janela) return;
     janela.document.write(`
       <html>
         <head>
-          <title>${conteudo.numeroOs} - Documento de Vistoria</title>
+          <title>${valor(conteudo.numeroOs)} - ${subtitulo}</title>
           <style>
             * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; color: #111827; margin: 32px; line-height: 1.35; }
-            h1 { font-size: 20px; text-align: center; margin: 0 0 4px; }
-            h2 { font-size: 13px; margin: 18px 0 8px; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
-            .sub { text-align: center; font-size: 12px; margin-bottom: 20px; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 12px; }
-            .field { border-bottom: 1px solid #94a3b8; padding: 4px 0; min-height: 22px; }
-            .label { font-weight: 700; color: #475569; }
-            ul { margin: 0; padding-left: 18px; font-size: 12px; }
-            p { font-size: 12px; white-space: pre-wrap; }
-            .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
-            .line { border-top: 1px solid #111827; padding-top: 6px; text-align: center; font-size: 12px; }
-            @media print { body { margin: 18mm; } button { display: none; } }
+            @page { size: A4; margin: 0; }
+            body { margin: 0; background: #e5e7eb; color: #111; font-family: Arial, sans-serif; font-size: 11pt; }
+            .page { position: relative; width: 210mm; min-height: 297mm; margin: 8mm auto; padding: 43mm 25mm 31mm; overflow: hidden; background: white; box-shadow: 0 2px 12px #64748b55; page-break-after: always; }
+            .page:last-child { page-break-after: auto; }
+            .document-header { position: absolute; inset: 0 0 auto; height: 35mm; background: #0b2cac; display: flex; align-items: center; justify-content: space-between; padding: 5mm 17mm; }
+            .document-header img { width: 31mm; height: 25mm; object-fit: contain; }
+            .brand-mark { display: grid; grid-template-columns: repeat(2, 5mm); grid-template-rows: repeat(2, 5mm); }
+            .brand-mark i { background: #1c78c0; }
+            .brand-mark i:nth-child(2) { background: #08216c; transform: translate(2mm, 2mm); }
+            .brand-mark i:nth-child(3) { background: #e30613; transform: translate(2mm, -2mm); }
+            .document-footer { position: absolute; inset: auto 0 0; height: 27mm; display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; padding: 4mm 20mm; background: #e10600; color: white; font-size: 6.7pt; line-height: 1.18; }
+            .document-footer > strong { padding-top: 1mm; white-space: nowrap; font-size: 8pt; }
+            main { line-height: 1.35; }
+            h1, h2, h3 { color: #143da2; font-weight: 400; }
+            h3 { margin: 5mm 0 3mm; font-size: 14pt; }
+            h4 { margin: 6mm 0 3mm; font-size: 10.5pt; }
+            p { margin: 2.5mm 0; }
+            .cover main { padding-top: 12mm; }
+            .cover-title { margin-bottom: 15mm; text-align: center; }
+            .cover-title h1 { margin: 0 0 3mm; font-size: 18pt; }
+            .cover-title h2 { margin: 0; font-size: 17pt; }
+            .company { margin-bottom: 7mm; }
+            .os-number { margin: 15mm 0 5mm; color: #143da2; font-size: 15pt; }
+            .fill { display: inline-block; min-width: 80mm; min-height: 5mm; padding: 0 1mm; border-bottom: .35mm solid #111; color: #111; vertical-align: bottom; }
+            .fill.wide { min-width: 115mm; }
+            .fill.medium { min-width: 65mm; }
+            .fill.short { min-width: 22mm; }
+            .fill.date { min-width: 35mm; }
+            .form-lines p { display: flex; align-items: flex-end; gap: 2mm; }
+            .form-lines .fill { flex: 1; }
+            .form-lines .multiline { align-items: flex-start; min-height: 27mm; }
+            .checks { display: grid; gap: 2.5mm; margin: 3mm 0; }
+            .check-row { display: flex; align-items: flex-start; gap: 2mm; }
+            .box { display: inline-flex; width: 4mm; height: 4mm; flex: 0 0 4mm; align-items: center; justify-content: center; border: .3mm solid #111; font-size: 8pt; font-weight: 700; line-height: 1; }
+            .writing-label { margin-top: 5mm; }
+            .writing-lines { min-height: 22mm; padding: 1mm 0; line-height: 7mm; white-space: pre-wrap; background: repeating-linear-gradient(to bottom, transparent 0, transparent 6.6mm, #111 6.6mm, #111 6.9mm); }
+            .writing-lines.compact { min-height: 15mm; }
+            .justified { text-align: justify; }
+            .signature-space { margin-top: 6mm; }
+            .digital-signature { display: inline-flex; min-width: 80mm; min-height: 14mm; align-items: flex-end; gap: 3mm; border-bottom: .35mm solid #111; vertical-align: bottom; }
+            .digital-signature img { width: 38mm; height: 13mm; object-fit: contain; }
+            .digital-signature small { padding-bottom: 1mm; font-size: 7pt; }
+            .group-title { margin-top: 8mm; }
+            .preview-toolbar { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: center; gap: 5mm; padding: 3mm; background: #0f172a; color: white; font-size: 10pt; }
+            .preview-toolbar button { border: 0; border-radius: 2mm; padding: 2.5mm 5mm; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+            @media print {
+              body { background: white; }
+              .page { margin: 0; box-shadow: none; }
+              .preview-toolbar { display: none; }
+            }
           </style>
         </head>
         <body>
-          <h1>ORDEM DE SERVIÇO (OS)</h1>
-          <div class="sub">ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA<br/>RC TECHNOLOGY AND INTEGRATION LTDA - CNPJ: 33.910.895/0001-50</div>
-          <div class="grid">
-            <div class="field"><span class="label">Contrato:</span> ${conteudo.contrato}</div>
-            <div class="field"><span class="label">OS:</span> ${conteudo.numeroOs}</div>
-            <div class="field"><span class="label">Comarca/Fórum:</span> ${conteudo.comarcaForum}</div>
-            <div class="field"><span class="label">Endereço:</span> ${conteudo.endereco}</div>
-            <div class="field"><span class="label">Data de Início:</span> ${conteudo.dataInicio}</div>
-            <div class="field"><span class="label">Data de Conclusão:</span> ${conteudo.dataConclusao}</div>
-            <div class="field"><span class="label">Equipe Responsável:</span> ${conteudo.equipeResponsavel}</div>
-            <div class="field"><span class="label">Gerente do Fórum:</span> ${conteudo.gerenteForum}</div>
+          <div class="preview-toolbar">
+            <span>Pré-visualização A4 - confirme os campos e a escala antes de imprimir.</span>
+            <button type="button" onclick="window.print()">Imprimir agora</button>
           </div>
-          ${lista("1. Objeto da Ordem de Serviço", conteudo.objetoServicos)}
-          <p><strong>Outros:</strong> ${conteudo.outrosObjeto || "-"}</p>
-          <p><strong>Descrição detalhada:</strong><br/>${conteudo.descricaoServicos || "-"}</p>
-          ${lista("2. Registro de Condição Predial - Estado Inicial", conteudo.estadoInicial)}
-          <p><strong>Anomalias pré-existentes:</strong><br/>${conteudo.anomaliasPreExistentes || "-"}</p>
-          <p><strong>Protocolo de comunicação:</strong> ${conteudo.protocoloComunicacao || "-"}</p>
-          ${lista("3. Declaração de Conformidade Técnica - Estado Final", conteudo.estadoFinal)}
-          <p><strong>Observações finais:</strong><br/>${conteudo.observacoesFinais || "-"}</p>
-          <h2>4. Declaração de Aceite e Ciência</h2>
-          <p>O Gerente do Fórum declara que acompanhou ou tomou ciência da conclusão dos serviços, que o ambiente foi vistoriado, que os serviços foram executados conforme descrito e que não há pendências aparentes no momento da vistoria.</p>
-          <p><strong>Ressalvas:</strong><br/>${conteudo.ressalvas || "-"}</p>
-          <h2>5. Cláusula de Resguardo Técnico</h2>
-          <p>A presente Ordem de Serviço e a vistoria prévia realizada conjuntamente têm como finalidade registrar as condições aparentes dos ambientes e equipamentos existentes antes e após a execução dos serviços.</p>
-          <div class="sign">
-            <div class="line">Técnico Responsável<br/>${conteudo.tecnicoResponsavel || ""}</div>
-            <div class="line">Gerente do Fórum<br/>${conteudo.gerenteForum || ""}</div>
-          </div>
+          ${paginas}
         </body>
       </html>
     `);
     janela.document.close();
     janela.focus();
-    janela.print();
   };
 
-  const assinarDocumentoVistoria = async () => {
+  const getNomeAssinantePadrao = (papel) => {
+    if (papel === "TECNICO") return documentoVistoriaForm?.tecnicoResponsavel || "";
+    if (papel === "GESTOR_RC") return documentoVistoriaForm?.gestorProjetoRc || "";
+    return documentoVistoriaForm?.gerenteForum || "";
+  };
+
+  const assinarDocumentoVistoria = async (papel) => {
     try {
       const documento = documentoVistoria?.documentoSalvo || (await salvarDocumentoVistoria());
       if (!documento) return;
       setDocumentoAssinaturaAtual(documento);
+      setPapelAssinaturaAtual(papel);
+      setNomeAssinanteAtual(getNomeAssinantePadrao(papel));
       setComarcaAssinaturaAtual(documentoVistoria.comarca);
       setShowAssinaturaModal(true);
     } catch (err) {
@@ -875,6 +1137,8 @@ export default function GestaoComarcas() {
 
   const abrirModalAssinatura = (comarca) => {
     setDocumentoAssinaturaAtual(null);
+    setPapelAssinaturaAtual(null);
+    setNomeAssinanteAtual("");
     setComarcaAssinaturaAtual(comarca);
     setShowAssinaturaModal(true);
   };
@@ -883,6 +1147,8 @@ export default function GestaoComarcas() {
     setShowAssinaturaModal(false);
     setComarcaAssinaturaAtual(null);
     setDocumentoAssinaturaAtual(null);
+    setPapelAssinaturaAtual(null);
+    setNomeAssinanteAtual("");
     setAssinaturaEmEdicao(false);
   };
 
@@ -939,6 +1205,11 @@ export default function GestaoComarcas() {
   const confirmarAssinatura = async () => {
     if (!comarcaAssinaturaAtual) return;
 
+    if (documentoAssinaturaAtual && !nomeAssinanteAtual.trim()) {
+      alert("Informe o nome de quem está assinando.");
+      return;
+    }
+
     if (!assinaturaEmEdicao) {
       alert("Desenhe a assinatura antes de confirmar.");
       return;
@@ -950,14 +1221,20 @@ export default function GestaoComarcas() {
     try {
       if (documentoAssinaturaAtual) {
         const response = await api.patch(
-          `/documentos-internos/${documentoAssinaturaAtual.id}/assinar`,
-          { assinaturaBase64 },
+          `/documentos-internos/${documentoAssinaturaAtual.id}/assinaturas/${papelAssinaturaAtual}`,
+          { assinaturaBase64, nomeAssinante: nomeAssinanteAtual },
           { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
         );
         setDocumentoVistoria((prev) => ({
           ...prev,
           documentoSalvo: response.data,
         }));
+        setDocumentosVistoriaHistorico((prev) =>
+          prev.map((documento) =>
+            documento.id === response.data.id ? response.data : documento,
+          ),
+        );
+        await carregarAuditoriaDocumento(response.data);
         fecharModalAssinatura();
         return;
       }
@@ -1010,11 +1287,22 @@ export default function GestaoComarcas() {
   const materialEstoqueSelecionado = materiaisEstoque.find(
     (material) => String(material.id) === String(materialForm.materialId),
   );
+  const controlaMetragem = (material) =>
+    ["METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
+  const saldoEstoqueMaterial = (material) =>
+    controlaMetragem(material)
+      ? Number(material?.metragemDisponivel || 0)
+      : Number(material?.quantidadeDisponivel || 0);
+  const saldoReservadoMaterial = (material) =>
+    controlaMetragem(material)
+      ? Number(material?.metragemReservada || 0)
+      : Number(material?.quantidadeReservada || 0);
+  const unidadeMaterial = (material) => (controlaMetragem(material) ? "m" : "un");
   const quantidadeLivreMaterialSelecionado = materialEstoqueSelecionado
     ? Math.max(
         0,
-        (materialEstoqueSelecionado.quantidadeDisponivel ?? 0) -
-          (materialEstoqueSelecionado.quantidadeReservada ?? 0),
+        saldoEstoqueMaterial(materialEstoqueSelecionado) -
+          saldoReservadoMaterial(materialEstoqueSelecionado),
       )
     : 0;
 
@@ -1368,11 +1656,11 @@ export default function GestaoComarcas() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => abrirDocumentoVistoria(comarca)}
+                    onClick={() => abrirDocumentoVistoria(comarca, DOCUMENTO_INICIAL)}
                     className="sm:col-span-2 flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-blue-700 transition hover:bg-blue-50"
                   >
                     <FileText size={14} />
-                    Documento de Vistoria
+                    Documento Inicial - Serviços Previstos
                   </button>
                 </div>
               )}
@@ -1465,6 +1753,14 @@ export default function GestaoComarcas() {
                       Salvar Virada
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => abrirDocumentoVistoria(comarca, DOCUMENTO_FINAL)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-blue-800 transition hover:bg-blue-100"
+                  >
+                    <FileText size={14} />
+                    Documento Final - Encerramento e Aceite
+                  </button>
                 </div>
               )}
 
@@ -1631,10 +1927,9 @@ export default function GestaoComarcas() {
                   (
                   {Math.max(
                     0,
-                    (material.quantidadeDisponivel ?? 0) -
-                      (material.quantidadeReservada ?? 0),
+                    saldoEstoqueMaterial(material) - saldoReservadoMaterial(material),
                   )}{" "}
-                  disponível)
+                  {unidadeMaterial(material)} disponível)
                 </option>
               ))}
             </select>
@@ -1669,15 +1964,15 @@ export default function GestaoComarcas() {
                   <span className="rounded bg-white px-2 py-1 text-slate-500">
                     Em estoque:{" "}
                     <strong className="text-slate-800">
-                      {materialEstoqueSelecionado.quantidadeDisponivel ?? 0}
+                      {saldoEstoqueMaterial(materialEstoqueSelecionado)} {unidadeMaterial(materialEstoqueSelecionado)}
                     </strong>
                   </span>
                   <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">
                     Reservado:{" "}
-                    <strong>{materialEstoqueSelecionado.quantidadeReservada ?? 0}</strong>
+                    <strong>{saldoReservadoMaterial(materialEstoqueSelecionado)} {unidadeMaterial(materialEstoqueSelecionado)}</strong>
                   </span>
                   <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">
-                    Disponível: <strong>{quantidadeLivreMaterialSelecionado}</strong>
+                    Disponível: <strong>{quantidadeLivreMaterialSelecionado} {unidadeMaterial(materialEstoqueSelecionado)}</strong>
                   </span>
                 </div>
               </div>
@@ -1692,8 +1987,8 @@ export default function GestaoComarcas() {
               type="number"
               name="quantidadePrevista"
               required
-              min="1"
-              step="1"
+              min={controlaMetragem(materialEstoqueSelecionado) ? "0.001" : "1"}
+              step={controlaMetragem(materialEstoqueSelecionado) ? "0.001" : "1"}
               value={materialForm.quantidadePrevista}
               onChange={handleMaterialFormChange}
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1862,7 +2157,7 @@ export default function GestaoComarcas() {
           setDocumentoVistoria(null);
           setDocumentoVistoriaForm(null);
         }}
-        title={`Documento de Vistoria - ${documentoVistoria?.comarca?.nomeComarca || ""}`}
+        title={`${documentoVistoria?.tipo === DOCUMENTO_FINAL ? "Documento Final" : "Documento Inicial"} - ${documentoVistoria?.comarca?.nomeComarca || ""}`}
       >
         {documentoVistoriaForm && (
           <div className="max-h-[76vh] space-y-5 overflow-y-auto pr-1 text-sm">
@@ -1871,16 +2166,93 @@ export default function GestaoComarcas() {
                 ORDEM DE SERVIÇO (OS)
               </p>
               <p className="text-center text-xs font-bold uppercase text-slate-500">
-                Encerramento, aceite e conformidade técnica
+                {documentoVistoria?.tipo === DOCUMENTO_FINAL
+                  ? "Encerramento, aceite e conformidade técnica"
+                  : "Abertura, serviços previstos e vistoria técnica inicial"}
               </p>
               {documentoVistoria.documentoSalvo?.status === "REGISTRADO" && (
                 <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs font-bold text-emerald-800">
-                  Documento assinado e registrado. Hash:{" "}
+                  Documento totalmente assinado e registrado. Integridade:{" "}
+                  <span className={documentoIntegridade?.integro ? "text-emerald-700" : "text-rose-700"}>
+                    {documentoIntegridade?.integro ? "confirmada" : "aguardando verificação"}
+                  </span>
+                  <br />Hash:{" "}
                   <span className="font-mono">
                     {documentoVistoria.documentoSalvo.hashRegistro}
                   </span>
                 </div>
               )}
+              {documentoVistoria.documentoSalvo?.status === "PARCIALMENTE_ASSINADO" && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-bold text-amber-800">
+                  Documento parcialmente assinado. Complete as assinaturas pendentes para registrar a versão final.
+                </div>
+              )}
+              {documentoAssinaturasLog.length > 0 && (
+                <div className="mt-3 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-black uppercase tracking-wide text-slate-700">Log imutável de assinaturas</p>
+                  {documentoAssinaturasLog.map((log) => (
+                    <p key={log.id}>
+                      <strong>{log.papel.replaceAll("_", " ")}</strong>: {log.nomeAssinante} em{" "}
+                      {new Date(log.registradoEm).toLocaleString("pt-BR")} · hash {log.hashAssinatura.slice(0, 12)}...
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-y border-slate-200 py-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <History size={16} className="text-slate-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">
+                    Histórico de documentos
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={criarNovaVersaoDocumento}
+                  className="rounded-md border border-blue-200 bg-white px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                >
+                  Nova versão
+                </button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {documentosVistoriaHistorico.map((documento) => {
+                  const selecionado = documentoVistoria.documentoSalvo?.id === documento.id;
+                  const final = documento.tipo === DOCUMENTO_FINAL;
+                  return (
+                    <button
+                      key={documento.id}
+                      type="button"
+                      onClick={() => abrirVersaoDocumento(documento)}
+                      className={`min-w-52 rounded-md border px-3 py-2 text-left text-xs transition ${
+                        selecionado
+                          ? "border-blue-400 bg-blue-50 text-blue-900"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-blue-200"
+                      }`}
+                    >
+                      <span className="block font-black">
+                        {final ? "Encerramento" : "Vistoria inicial"} #{documento.id}
+                      </span>
+                      <span className="mt-1 block">
+                        {documento.dataGeracao
+                          ? new Date(documento.dataGeracao).toLocaleString("pt-BR")
+                          : "Data não informada"}
+                      </span>
+                      <span className="mt-1 block font-bold">
+                        {documento.status === "REGISTRADO"
+                          ? "Registrado"
+                          : documento.status === "PARCIALMENTE_ASSINADO"
+                            ? "Assinatura parcial"
+                            : "Pendente"}
+                      </span>
+                    </button>
+                  );
+                })}
+                {documentosVistoriaHistorico.length === 0 && (
+                  <p className="py-2 text-xs text-slate-400">Nenhuma versão salva nesta obra.</p>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1947,7 +2319,11 @@ export default function GestaoComarcas() {
                   atualizarDocumentoVistoria("descricaoServicos", e.target.value)
                 }
                 className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Descrição detalhada dos serviços executados"
+                placeholder={
+                  documentoVistoria?.tipo === DOCUMENTO_FINAL
+                    ? "Descrição detalhada dos serviços executados"
+                    : "Descrição detalhada dos serviços previstos"
+                }
               />
             </div>
 
@@ -2061,6 +2437,50 @@ export default function GestaoComarcas() {
               />
             </div>
 
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
+                Assinaturas digitais do documento
+              </h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {ASSINATURAS_DOCUMENTO.map((assinatura) => {
+                  const documento = documentoVistoria.documentoSalvo;
+                  const imagem = documento?.[assinatura.campoAssinatura];
+                  return (
+                    <div key={assinatura.papel} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-black text-slate-700">{assinatura.label}</p>
+                      {imagem ? (
+                        <>
+                          <img
+                            src={imagem}
+                            alt={`Assinatura de ${assinatura.label}`}
+                            className="mt-2 h-14 w-full rounded border border-emerald-200 bg-white object-contain"
+                          />
+                          <p className="mt-1 truncate text-[10px] font-bold text-emerald-700">
+                            {documento[assinatura.campoNome] || "Assinado"}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {documento[assinatura.campoData]
+                              ? new Date(documento[assinatura.campoData]).toLocaleString("pt-BR")
+                              : ""}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="my-3 text-xs text-amber-700">Assinatura pendente</p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => assinarDocumentoVistoria(assinatura.papel)}
+                        className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md bg-emerald-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                      >
+                        <ShieldCheck size={13} />
+                        {imagem ? "Substituir" : "Assinar"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -2068,15 +2488,7 @@ export default function GestaoComarcas() {
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
               >
                 <Printer size={16} />
-                Imprimir Documento
-              </button>
-              <button
-                type="button"
-                onClick={assinarDocumentoVistoria}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
-              >
-                <ShieldCheck size={16} />
-                Assinar pelo Site
+                Pré-visualizar e imprimir
               </button>
             </div>
           </div>
@@ -2086,9 +2498,22 @@ export default function GestaoComarcas() {
       <Modal
         isOpen={showAssinaturaModal}
         onClose={fecharModalAssinatura}
-        title={`${documentoAssinaturaAtual ? "Assinar Documento" : "Coletar Assinatura"} - ${comarcaAssinaturaAtual?.nomeComarca || ""}`}
+        title={`${documentoAssinaturaAtual ? ASSINATURAS_DOCUMENTO.find((item) => item.papel === papelAssinaturaAtual)?.label || "Assinar Documento" : "Coletar Assinatura"} - ${comarcaAssinaturaAtual?.nomeComarca || ""}`}
       >
         <div className="space-y-4">
+          {documentoAssinaturaAtual && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Nome de quem está assinando
+              </span>
+              <input
+                value={nomeAssinanteAtual}
+                onChange={(e) => setNomeAssinanteAtual(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Nome completo"
+              />
+            </label>
+          )}
           <canvas
             ref={assinaturaCanvasRef}
             className="w-full rounded-lg border border-slate-300 bg-white touch-none"
@@ -2112,7 +2537,7 @@ export default function GestaoComarcas() {
             <button
               type="button"
               onClick={confirmarAssinatura}
-              disabled={!assinaturaEmEdicao}
+              disabled={!assinaturaEmEdicao || (documentoAssinaturaAtual && !nomeAssinanteAtual.trim())}
               className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
             >
               Confirmar

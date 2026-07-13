@@ -5,12 +5,19 @@ import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.MovimentacaoEstoqueRepository; //  IMPORT DO REPOSITORY NOVO
 import com.poprc.demo.service.EstoqueService;
+import com.poprc.demo.service.UnidadeEstoqueRastreavelService;
+import com.poprc.demo.model.UnidadeEstoqueRastreavel;
+import com.poprc.demo.model.LocalEstoque;
+import com.poprc.demo.model.SaldoMaterialLocal;
+import com.poprc.demo.service.SaldoLocalService;
 import lombok.RequiredArgsConstructor;
 import lombok.Data;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/estoque")
@@ -20,6 +27,13 @@ public class EstoqueController {
     private final EstoqueService estoqueService;
     private final MaterialRepository materialRepository;
     private final MovimentacaoEstoqueRepository movimentacaoEstoqueRepository; // INJEÇÃO DIRETA
+    private final UnidadeEstoqueRastreavelService unidadeRastreavelService;
+    private final SaldoLocalService saldoLocalService;
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> tratarRequisicaoInvalida(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(Map.of("erro", exception.getMessage()));
+    }
 
     @GetMapping("/materiais")
     public ResponseEntity<List<Material>> listarMateriais() {
@@ -29,46 +43,19 @@ public class EstoqueController {
 
     @PostMapping("/materiais")
     public ResponseEntity<Material> cadastrarNovoMaterial(@RequestBody Material material) {
-        // Garante que o material novo comece com zero unidades disponíveis no estoque
-        if (material.getQuantidadeDisponivel() == null) {
-            material.setQuantidadeDisponivel(0);
-        }
-        if (material.getQuantidadeReservada() == null) {
-            material.setQuantidadeReservada(0);
-        }
-        if (material.getCategoria() == null || material.getCategoria().isBlank()) {
-            material.setCategoria("MATERIAL_CONSUMO");
-        }
-        Material salvo = materialRepository.save(material);
+        Material salvo = estoqueService.cadastrarMaterial(material);
         return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
     }
 
     @PutMapping("/materiais/{id}")
     public ResponseEntity<Material> atualizarMaterial(@PathVariable Long id, @RequestBody Material materialAtualizado) {
-        return materialRepository.findById(id)
-                .map(material -> {
-                    material.setNome(materialAtualizado.getNome());
-                    material.setPartNumber(materialAtualizado.getPartNumber());
-                    material.setCategoria(materialAtualizado.getCategoria() == null || materialAtualizado.getCategoria().isBlank()
-                            ? "MATERIAL_CONSUMO"
-                            : materialAtualizado.getCategoria());
-                    material.setDescricao(materialAtualizado.getDescricao());
-                    material.setFotoProdutoUrl(materialAtualizado.getFotoProdutoUrl());
-                    material.setFabricante(materialAtualizado.getFabricante());
-                    material.setFornecedor(materialAtualizado.getFornecedor());
-                    material.setLocalizacao(materialAtualizado.getLocalizacao());
-                    if (materialAtualizado.getQuantidadeDisponivel() != null) {
-                        material.setQuantidadeDisponivel(materialAtualizado.getQuantidadeDisponivel());
-                    }
-                    return ResponseEntity.ok(materialRepository.save(material));
-                })
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        return ResponseEntity.ok(estoqueService.atualizarMaterial(id, materialAtualizado));
     }
 
     // ROTA DO HISTÓRICO CORRIGIDA: Buscando direto do banco pelo repository
     @GetMapping("/historico")
     public ResponseEntity<List<MovimentacaoEstoque>> listarHistorico() {
-        List<MovimentacaoEstoque> historico = movimentacaoEstoqueRepository.findAll();
+        List<MovimentacaoEstoque> historico = movimentacaoEstoqueRepository.findAllByOrderByDataMovimentacaoDesc();
         return ResponseEntity.ok(historico);
     }
 
@@ -77,7 +64,9 @@ public class EstoqueController {
         MovimentacaoEstoque movimentacao = estoqueService.registrarEntrada(
                 request.getMaterialId(),
                 request.getQuantidade(),
-                request.getFuncionarioId());
+                request.getMetragem(),
+                request.getFuncionarioId(),
+                request.getLocalEstoqueId());
         return ResponseEntity.status(HttpStatus.CREATED).body(movimentacao);
     }
 
@@ -91,11 +80,65 @@ public class EstoqueController {
         return ResponseEntity.status(HttpStatus.CREATED).body(movimentacao);
     }
 
+    @PostMapping("/ajustes")
+    public ResponseEntity<MovimentacaoEstoque> registrarAjuste(@RequestBody AjusteRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(estoqueService.registrarAjuste(
+                request.getMaterialId(), request.getLocalEstoqueId(), request.getValor(), request.getTipo(), request.getMotivo(),
+                request.getLancadoPor(), request.getAutorizadoPor()));
+    }
+
+    @PostMapping("/transferencias")
+    public ResponseEntity<MovimentacaoEstoque> transferir(@RequestBody TransferenciaRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(estoqueService.transferirLocalizacao(
+                request.getMaterialId(), request.getOrigemId(), request.getDestinoId(), request.getValor(), request.getMotivo(),
+                request.getLancadoPor(), request.getAutorizadoPor()));
+    }
+
+    @GetMapping("/locais")
+    public ResponseEntity<List<LocalEstoque>> listarLocais() {
+        return ResponseEntity.ok(saldoLocalService.listarLocais());
+    }
+
+    @PostMapping("/locais")
+    public ResponseEntity<LocalEstoque> cadastrarLocal(@RequestBody LocalEstoqueRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(saldoLocalService.cadastrarLocal(request.getNome(), request.getEndereco()));
+    }
+
+    @GetMapping("/saldos-locais")
+    public ResponseEntity<List<SaldoMaterialLocal>> listarSaldosLocais(
+            @RequestParam(required = false) Long materialId) {
+        return ResponseEntity.ok(saldoLocalService.listarSaldos(materialId));
+    }
+
+    @GetMapping("/unidades-rastreaveis")
+    public ResponseEntity<List<UnidadeEstoqueRastreavel>> listarUnidadesRastreaveis(
+            @RequestParam(required = false) Long materialId) {
+        return ResponseEntity.ok(unidadeRastreavelService.listar(materialId));
+    }
+
+    @PostMapping("/unidades-rastreaveis")
+    public ResponseEntity<UnidadeEstoqueRastreavel> cadastrarUnidadeRastreavel(
+            @RequestBody UnidadeRastreavelRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(unidadeRastreavelService.cadastrar(
+                request.getMaterialId(), request.getCodigo(), request.getMetragemInicial(), request.getObservacao(),
+                request.getLocalEstoqueId()));
+    }
+
+    @PatchMapping("/unidades-rastreaveis/{id}/transferir")
+    public ResponseEntity<UnidadeEstoqueRastreavel> transferirUnidadeRastreavel(
+            @PathVariable Long id, @RequestBody TransferenciaUnidadeRequest request) {
+        return ResponseEntity.ok(unidadeRastreavelService.transferir(
+                id, request.getDestinoId(), request.getMotivo(), request.getLancadoPor(), request.getAutorizadoPor()));
+    }
+
     @Data
     public static class EntradaRequest {
         private Long materialId;
         private Integer quantidade;
+        private BigDecimal metragem;
         private Long funcionarioId;
+        private Long localEstoqueId;
     }
 
     @Data
@@ -104,5 +147,50 @@ public class EstoqueController {
         private Integer quantidade;
         private Long funcionarioId;
         private Long comarcaId;
+    }
+
+    @Data
+    public static class UnidadeRastreavelRequest {
+        private Long materialId;
+        private String codigo;
+        private BigDecimal metragemInicial;
+        private String observacao;
+        private Long localEstoqueId;
+    }
+
+    @Data
+    public static class AjusteRequest {
+        private Long materialId;
+        private Long localEstoqueId;
+        private BigDecimal valor;
+        private com.poprc.demo.model.TipoMovimentacao tipo;
+        private String motivo;
+        private String lancadoPor;
+        private String autorizadoPor;
+    }
+
+    @Data
+    public static class TransferenciaRequest {
+        private Long materialId;
+        private Long origemId;
+        private Long destinoId;
+        private BigDecimal valor;
+        private String motivo;
+        private String lancadoPor;
+        private String autorizadoPor;
+    }
+
+    @Data
+    public static class LocalEstoqueRequest {
+        private String nome;
+        private String endereco;
+    }
+
+    @Data
+    public static class TransferenciaUnidadeRequest {
+        private Long destinoId;
+        private String motivo;
+        private String lancadoPor;
+        private String autorizadoPor;
     }
 }

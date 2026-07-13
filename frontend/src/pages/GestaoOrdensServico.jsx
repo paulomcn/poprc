@@ -248,12 +248,23 @@ export default function GestaoOrdensServico() {
 
   const quantidadeMaterial = (valor) => Number(valor || 0);
 
+  const controlaMetragem = (material) =>
+    ["METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
+  const unidadeMaterial = (material) => (controlaMetragem(material) ? "m" : "un");
+  const saldoEstoqueMaterial = (material) =>
+    controlaMetragem(material)
+      ? quantidadeMaterial(material?.metragemDisponivel)
+      : quantidadeMaterial(material?.quantidadeDisponivel);
+  const saldoReservadoMaterial = (material) =>
+    controlaMetragem(material)
+      ? quantidadeMaterial(material?.metragemReservada)
+      : quantidadeMaterial(material?.quantidadeReservada);
+
   const saldoLivreMaterial = (material) => {
     if (!material) return 0;
     return Math.max(
       0,
-      quantidadeMaterial(material.quantidadeDisponivel) -
-        quantidadeMaterial(material.quantidadeReservada),
+      saldoEstoqueMaterial(material) - saldoReservadoMaterial(material),
     );
   };
 
@@ -819,20 +830,21 @@ export default function GestaoOrdensServico() {
                             <option value="">Selecione o material</option>
                             {materiaisEstoque.map((material) => {
                               const saldoLivre = saldoLivreMaterial(material);
-                              const reservado = quantidadeMaterial(material.quantidadeReservada);
-                              const emEstoque = quantidadeMaterial(material.quantidadeDisponivel);
+                              const reservado = saldoReservadoMaterial(material);
+                              const emEstoque = saldoEstoqueMaterial(material);
+                              const unidade = unidadeMaterial(material);
                               return (
                                 <option key={material.id} value={material.id}>
-                                  {material.nome} ({saldoLivre} disponível para OS, {reservado} reservado, {emEstoque} em estoque)
+                                  {material.nome} ({saldoLivre} {unidade} disponível para OS, {reservado} {unidade} reservado, {emEstoque} {unidade} em estoque)
                                 </option>
                               );
                             })}
                           </select>
                           <input
                             type="number"
-                            min="1"
+                            min={controlaMetragem(materialSelecionado) ? "0.001" : "1"}
                             max={materialSelecionado ? saldoLivreSelecionado : undefined}
-                            step="1"
+                            step={controlaMetragem(materialSelecionado) ? "0.001" : "1"}
                             required
                             value={item.quantidadePrevista}
                             onChange={(e) =>
@@ -865,10 +877,10 @@ export default function GestaoOrdensServico() {
                               quantidadeInvalida ? "text-rose-600" : "text-gray-500"
                             }`}
                           >
-                            Disponível para nova OS: {saldoLivreSelecionado}. Em estoque:{" "}
-                            {quantidadeMaterial(materialSelecionado.quantidadeDisponivel)}.
+                            Disponível para nova OS: {saldoLivreSelecionado} {unidadeMaterial(materialSelecionado)}. Em estoque:{" "}
+                            {saldoEstoqueMaterial(materialSelecionado)} {unidadeMaterial(materialSelecionado)}.
                             Reservado:{" "}
-                            {quantidadeMaterial(materialSelecionado.quantidadeReservada)}.
+                            {saldoReservadoMaterial(materialSelecionado)} {unidadeMaterial(materialSelecionado)}.
                           </p>
                         )}
                       </div>

@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
 
@@ -135,7 +136,7 @@ public class ComarcaController {
     @PutMapping("/materiais/{materialId}/auditoria")
     public ResponseEntity<Map<String, Object>> atualizarQuantidadeAuditada(
             @PathVariable Long materialId,
-            @RequestParam Integer quantidadeAuditada) {
+            @RequestParam BigDecimal quantidadeAuditada) {
         return ResponseEntity.ok(comarcaService.atualizarQuantidadeAuditada(materialId, quantidadeAuditada));
     }
 
@@ -283,7 +284,7 @@ public class ComarcaController {
     public static class MaterialPrevistoRequest {
         private Long materialId;
         private String nomeMaterial;
-        private Integer quantidadePrevista;
+        private BigDecimal quantidadePrevista;
 
         public Long getMaterialId() {
             return materialId;
@@ -301,11 +302,11 @@ public class ComarcaController {
             this.nomeMaterial = nomeMaterial;
         }
 
-        public Integer getQuantidadePrevista() {
+        public BigDecimal getQuantidadePrevista() {
             return quantidadePrevista;
         }
 
-        public void setQuantidadePrevista(Integer quantidadePrevista) {
+        public void setQuantidadePrevista(BigDecimal quantidadePrevista) {
             this.quantidadePrevista = quantidadePrevista;
         }
     }

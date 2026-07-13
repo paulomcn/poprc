@@ -225,20 +225,23 @@ public class ComarcaService {
     }
 
     @Transactional
-    public Map<String, Object> atualizarQuantidadeAuditada(Long materialId, Integer quantidadeAuditada) {
-        if (quantidadeAuditada == null || quantidadeAuditada < 0) {
+    public Map<String, Object> atualizarQuantidadeAuditada(Long materialId, BigDecimal quantidadeAuditada) {
+        if (quantidadeAuditada == null || quantidadeAuditada.signum() < 0) {
             throw new IllegalArgumentException("A quantidade auditada deve ser maior ou igual a zero.");
         }
 
         MaterialItem material = materialItemRepository.findById(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material da comarca não encontrado."));
-        if (Boolean.TRUE.equals(material.getEstoqueBaixado())) {
-            throw new IllegalArgumentException("Material já baixado no estoque não pode ter a auditoria alterada.");
+        validarEscalaQuantidade(material.getMaterial(), quantidadeAuditada);
+        Comarca comarca = material.getComarca();
+        if (AS_BUILT_HOMOLOGADO.equals(comarca.getAsBuiltStatus())
+                || AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA.equals(comarca.getAsBuiltStatus())) {
+            throw new IllegalArgumentException("Reabra o As-Built antes de alterar a quantidade auditada.");
         }
 
         material.setQuantidadeAuditada(quantidadeAuditada);
         MaterialItem materialSalvo = materialItemRepository.save(material);
-        sincronizarStatusAsBuilt(materialSalvo.getComarca());
+        sincronizarStatusAsBuilt(comarca);
         return montarMaterialAuditoria(materialSalvo);
     }
 
@@ -250,20 +253,21 @@ public class ComarcaService {
     }
 
     @Transactional
-    public Comarca adicionarMaterialPrevisto(Long comarcaId, Long materialId, String nomeMaterial, Integer quantidadePrevista) {
+    public Comarca adicionarMaterialPrevisto(Long comarcaId, Long materialId, String nomeMaterial, BigDecimal quantidadePrevista) {
         validarMaterialPrevisto(nomeMaterial, quantidadePrevista);
 
         Comarca comarca = comarcaRepository.findById(comarcaId)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
         Material materialEstoque = obterMaterialEstoque(materialId);
-        validarSaldoReserva(materialEstoque, quantidadePrevista, 0);
+        validarEscalaQuantidade(materialEstoque, quantidadePrevista);
+        validarSaldoReserva(materialEstoque, quantidadePrevista, BigDecimal.ZERO);
 
         MaterialItem material = new MaterialItem();
         material.setComarca(comarca);
         material.setMaterial(materialEstoque);
         material.setNomeMaterial(materialEstoque != null ? materialEstoque.getNome() : nomeMaterial.trim());
         material.setQuantidadePrevista(quantidadePrevista);
-        material.setQuantidadeAuditada(0);
+        material.setQuantidadeAuditada(BigDecimal.ZERO);
         material.setEstoqueReservado(false);
         material.setEstoqueBaixado(false);
         material.setDataHoraSolicitacao(LocalDateTime.now());
@@ -276,7 +280,7 @@ public class ComarcaService {
     }
 
     @Transactional
-    public Comarca atualizarMaterialPrevisto(Long materialItemId, Long materialId, String nomeMaterial, Integer quantidadePrevista) {
+    public Comarca atualizarMaterialPrevisto(Long materialItemId, Long materialId, String nomeMaterial, BigDecimal quantidadePrevista) {
         validarMaterialPrevisto(nomeMaterial, quantidadePrevista);
 
         MaterialItem material = materialItemRepository.findById(materialItemId)
@@ -289,7 +293,8 @@ public class ComarcaService {
         liberarReservaEstoque(comarca, material, material.getQuantidadePrevista());
 
         Material materialEstoque = obterMaterialEstoque(materialId);
-        validarSaldoReserva(materialEstoque, quantidadePrevista, 0);
+        validarEscalaQuantidade(materialEstoque, quantidadePrevista);
+        validarSaldoReserva(materialEstoque, quantidadePrevista, BigDecimal.ZERO);
         material.setMaterial(materialEstoque);
         material.setNomeMaterial(materialEstoque != null ? materialEstoque.getNome() : nomeMaterial.trim());
         material.setQuantidadePrevista(quantidadePrevista);
@@ -330,20 +335,21 @@ public class ComarcaService {
     }
 
     @Transactional
-    public Comarca adicionarItemAdicional(Long comarcaId, Long materialId, String nomeMaterial, Integer quantidadePrevista) {
+    public Comarca adicionarItemAdicional(Long comarcaId, Long materialId, String nomeMaterial, BigDecimal quantidadePrevista) {
         validarMaterialPrevisto(nomeMaterial, quantidadePrevista);
 
         Comarca comarca = comarcaRepository.findById(comarcaId)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
         Material materialEstoque = obterMaterialEstoque(materialId);
-        validarSaldoReserva(materialEstoque, quantidadePrevista, 0);
+        validarEscalaQuantidade(materialEstoque, quantidadePrevista);
+        validarSaldoReserva(materialEstoque, quantidadePrevista, BigDecimal.ZERO);
 
         MaterialItem material = new MaterialItem();
         material.setComarca(comarca);
         material.setMaterial(materialEstoque);
         material.setNomeMaterial(materialEstoque != null ? materialEstoque.getNome() : nomeMaterial.trim());
         material.setQuantidadePrevista(quantidadePrevista);
-        material.setQuantidadeAuditada(0);
+        material.setQuantidadeAuditada(BigDecimal.ZERO);
         material.setEstoqueReservado(false);
         material.setEstoqueBaixado(false);
         material.setItemAdicional(true);
@@ -414,7 +420,7 @@ public class ComarcaService {
 
         boolean conciliado = materiaisConciliados(materiais);
         validarMateriaisVinculadosAoEstoque(materiais);
-        baixarEstoqueDaComarca(comarca, materiais);
+        validarConsolidacaoFisicaDaOr(comarca, materiais);
 
         comarca.setAsBuiltStatus(conciliado ? AS_BUILT_HOMOLOGADO : AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA);
         comarca.setSituacao(conciliado ? "AS_BUILT_HOMOLOGADO" : "AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA");
@@ -431,9 +437,6 @@ public class ComarcaService {
                 && !AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA.equals(comarca.getAsBuiltStatus())) {
             throw new IllegalArgumentException("Somente As-Built homologado pode ser reaberto para ajuste.");
         }
-
-        List<MaterialItem> materiais = materiaisDaComarca(comarca);
-        estornarBaixaDaComarca(comarca, materiais);
 
         comarca.setAsBuiltStatus(AS_BUILT_REABERTO);
         comarca.setSituacao("AS_BUILT_REABERTO_PARA_AJUSTE");
@@ -499,10 +502,16 @@ public class ComarcaService {
             materialMap.put("materialId", material.getMaterial().getId());
             materialMap.put("partNumber", material.getMaterial().getPartNumber());
             materialMap.put("categoria", material.getMaterial().getCategoria());
+            materialMap.put("tipoControle", material.getMaterial().getTipoControle());
+            materialMap.put("unidadeMedida", material.getMaterial().getUnidadeMedida());
             materialMap.put("descricaoProduto", material.getMaterial().getDescricao());
             materialMap.put("fotoProdutoUrl", material.getMaterial().getFotoProdutoUrl());
-            materialMap.put("estoqueDisponivel", material.getMaterial().getQuantidadeDisponivel());
-            materialMap.put("estoqueReservadoTotal", quantidadeReservada(material.getMaterial()));
+            materialMap.put("estoqueDisponivel", controlaMetragem(material.getMaterial())
+                    ? material.getMaterial().getMetragemDisponivel()
+                    : material.getMaterial().getQuantidadeDisponivel());
+            materialMap.put("estoqueReservadoTotal", controlaMetragem(material.getMaterial())
+                    ? metragemReservada(material.getMaterial())
+                    : BigDecimal.valueOf(quantidadeReservada(material.getMaterial())));
             materialMap.put("estoqueLivre", saldoLivreParaPlanejamento(material.getMaterial()));
         }
         return materialMap;
@@ -518,10 +527,10 @@ public class ComarcaService {
                 .map(item -> montarItemRastreabilidade(item, movimentacoes))
                 .toList();
 
-        int totalPrevisto = somarCampo(itens, "previsto");
-        int totalReservado = somarCampo(itens, "reservado");
-        int totalAuditado = somarCampo(itens, "auditado");
-        int totalBaixado = somarCampo(itens, "baixado");
+        BigDecimal totalPrevisto = somarCampo(itens, "previsto");
+        BigDecimal totalReservado = somarCampo(itens, "reservado");
+        BigDecimal totalAuditado = somarCampo(itens, "auditado");
+        BigDecimal totalBaixado = somarCampo(itens, "baixado");
 
         response.put("comarcaId", comarca.getId());
         response.put("nomeComarca", comarca.getNomeComarca());
@@ -533,8 +542,8 @@ public class ComarcaService {
                 "reservado", totalReservado,
                 "auditado", totalAuditado,
                 "baixado", totalBaixado,
-                "saldoPrevistoBaixado", totalPrevisto - totalBaixado,
-                "saldoAuditadoBaixado", totalAuditado - totalBaixado));
+                "saldoPrevistoBaixado", totalPrevisto.subtract(totalBaixado),
+                "saldoAuditadoBaixado", totalAuditado.subtract(totalBaixado)));
         response.put("itens", itens);
         response.put("movimentacoes", movimentacoes.stream().map(this::montarMovimentacaoRastreabilidade).toList());
         return response;
@@ -547,19 +556,22 @@ public class ComarcaService {
                         && movimentacao.getMaterial().getId().equals(item.getMaterial().getId()))
                 .toList();
 
-        int baixado = movimentacoesDoMaterial.stream()
+        BigDecimal baixado = movimentacoesDoMaterial.stream()
                 .filter(movimentacao -> TipoMovimentacao.BAIXA.equals(movimentacao.getTipo())
                         || TipoMovimentacao.SAIDA.equals(movimentacao.getTipo())
-                        || TipoMovimentacao.ESTORNO_BAIXA.equals(movimentacao.getTipo()))
-                .mapToInt(movimentacao -> TipoMovimentacao.ESTORNO_BAIXA.equals(movimentacao.getTipo())
-                        ? -quantidadeMovimentacao(movimentacao)
-                        : quantidadeMovimentacao(movimentacao))
-                .sum();
-        int reservado = Boolean.TRUE.equals(item.getEstoqueReservado()) && !Boolean.TRUE.equals(item.getEstoqueBaixado())
+                        || TipoMovimentacao.ESTORNO_BAIXA.equals(movimentacao.getTipo())
+                        || TipoMovimentacao.RETIRADA_OR.equals(movimentacao.getTipo())
+                        || TipoMovimentacao.DEVOLUCAO_OR.equals(movimentacao.getTipo()))
+                .map(movimentacao -> TipoMovimentacao.ESTORNO_BAIXA.equals(movimentacao.getTipo())
+                                || TipoMovimentacao.DEVOLUCAO_OR.equals(movimentacao.getTipo())
+                        ? valorMovimentacao(movimentacao).negate()
+                        : valorMovimentacao(movimentacao))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal reservado = Boolean.TRUE.equals(item.getEstoqueReservado()) && !Boolean.TRUE.equals(item.getEstoqueBaixado())
                 ? item.getQuantidadePrevista()
-                : 0;
-        int previsto = item.getQuantidadePrevista();
-        int auditado = item.getQuantidadeAuditada();
+                : BigDecimal.ZERO;
+        BigDecimal previsto = item.getQuantidadePrevista();
+        BigDecimal auditado = item.getQuantidadeAuditada();
 
         Map<String, Object> itemMap = new HashMap<>();
         itemMap.put("materialItemId", item.getId());
@@ -573,8 +585,8 @@ public class ComarcaService {
         itemMap.put("reservado", reservado);
         itemMap.put("auditado", auditado);
         itemMap.put("baixado", baixado);
-        itemMap.put("saldoPrevistoBaixado", previsto - baixado);
-        itemMap.put("saldoAuditadoBaixado", auditado - baixado);
+        itemMap.put("saldoPrevistoBaixado", previsto.subtract(baixado));
+        itemMap.put("saldoAuditadoBaixado", auditado.subtract(baixado));
         itemMap.put("estoqueBaixado", Boolean.TRUE.equals(item.getEstoqueBaixado()));
         itemMap.put("materialFaltante", Boolean.TRUE.equals(item.getMaterialFaltante()));
         itemMap.put("itemAdicional", Boolean.TRUE.equals(item.getItemAdicional()));
@@ -602,20 +614,20 @@ public class ComarcaService {
         return movimentacaoMap;
     }
 
-    private int somarCampo(List<Map<String, Object>> itens, String campo) {
+    private BigDecimal somarCampo(List<Map<String, Object>> itens, String campo) {
         return itens.stream()
                 .map(item -> item.get(campo))
                 .filter(Number.class::isInstance)
                 .map(Number.class::cast)
-                .mapToInt(numero -> numero.intValue())
-                .sum();
+                .map(numero -> new BigDecimal(numero.toString()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private void validarMaterialPrevisto(String nomeMaterial, Integer quantidadePrevista) {
+    private void validarMaterialPrevisto(String nomeMaterial, BigDecimal quantidadePrevista) {
         if (nomeMaterial == null || nomeMaterial.isBlank()) {
             throw new IllegalArgumentException("Nome do material é obrigatório.");
         }
-        if (quantidadePrevista == null || quantidadePrevista <= 0) {
+        if (quantidadePrevista == null || quantidadePrevista.signum() <= 0) {
             throw new IllegalArgumentException("A quantidade prevista deve ser maior que zero.");
         }
     }
@@ -629,18 +641,22 @@ public class ComarcaService {
                 .orElseThrow(() -> new IllegalArgumentException("Material do estoque não encontrado."));
     }
 
-    private void validarSaldoReserva(Material material, Integer quantidadePrevista, int creditoReservaAtual) {
-        int saldoLivre = saldoLivreParaPlanejamento(material) + creditoReservaAtual;
-        if (quantidadePrevista > saldoLivre) {
+    private void validarSaldoReserva(Material material, BigDecimal quantidadePrevista, BigDecimal creditoReservaAtual) {
+        BigDecimal saldoLivre = saldoLivreParaPlanejamento(material).add(creditoReservaAtual);
+        if (quantidadePrevista.compareTo(saldoLivre) > 0) {
             throw new SaldoInsuficienteException(
                     "Estoque insuficiente para " + material.getNome() + ". Disponível: "
                             + saldoLivre + ", previsto: " + quantidadePrevista + ".");
         }
     }
 
-    private void reservarEstoque(Comarca comarca, MaterialItem item, int quantidade) {
+    private void reservarEstoque(Comarca comarca, MaterialItem item, BigDecimal quantidade) {
         Material material = item.getMaterial();
-        material.setQuantidadeReservada(quantidadeReservada(material) + quantidade);
+        if (controlaMetragem(material)) {
+            material.setMetragemReservada(metragemReservada(material).add(quantidade));
+        } else {
+            material.setQuantidadeReservada(quantidadeReservada(material) + quantidade.intValueExact());
+        }
         materialRepository.save(material);
 
         registrarMovimentacaoEstoque(comarca, material, quantidade, TipoMovimentacao.RESERVA,
@@ -650,13 +666,18 @@ public class ComarcaService {
         materialItemRepository.save(item);
     }
 
-    private void liberarReservaEstoque(Comarca comarca, MaterialItem item, int quantidade) {
+    private void liberarReservaEstoque(Comarca comarca, MaterialItem item, BigDecimal quantidade) {
         if (!Boolean.TRUE.equals(item.getEstoqueReservado()) || item.getMaterial() == null) {
             return;
         }
 
         Material material = item.getMaterial();
-        material.setQuantidadeReservada(Math.max(0, quantidadeReservada(material) - quantidade));
+        if (controlaMetragem(material)) {
+            material.setMetragemReservada(metragemReservada(material).subtract(quantidade).max(BigDecimal.ZERO));
+        } else {
+            material.setQuantidadeReservada(Math.max(0,
+                    quantidadeReservada(material) - quantidade.intValueExact()));
+        }
         materialRepository.save(material);
 
         registrarMovimentacaoEstoque(comarca, material, quantidade, TipoMovimentacao.ESTORNO_RESERVA,
@@ -666,17 +687,41 @@ public class ComarcaService {
         materialItemRepository.save(item);
     }
 
-    private void registrarMovimentacaoEstoque(Comarca comarca, Material material, int quantidade, TipoMovimentacao tipo,
+    private void registrarMovimentacaoEstoque(Comarca comarca, Material material, BigDecimal quantidade, TipoMovimentacao tipo,
             String observacao) {
         MovimentacaoEstoque movimentacao = new MovimentacaoEstoque();
         movimentacao.setMaterial(material);
-        movimentacao.setQuantidade(quantidade);
+        movimentacao.setUnidadeMedida(material.getUnidadeMedida());
+        if (controlaMetragem(material)) {
+            movimentacao.setMetragem(quantidade);
+        } else {
+            movimentacao.setQuantidade(quantidade.intValueExact());
+        }
+        if (!controlaMetragem(material) && material.getComprimentoPorPeca() != null) {
+            movimentacao.setMetragem(material.getComprimentoPorPeca()
+                    .multiply(quantidade));
+        }
         movimentacao.setTipo(tipo);
         movimentacao.setDataMovimentacao(LocalDateTime.now());
         movimentacao.setObservacao(observacao);
         movimentacao.setComarca(comarca);
         movimentacao.setOrdemServico(comarca.getOrdemServico());
         movimentacao.setProjeto(resolverProjetoDaComarca(comarca));
+        BigDecimal saldoPosterior = saldoLivreParaPlanejamento(material);
+        movimentacao.setSaldoPosterior(saldoPosterior);
+        if (TipoMovimentacao.RESERVA.equals(tipo)) {
+            movimentacao.setSaldoAnterior(saldoPosterior.add(quantidade));
+            movimentacao.setMotivo("Reserva para OS");
+        } else if (TipoMovimentacao.ESTORNO_RESERVA.equals(tipo)) {
+            movimentacao.setSaldoAnterior(saldoPosterior.subtract(quantidade));
+            movimentacao.setMotivo("Liberação de reserva da OS");
+        } else {
+            movimentacao.setSaldoAnterior(saldoPosterior);
+            movimentacao.setMotivo(observacao);
+        }
+        movimentacao.setLancadoPor("Sistema");
+        movimentacao.setEstoqueOrigem(material.getLocalizacao());
+        movimentacao.setEstoqueDestino(comarca.getNomeComarca());
         movimentacaoEstoqueRepository.save(movimentacao);
     }
 
@@ -691,78 +736,62 @@ public class ComarcaService {
                 });
     }
 
-    private void baixarEstoqueDaComarca(Comarca comarca, List<MaterialItem> materiais) {
-        for (MaterialItem item : materiais) {
-            if (Boolean.TRUE.equals(item.getEstoqueBaixado())) {
-                continue;
-            }
+    private void validarConsolidacaoFisicaDaOr(Comarca comarca, List<MaterialItem> materiais) {
+        Map<Long, BigDecimal> auditadoPorMaterial = new HashMap<>();
+        Map<Long, Material> materiaisPorId = new HashMap<>();
 
-            Material material = item.getMaterial();
-            int quantidadeBaixa = item.getQuantidadeAuditada();
-            int disponivel = material.getQuantidadeDisponivel() != null ? material.getQuantidadeDisponivel() : 0;
-            if (quantidadeBaixa > disponivel) {
-                throw new SaldoInsuficienteException(
-                        "Estoque insuficiente para baixar " + material.getNome() + ". Em estoque: "
-                                + disponivel + ", auditado: " + quantidadeBaixa + ".");
-            }
-
-            material.setQuantidadeDisponivel(disponivel - quantidadeBaixa);
-            if (Boolean.TRUE.equals(item.getEstoqueReservado())) {
-                material.setQuantidadeReservada(Math.max(0, quantidadeReservada(material) - item.getQuantidadePrevista()));
-            }
-            materialRepository.save(material);
-
-            registrarMovimentacaoEstoque(comarca, material, quantidadeBaixa, TipoMovimentacao.BAIXA,
-                    montarObservacaoBaixa(comarca, item));
-
-            item.setEstoqueReservado(false);
-            item.setEstoqueBaixado(true);
-            if (item.getDataHoraRetirada() == null) {
-                item.setDataHoraRetirada(LocalDateTime.now());
-            }
-            if (item.getDataHoraUso() == null) {
-                item.setDataHoraUso(LocalDateTime.now());
-            }
-            materialItemRepository.save(item);
-        }
-    }
-
-    private void estornarBaixaDaComarca(Comarca comarca, List<MaterialItem> materiais) {
         for (MaterialItem item : materiais) {
             if (!Boolean.TRUE.equals(item.getEstoqueBaixado())) {
+                throw new IllegalArgumentException(
+                        "Execute a Ordem de Retirada antes de homologar o material \""
+                                + item.getNomeMaterial() + "\".");
+            }
+            Long materialId = item.getMaterial().getId();
+            materiaisPorId.put(materialId, item.getMaterial());
+            auditadoPorMaterial.merge(materialId, item.getQuantidadeAuditada(), BigDecimal::add);
+        }
+
+        List<MovimentacaoEstoque> movimentacoes = movimentacaoEstoqueRepository
+                .findByComarcaIdOrderByDataMovimentacaoDesc(comarca.getId());
+        Map<Long, BigDecimal> retiradoPorMaterial = somarMovimentacoesPorMaterial(movimentacoes,
+                TipoMovimentacao.RETIRADA_OR);
+        Map<Long, BigDecimal> devolvidoPorMaterial = somarMovimentacoesPorMaterial(movimentacoes,
+                TipoMovimentacao.DEVOLUCAO_OR);
+
+        for (Map.Entry<Long, BigDecimal> entrada : auditadoPorMaterial.entrySet()) {
+            Long materialId = entrada.getKey();
+            Material material = materiaisPorId.get(materialId);
+            BigDecimal auditado = entrada.getValue();
+            BigDecimal retirado = retiradoPorMaterial.getOrDefault(materialId, BigDecimal.ZERO);
+            BigDecimal devolvido = devolvidoPorMaterial.getOrDefault(materialId, BigDecimal.ZERO);
+            BigDecimal consumoLiquido = retirado.subtract(devolvido);
+
+            if ("FERRAMENTA".equals(material.getCategoria())) {
+                if (retirado.signum() <= 0 || consumoLiquido.signum() != 0) {
+                    throw new IllegalArgumentException(
+                            "A ferramenta \"" + material.getNome()
+                                    + "\" precisa ser retirada por OR e devolvida integralmente antes da homologação.");
+                }
                 continue;
             }
 
-            Material material = item.getMaterial();
-            if (material == null) {
-                continue;
+            if (consumoLiquido.compareTo(auditado) != 0) {
+                throw new IllegalArgumentException(
+                        "Conciliação pendente para \"" + material.getNome() + "\": retirado " + retirado
+                                + ", devolvido " + devolvido + ", consumo líquido " + consumoLiquido
+                                + " e auditado " + auditado + ". Ajuste a auditoria ou conclua a devolução da OR.");
             }
-
-            int quantidadeAuditada = item.getQuantidadeAuditada();
-            int disponivel = material.getQuantidadeDisponivel() != null ? material.getQuantidadeDisponivel() : 0;
-            material.setQuantidadeDisponivel(disponivel + quantidadeAuditada);
-            material.setQuantidadeReservada(quantidadeReservada(material) + item.getQuantidadePrevista());
-            materialRepository.save(material);
-
-            registrarMovimentacaoEstoque(comarca, material, quantidadeAuditada, TipoMovimentacao.ESTORNO_BAIXA,
-                    montarObservacaoEstornoBaixa(comarca, item));
-
-            item.setEstoqueBaixado(false);
-            item.setEstoqueReservado(true);
-            materialItemRepository.save(item);
         }
     }
 
-    private String montarObservacaoBaixa(Comarca comarca, MaterialItem item) {
-        String numeroOs = comarca.getOrdemServico() != null ? comarca.getOrdemServico().getNumeroOs() : "OS não vinculada";
-        return "Baixa automática As-Built | " + numeroOs + " | " + comarca.getNomeComarca()
-                + " | Material previsto #" + item.getId();
-    }
-
-    private String montarObservacaoEstornoBaixa(Comarca comarca, MaterialItem item) {
-        String numeroOs = comarca.getOrdemServico() != null ? comarca.getOrdemServico().getNumeroOs() : "OS não vinculada";
-        return "Reabertura As-Built - estorno da baixa | " + numeroOs + " | " + comarca.getNomeComarca()
-                + " | Material previsto #" + item.getId();
+    private Map<Long, BigDecimal> somarMovimentacoesPorMaterial(List<MovimentacaoEstoque> movimentacoes,
+            TipoMovimentacao tipo) {
+        return movimentacoes.stream()
+                .filter(movimentacao -> tipo.equals(movimentacao.getTipo()))
+                .filter(movimentacao -> movimentacao.getMaterial() != null)
+                .collect(Collectors.groupingBy(
+                        movimentacao -> movimentacao.getMaterial().getId(),
+                        Collectors.reducing(BigDecimal.ZERO, this::valorMovimentacao, BigDecimal::add)));
     }
 
     private String montarObservacaoReserva(Comarca comarca, MaterialItem item) {
@@ -785,13 +814,40 @@ public class ComarcaService {
         return material.getQuantidadeReservada() != null ? material.getQuantidadeReservada() : 0;
     }
 
-    private int saldoLivreParaPlanejamento(Material material) {
-        int disponivel = material.getQuantidadeDisponivel() != null ? material.getQuantidadeDisponivel() : 0;
-        return Math.max(0, disponivel - quantidadeReservada(material));
+    private BigDecimal metragemReservada(Material material) {
+        return material.getMetragemReservada() != null ? material.getMetragemReservada() : BigDecimal.ZERO;
     }
 
-    private int quantidadeMovimentacao(MovimentacaoEstoque movimentacao) {
-        return movimentacao.getQuantidade() != null ? movimentacao.getQuantidade() : 0;
+    private BigDecimal saldoLivreParaPlanejamento(Material material) {
+        if (controlaMetragem(material)) {
+            BigDecimal disponivel = material.getMetragemDisponivel() != null
+                    ? material.getMetragemDisponivel()
+                    : BigDecimal.ZERO;
+            return disponivel.subtract(metragemReservada(material)).max(BigDecimal.ZERO);
+        }
+        int disponivel = material.getQuantidadeDisponivel() != null ? material.getQuantidadeDisponivel() : 0;
+        return BigDecimal.valueOf(Math.max(0, disponivel - quantidadeReservada(material)));
+    }
+
+    private BigDecimal valorMovimentacao(MovimentacaoEstoque movimentacao) {
+        if (movimentacao.getMaterial() != null && controlaMetragem(movimentacao.getMaterial())) {
+            return movimentacao.getMetragem() != null ? movimentacao.getMetragem() : BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(movimentacao.getQuantidade() != null ? movimentacao.getQuantidade() : 0);
+    }
+
+    private boolean controlaMetragem(Material material) {
+        return material != null && (com.poprc.demo.model.TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+                || com.poprc.demo.model.TipoControleEstoque.BOBINA.equals(material.getTipoControle())
+                || com.poprc.demo.model.TipoControleEstoque.ROLO.equals(material.getTipoControle()));
+    }
+
+    private void validarEscalaQuantidade(Material material, BigDecimal quantidade) {
+        if (!controlaMetragem(material) && quantidade != null
+                && quantidade.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("O material \"" + material.getNome()
+                    + "\" deve ser informado em quantidade inteira.");
+        }
     }
 
     private Comarca recarregarComarca(Long comarcaId) {
@@ -837,7 +893,8 @@ public class ComarcaService {
 
     private boolean materiaisConciliados(List<MaterialItem> materiais) {
         return !materiais.isEmpty()
-                && materiais.stream().allMatch(mat -> mat.getQuantidadePrevista() == mat.getQuantidadeAuditada());
+                && materiais.stream().allMatch(mat -> mat.getQuantidadePrevista()
+                        .compareTo(mat.getQuantidadeAuditada()) == 0);
     }
 
     private List<MaterialItem> materiaisDaComarca(Comarca comarca) {

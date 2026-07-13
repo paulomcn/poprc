@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   MapPin,
@@ -15,18 +15,13 @@ import {
   ListChecks
 } from 'lucide-react'
 import api from '../services/api'
+import { buildApiFileUrl } from '../services/runtimeConfig'
 
-const osFallbackBase = {
-  cliente: 'Tribunal de Justiça - Comarca Centro',
-  status: 'EM_EXECUCAO',
-  descricao: 'Instalação de racks de telecomunicação, cabeamento estruturado Cat6 e certificação de 24 pontos de rede.',
-  endereco: 'Praça D. Pedro II, s/n - Centro, Salvador - BA',
-  prioridade: 'Alta',
-  dataExecucao: '2026-06-15',
-  contato: 'Carlos Souza (Coordenador de TI) - (71) 99888-7766',
-  dataHoraInicio: '2026-06-15T08:00:00',
-  dataHoraFim: '2026-06-15T17:00:00',
-  deadline: '2026-06-16T18:00:00'
+const TECNICO_STORAGE_KEY = 'rc-tecnico-operacao-id'
+const MAX_FOTO_BYTES = 10 * 1024 * 1024
+
+function getApiErrorMessage(error, fallback) {
+  return error?.response?.data?.message || error?.response?.data?.erro || fallback
 }
 
 function parseChecklistIds(checklist) {
@@ -114,47 +109,74 @@ function getTemporalAlerts(os) {
 export default function ExecutarOrdemServico() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const funcionarioId = searchParams.get('funcionarioId') || localStorage.getItem(TECNICO_STORAGE_KEY)
 
   const [os, setOs] = useState(null)
+  const [tecnico, setTecnico] = useState(null)
+  const [evidencias, setEvidencias] = useState([])
   const [atividadesPadrao, setAtividadesPadrao] = useState([])
   const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploadingFoto, setUploadingFoto] = useState(false)
   const [savingChecklist, setSavingChecklist] = useState(false)
   const [feedbackMsg, setFeedbackMsg] = useState({ tipo: '', texto: '' })
+  const [erroCarregamento, setErroCarregamento] = useState('')
 
   useEffect(() => {
     async function puxarDadosDaTela() {
       try {
         setLoading(true)
-        const [osResponse, atividadesResponse] = await Promise.all([
+        setErroCarregamento('')
+        if (!funcionarioId) {
+          throw new Error('Selecione o técnico no painel antes de acessar uma OS.')
+        }
+
+        const [osResponse, atividadesResponse, evidenciasResponse, funcionariosResponse, comarcasResponse] = await Promise.all([
           api.get(`/ordens-servico/${id}`),
-          api.get('/atividades-padrao/ativas')
+          api.get('/atividades-padrao/ativas'),
+          api.get(`/campo/evidencias/os/${id}`),
+          api.get('/funcionarios'),
+          api.get('/comarcas')
         ])
 
-        setOs(osResponse.data)
-        setAtividadesSelecionadas(parseChecklistIds(osResponse.data?.checklist))
-        setAtividadesPadrao(atividadesResponse.data || [])
-      } catch (err) {
-        console.warn('Falha ao carregar dados completos da OS, aplicando fallback para manter a tela testável.', err)
-        setOs({
-          ...osFallbackBase,
-          id: Number(id) || 1,
-          numeroOs: `OS-2026-04${id || '2'}`
-        })
-        setAtividadesSelecionadas([])
-        try {
-          const atividadesResponse = await api.get('/atividades-padrao/ativas')
-          setAtividadesPadrao(atividadesResponse.data || [])
-        } catch (atividadeErr) {
-          setAtividadesPadrao([])
+        const tecnicoSelecionado = (funcionariosResponse.data || [])
+          .find((funcionario) => String(funcionario.id) === String(funcionarioId))
+        if (!tecnicoSelecionado) {
+          throw new Error('O técnico selecionado não foi encontrado.')
         }
+
+        const ordem = osResponse.data
+        const responsavelId = ordem?.projeto?.responsavel?.id
+        if (!responsavelId || String(responsavelId) !== String(tecnicoSelecionado.id)) {
+          throw new Error('Esta OS não está atribuída ao técnico selecionado.')
+        }
+
+        const comarca = (comarcasResponse.data || [])
+          .find((item) => item.projeto?.id === ordem.projeto?.id)
+        setTecnico(tecnicoSelecionado)
+        setOs({
+          ...ordem,
+          cliente: comarca?.nomeComarca || ordem.contrato?.cliente || ordem.projeto?.nome,
+          endereco: comarca?.endereco || ordem.projeto?.endereco,
+          contato: comarca?.contatoResponsavel || comarca?.gerenteResponsavel
+        })
+        setAtividadesSelecionadas(parseChecklistIds(ordem?.checklist))
+        setAtividadesPadrao(atividadesResponse.data || [])
+        setEvidencias(evidenciasResponse.data || [])
+      } catch (err) {
+        setOs(null)
+        setTecnico(null)
+        setEvidencias([])
+        setAtividadesSelecionadas([])
+        setAtividadesPadrao([])
+        setErroCarregamento(getApiErrorMessage(err, err.message || 'Não foi possível carregar esta Ordem de Serviço.'))
       } finally {
         setLoading(false)
       }
     }
     puxarDadosDaTela()
-  }, [id])
+  }, [funcionarioId, id])
 
   const handleToggleAtividade = (atividadeId) => {
     setAtividadesSelecionadas((prev) => {
@@ -166,6 +188,11 @@ export default function ExecutarOrdemServico() {
   }
 
   const handleSalvarChecklist = async () => {
+    if (!tecnico) {
+      mostrarFeedback('erro', 'Técnico não identificado.')
+      return
+    }
+
     const atividades = atividadesPadrao
       .filter((atividade) => atividadesSelecionadas.includes(atividade.id))
       .map((atividade) => ({
@@ -176,7 +203,7 @@ export default function ExecutarOrdemServico() {
 
     const checklist = JSON.stringify({
       registradoEm: new Date().toISOString(),
-      registradoPor: 'Técnico',
+      registradoPor: tecnico.nome,
       atividades
     })
 
@@ -186,7 +213,7 @@ export default function ExecutarOrdemServico() {
       setOs(response.data)
       mostrarFeedback('sucesso', 'Atividades realizadas registradas na OS.')
     } catch (err) {
-      mostrarFeedback('erro', 'Falha ao salvar o checklist da OS.')
+      mostrarFeedback('erro', getApiErrorMessage(err, 'Falha ao salvar o checklist da OS.'))
     } finally {
       setSavingChecklist(false)
     }
@@ -194,18 +221,32 @@ export default function ExecutarOrdemServico() {
 
   const handleMudarStatus = async (novoStatus) => {
     try {
-      await api.put(`/ordens-servico/${id}/status`, { status: novoStatus })
-      setOs(prev => ({ ...prev, status: novoStatus }))
+      const response = await api.put(`/ordens-servico/${id}/status`, { status: novoStatus })
+      setOs((prev) => ({ ...prev, ...(response.data || {}), status: novoStatus }))
       mostrarFeedback('sucesso', `Status da OS alterado para ${novoStatus.replace('_', ' ')}!`)
     } catch (err) {
-      setOs(prev => ({ ...prev, status: novoStatus }))
-      mostrarFeedback('sucesso', `[Simulado] Status alterado para ${novoStatus.replace('_', ' ')}`)
+      mostrarFeedback('erro', getApiErrorMessage(err, 'Falha ao atualizar o status da OS.'))
     }
   }
 
   const handleUploadFotoEvidencia = async (e) => {
     const file = e.target.files[0]
     if (!file) return
+    if (!tecnico) {
+      mostrarFeedback('erro', 'Técnico não identificado.')
+      e.target.value = ''
+      return
+    }
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      mostrarFeedback('erro', 'Envie uma imagem JPG, JPEG ou PNG.')
+      e.target.value = ''
+      return
+    }
+    if (file.size > MAX_FOTO_BYTES) {
+      mostrarFeedback('erro', 'A foto deve ter no máximo 10 MB.')
+      e.target.value = ''
+      return
+    }
 
     setUploadingFoto(true)
     setFeedbackMsg({ tipo: '', texto: '' })
@@ -218,25 +259,24 @@ export default function ExecutarOrdemServico() {
         const formData = new FormData()
         formData.append('file', file)
         formData.append('ordemServicoId', os.id)
-        formData.append('funcionarioId', 1)
+        formData.append('funcionarioId', tecnico.id)
         formData.append('latitude', lat)
         formData.append('longitude', lon)
 
         try {
-          const response = await api.post('/campo/upload-foto', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          })
-          console.log('Resposta do Java:', response.data)
+          const response = await api.post('/campo/upload-foto', formData)
+          setEvidencias((atuais) => [response.data, ...atuais])
           mostrarFeedback('sucesso', 'Evidência fotográfica salva com sucesso no servidor!')
         } catch (err) {
-          console.error(err)
-          mostrarFeedback('erro', 'Falha ao enviar arquivo para o servidor. Verifique a API Java.')
+          mostrarFeedback('erro', getApiErrorMessage(err, 'Falha ao enviar a evidência fotográfica.'))
         } finally {
           setUploadingFoto(false)
+          e.target.value = ''
         }
       },
       () => {
         setUploadingFoto(false)
+        e.target.value = ''
         mostrarFeedback('erro', 'Obrigatório ativar o GPS para registrar a evidência fotográfica da OS.')
       },
       { enableHighAccuracy: true, timeout: 8000 }
@@ -257,6 +297,23 @@ export default function ExecutarOrdemServico() {
       <div className="bg-slate-950 min-h-screen flex flex-col items-center justify-center text-slate-400">
         <RefreshCw className="w-10 h-10 animate-spin text-indigo-500 mb-2" />
         <p className="text-sm font-semibold">Carregando dados da Ordem de Serviço...</p>
+      </div>
+    )
+  }
+
+  if (!os) {
+    return (
+      <div className="bg-slate-950 min-h-screen flex flex-col items-center justify-center px-6 text-center text-slate-300">
+        <AlertCircle className="w-10 h-10 text-rose-400 mb-3" />
+        <h1 className="text-lg font-black text-white">Não foi possível abrir a OS</h1>
+        <p className="mt-2 max-w-lg text-sm text-slate-400">{erroCarregamento}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/tecnico')}
+          className="mt-6 inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500"
+        >
+          <ArrowLeft className="h-4 w-4" /> Voltar ao painel
+        </button>
       </div>
     )
   }
@@ -290,6 +347,7 @@ export default function ExecutarOrdemServico() {
                 <Clock className="w-4 h-4 text-slate-500" />
                 Deadline: {formatDate(os.deadline)}
               </span>
+              <span className="sm:col-span-2 text-slate-500">Técnico: {tecnico?.nome}</span>
             </div>
           </div>
           <span className={`text-xs font-black px-3 py-1 rounded-full border ${
@@ -407,6 +465,29 @@ export default function ExecutarOrdemServico() {
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
               <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Relatório Fotográfico</h4>
+              {evidencias.length > 0 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {evidencias.map((evidencia) => (
+                    <a
+                      key={evidencia.id}
+                      href={buildApiFileUrl(evidencia.caminhoArquivo)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group overflow-hidden rounded-lg border border-slate-800 bg-slate-950"
+                      title={`Registrada por ${evidencia.funcionarioNome || 'técnico'} em ${formatDate(evidencia.dataUpload)}`}
+                    >
+                      <img
+                        src={buildApiFileUrl(evidencia.caminhoArquivo)}
+                        alt={`Evidência da OS ${os.numeroOs}`}
+                        className="aspect-square w-full object-cover transition group-hover:opacity-80"
+                      />
+                      <span className="block truncate px-2 py-1.5 text-[9px] text-slate-500">
+                        {formatDate(evidencia.dataUpload)}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              )}
               <div className="bg-slate-950/40 p-4 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-3 text-center">
                 {uploadingFoto ? (
                   <div className="flex flex-col items-center gap-2 text-xs text-slate-400 py-4">
@@ -423,7 +504,7 @@ export default function ExecutarOrdemServico() {
                       Capturar Câmera
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png"
                         capture="environment"
                         className="hidden"
                         onChange={handleUploadFotoEvidencia}

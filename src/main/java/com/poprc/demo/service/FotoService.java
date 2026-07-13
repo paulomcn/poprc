@@ -11,16 +11,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class FotoService {
+
+    private static final long TAMANHO_MAXIMO = 10L * 1024 * 1024;
+    private static final Map<String, String> EXTENSAO_POR_MIME = Map.of(
+            "image/jpeg", "jpg",
+            "image/jpg", "jpg",
+            "image/png", "png");
+    private static final String DIRETORIO_EVIDENCIAS = "rc_uploads/evidencias";
 
     private final EvidenciaFotoRepository fotoRepository;
     private final FuncionarioRepository funcionarioRepository;
@@ -28,37 +38,87 @@ public class FotoService {
 
     @Transactional
     public EvidenciaFoto salvarEvidencia(MultipartFile arquivo, Long osId, Long funcionarioId, String lat, String lon) {
-        // 1. Validações de segurança básicas
+        validarArquivo(arquivo);
+        validarCoordenada(lat, -90, 90, "latitude");
+        validarCoordenada(lon, -180, 180, "longitude");
+
         Funcionario funcionario = funcionarioRepository.findById(funcionarioId)
-                .orElseThrow(() -> new RuntimeException("Funcionário não encontrado"));
-        
+                .orElseThrow(() -> new IllegalArgumentException("Funcionário não encontrado."));
+
         OrdemServico os = osRepository.findById(osId)
-                .orElseThrow(() -> new RuntimeException("Ordem de Serviço não encontrada"));
+                .orElseThrow(() -> new IllegalArgumentException("Ordem de Serviço não encontrada."));
 
-        // 2. Lógica de Upload Físico em Disco
-        String diretorioHome = System.getProperty("user.home");
-        Path pastaDestino = Paths.get(diretorioHome, "rc_uploads");
-        
-        // UUID evita colisão de nomes de arquivos
-        String nomeUnicoArquivo = UUID.randomUUID() + "_" + arquivo.getOriginalFilename();
-        Path caminhoAbsoluto = pastaDestino.resolve(nomeUnicoArquivo);
-
-        try {
-            Files.createDirectories(pastaDestino); // Cria a pasta se não existir
-            arquivo.transferTo(caminhoAbsoluto.toFile()); // Descarrega o arquivo no disco
-        } catch (IOException e) {
-            throw new RuntimeException("Erro crítico ao salvar o arquivo no servidor", e);
+        Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_EVIDENCIAS)
+                .toAbsolutePath()
+                .normalize();
+        String extensao = EXTENSAO_POR_MIME.get(arquivo.getContentType());
+        String nomeUnicoArquivo = UUID.randomUUID() + "." + extensao;
+        Path caminhoAbsoluto = pastaDestino.resolve(nomeUnicoArquivo).normalize();
+        if (!caminhoAbsoluto.startsWith(pastaDestino)) {
+            throw new IllegalArgumentException("Caminho de arquivo inválido.");
         }
 
-        // 3. Criação do Objeto de Evidência e Persistência no Banco
+        try {
+            Files.createDirectories(pastaDestino);
+            arquivo.transferTo(caminhoAbsoluto.toFile());
+        } catch (IOException e) {
+            throw new IllegalStateException("Não foi possível salvar a evidência no servidor.", e);
+        }
+
         EvidenciaFoto evidencia = new EvidenciaFoto();
-        evidencia.setCaminhoArquivo(caminhoAbsoluto.toString());
+        evidencia.setCaminhoArquivo("/uploads/evidencias/" + nomeUnicoArquivo);
         evidencia.setLatitude(lat);
         evidencia.setLongitude(lon);
         evidencia.setDataUpload(LocalDateTime.now());
         evidencia.setOrdemServico(os);
         evidencia.setFuncionario(funcionario);
 
-        return fotoRepository.save(evidencia);
+        try {
+            return fotoRepository.save(evidencia);
+        } catch (RuntimeException ex) {
+            try {
+                Files.deleteIfExists(caminhoAbsoluto);
+            } catch (IOException ignored) {
+                // O erro original do banco é mais relevante para a operação.
+            }
+            throw ex;
+        }
+    }
+
+    public List<EvidenciaFoto> listarPorOrdemServico(Long ordemServicoId) {
+        if (!osRepository.existsById(ordemServicoId)) {
+            throw new IllegalArgumentException("Ordem de Serviço não encontrada.");
+        }
+        return fotoRepository.findByOrdemServicoIdOrderByDataUploadDesc(ordemServicoId);
+    }
+
+    private void validarArquivo(MultipartFile arquivo) {
+        if (arquivo == null || arquivo.isEmpty()) {
+            throw new IllegalArgumentException("A foto de evidência é obrigatória.");
+        }
+        if (arquivo.getSize() > TAMANHO_MAXIMO) {
+            throw new IllegalArgumentException("A foto deve ter no máximo 10 MB.");
+        }
+        if (!EXTENSAO_POR_MIME.containsKey(arquivo.getContentType())) {
+            throw new IllegalArgumentException("Formato inválido. Envie uma imagem JPG ou PNG.");
+        }
+        try {
+            if (ImageIO.read(arquivo.getInputStream()) == null) {
+                throw new IllegalArgumentException("O arquivo enviado não é uma imagem válida.");
+            }
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("Não foi possível validar a imagem enviada.", ex);
+        }
+    }
+
+    private void validarCoordenada(String valor, double minimo, double maximo, String nome) {
+        try {
+            double numero = Double.parseDouble(valor);
+            if (numero < minimo || numero > maximo) {
+                throw new IllegalArgumentException("Coordenada de " + nome + " inválida.");
+            }
+        } catch (NullPointerException | NumberFormatException ex) {
+            throw new IllegalArgumentException("Coordenada de " + nome + " inválida.");
+        }
     }
 }

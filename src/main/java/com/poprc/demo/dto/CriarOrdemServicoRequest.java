@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.math.BigDecimal;
 
 @Data
 public class CriarOrdemServicoRequest {
@@ -18,6 +19,6 @@ public class CriarOrdemServicoRequest {
     @Data
     public static class MaterialPrevistoRequest {
         private Long materialId;
-        private Integer quantidadePrevista;
+        private BigDecimal quantidadePrevista;
     }
 }

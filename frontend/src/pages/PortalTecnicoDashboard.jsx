@@ -1,358 +1,355 @@
-import React, { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  MapPin,
-  Clock,
-  Briefcase,
-  Calendar,
-  ChevronRight,
   AlertCircle,
+  Briefcase,
+  Bell,
+  Calendar,
   CheckCircle2,
+  ChevronRight,
+  Clock,
   Compass,
   Loader2,
-  Navigation,
-  CheckSquare,
-  Camera,
-  X,
-  RefreshCw
+  MapPin,
+  RefreshCw,
+  User
 } from 'lucide-react'
 import api from '../services/api'
 
+const TECNICO_STORAGE_KEY = 'rc-tecnico-operacao-id'
+
+const formatarData = (valor) => {
+  if (!valor) return 'Data não informada'
+  const data = new Date(valor)
+  return Number.isNaN(data.getTime()) ? 'Data não informada' : data.toLocaleDateString('pt-BR')
+}
+
+const getMensagemErro = (erro, fallback) =>
+  erro.response?.data?.erro || erro.response?.data?.message || fallback
+
 export default function PortalTecnicoDashboard() {
   const navigate = useNavigate()
-  
-  // Estado do técnico logado
-  const [tecnico, setTecnico] = useState({
-    id: 1,
-    nome: 'João Silva',
-    funcao: 'Técnico de Redes Sênior'
-  })
-
-  // Estado do ponto do técnico
-  const [statusPonto, setStatusPonto] = useState('FORA_TURNO') 
-  const [loadingPonto, setLoadingPonto] = useState(false)
+  const [funcionarios, setFuncionarios] = useState([])
+  const [tecnicoId, setTecnicoId] = useState('')
+  const [ordens, setOrdens] = useState([])
+  const [comarcas, setComarcas] = useState([])
+  const [statusPonto, setStatusPonto] = useState('FORA_TURNO')
+  const [ultimoPonto, setUltimoPonto] = useState(null)
   const [gpsCoords, setGpsCoords] = useState(null)
-  
-  // Mensagens de feedback
-  const [errorGps, setErrorGps] = useState(null)
-  const [successMsg, setSuccessMsg] = useState(null)
+  const [notificacoes, setNotificacoes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadingPonto, setLoadingPonto] = useState(false)
+  const [erro, setErro] = useState('')
+  const [sucesso, setSucesso] = useState('')
 
-  // Lista de Ordens de Serviço (OS) do dia
-  const [ordensServico, setOrdensServico] = useState([
-    {
-      id: 1,
-      numeroOs: 'OS-2026-042',
-      cliente: 'Tribunal de Justiça - Comarca Centro',
-      status: 'ABERTA',
-      descricao: 'Instalação de racks de telecomunicação, cabeamento estruturado Cat6 e certificação de 24 pontos de rede.',
-      endereco: 'Praça D. Pedro II, s/n - Centro, Salvador - BA',
-      prioridade: 'Alta',
-      dataExecucao: '2026-06-15',
-      contato: 'Carlos Souza (Coordenador de TI) - (71) 99888-7766',
-      tarefas: [
-        { id: 1, texto: 'Vistoria técnica do local e infraestrutura', concluida: false },
-        { id: 2, texto: 'Instalação física do Rack de rede de 19"', concluida: false },
-        { id: 3, texto: 'Lançamento e crimpagem de cabos Cat6', concluida: false },
-        { id: 4, texto: 'Certificação e testes de conectividade', concluida: false }
-      ]
-    },
-    {
-      id: 2,
-      numeroOs: 'OS-2026-043',
-      cliente: 'Comarca de Camaçari - Fórum Regional',
-      status: 'EM_EXECUCAO',
-      descricao: 'Substituição de Switch core danificado após oscilação elétrica e reconfiguração de VLANs corporativas.',
-      endereco: 'Centro Administrativo, Lote 4 - Centro, Camaçari - BA',
-      prioridade: 'Crítica',
-      dataExecucao: '2026-06-15',
-      contato: 'Marcos Bahia (Administrador) - (71) 98765-4321',
-      tarefas: [
-        { id: 1, texto: 'Remoção do equipamento danificado', concluida: true },
-        { id: 2, texto: 'Montagem do novo Switch de 48 Portas PoE', concluida: true },
-        { id: 3, texto: 'Upload de backup de configuração e VLANs', concluida: false },
-        { id: 4, texto: 'Validação da rede local e internet', concluida: false }
-      ]
-    },
-    {
-      id: 3,
-      numeroOs: 'OS-2026-044',
-      cliente: 'Ministério Público - Anexo Administrativo',
-      status: 'CONCLUIDA',
-      descricao: 'Manutenção preventiva geral no banco de baterias do No-Break principal e testes de autonomia.',
-      endereco: 'Av. Joana Angélica, 1422 - Nazaré, Salvador - BA',
-      prioridade: 'Média',
-      dataExecucao: '2026-06-15',
-      contato: 'Dra. Márcia Albuquerque - (71) 99111-2233',
-      tarefas: [
-        { id: 1, texto: 'Inspeção física do No-Break de 10kVA', concluida: true },
-        { id: 2, texto: 'Medição individual da tensão das baterias', concluida: true },
-        { id: 3, texto: 'Limpeza de contatos e reaperto de conexões', concluida: true },
-        { id: 4, texto: 'Simulação de queda de energia com carga total', concluida: true }
-      ]
+  const tecnico = funcionarios.find((funcionario) => String(funcionario.id) === String(tecnicoId)) || null
+
+  const comarcaPorProjeto = useMemo(
+    () => new Map(comarcas.filter((comarca) => comarca.projeto?.id).map((comarca) => [comarca.projeto.id, comarca])),
+    [comarcas]
+  )
+
+  const ordensAtribuidas = useMemo(() => {
+    if (!tecnico) return []
+    return ordens
+      .filter((os) => os.projeto?.responsavel?.id === tecnico.id)
+      .map((os) => {
+        const comarca = comarcaPorProjeto.get(os.projeto?.id)
+        return {
+          ...os,
+          cliente: comarca?.nomeComarca || os.contrato?.cliente || `Projeto #${os.projeto?.id || '-'}`,
+          endereco: comarca?.endereco || ''
+        }
+      })
+      .sort((a, b) => new Date(a.deadline || a.dataHoraInicio || 0) - new Date(b.deadline || b.dataHoraInicio || 0))
+  }, [comarcaPorProjeto, ordens, tecnico])
+
+  const carregarDados = async () => {
+    try {
+      setLoading(true)
+      setErro('')
+      const [funcionariosResponse, ordensResponse, comarcasResponse] = await Promise.all([
+        api.get('/funcionarios'),
+        api.get('/ordens-servico'),
+        api.get('/comarcas')
+      ])
+      const funcionariosCarregados = funcionariosResponse.data || []
+      setFuncionarios(funcionariosCarregados)
+      setOrdens(ordensResponse.data || [])
+      setComarcas(comarcasResponse.data || [])
+
+      const salvo = localStorage.getItem(TECNICO_STORAGE_KEY)
+      const tecnicoSalvoExiste = funcionariosCarregados.some((item) => String(item.id) === salvo)
+      if (tecnicoSalvoExiste) setTecnicoId(salvo)
+      else if (funcionariosCarregados.length === 1) setTecnicoId(String(funcionariosCarregados[0].id))
+      else setTecnicoId('')
+    } catch (err) {
+      setFuncionarios([])
+      setOrdens([])
+      setComarcas([])
+      setErro(getMensagemErro(err, 'Não foi possível carregar o Portal Técnico.'))
+    } finally {
+      setLoading(false)
     }
-  ])
-
-  const [selectedOs, setSelectedOs] = useState(null)
-  const [uploadingFoto, setUploadingFoto] = useState(false)
-  const [fotoEnviada, setFotoEnviada] = useState(null)
+  }
 
   useEffect(() => {
-    async function carregarDadosIniciais() {
-      try {
-        const response = await api.get('/funcionarios')
-        if (response.data && response.data.length > 0) {
-          const func = response.data[0]
-          setTecnico({
-            id: func.id,
-            nome: func.nome,
-            funcao: func.funcao || 'Técnico de Campo'
-          })
-        }
-      } catch (err) {
-        console.log('Usando técnico mockado.', err)
-      }
-    }
-    carregarDadosIniciais()
+    carregarDados()
   }, [])
 
-  const handleRegistrarPonto = () => {
-    setLoadingPonto(true)
-    setErrorGps(null)
-    setSuccessMsg(null)
-
-    if (!navigator.geolocation) {
-      setErrorGps('A geolocalização não é suportada por este dispositivo.')
-      setLoadingPonto(false)
+  useEffect(() => {
+    if (!tecnicoId) {
+      setUltimoPonto(null)
+      setStatusPonto('FORA_TURNO')
+      setNotificacoes([])
       return
     }
 
-    const gpsOptions = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    localStorage.setItem(TECNICO_STORAGE_KEY, tecnicoId)
+    Promise.all([
+      api.get(`/campo/ponto/funcionario/${tecnicoId}/ultimo`),
+      api.get(`/alertas/notificacoes?funcionarioId=${tecnicoId}`)
+    ]).then(([pontoResponse, notificacoesResponse]) => {
+        const ponto = pontoResponse.status === 204 ? null : pontoResponse.data
+        setUltimoPonto(ponto)
+        setStatusPonto(ponto?.tipo === 'ENTRADA' ? 'EM_TURNO' : 'FORA_TURNO')
+        setNotificacoes((notificacoesResponse.data || []).filter((item) => !item.lidaEm))
+      })
+      .catch((err) => {
+        setUltimoPonto(null)
+        setStatusPonto('FORA_TURNO')
+        setNotificacoes([])
+        setErro(getMensagemErro(err, 'Não foi possível consultar a jornada e os alertas do técnico.'))
+      })
+  }, [tecnicoId])
 
+  const selecionarTecnico = (event) => {
+    setTecnicoId(event.target.value)
+    setErro('')
+    setSucesso('')
+  }
+
+  const registrarPontoComLocalizacao = (position) => {
+    const latitude = position.coords.latitude.toFixed(6)
+    const longitude = position.coords.longitude.toFixed(6)
+    const tipo = statusPonto === 'EM_TURNO' ? 'SAIDA' : 'ENTRADA'
+
+    api.post('/campo/ponto', {
+      funcionarioId: Number(tecnicoId),
+      tipo,
+      latitude,
+      longitude
+    }).then((response) => {
+      setUltimoPonto(response.data)
+      setGpsCoords({ latitude, longitude })
+      setStatusPonto(tipo === 'ENTRADA' ? 'EM_TURNO' : 'FORA_TURNO')
+      setSucesso(`${tipo === 'ENTRADA' ? 'Entrada' : 'Saída'} registrada às ${new Date(response.data.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`)
+    }).catch((err) => {
+      setErro(getMensagemErro(err, 'Não foi possível registrar o ponto.'))
+    }).finally(() => setLoadingPonto(false))
+  }
+
+  const handleRegistrarPonto = () => {
+    setErro('')
+    setSucesso('')
+    if (!tecnico) {
+      setErro('Selecione o técnico antes de registrar o ponto.')
+      return
+    }
+    if (!navigator.geolocation) {
+      setErro('A geolocalização não é suportada por este dispositivo.')
+      return
+    }
+
+    setLoadingPonto(true)
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude.toFixed(6)
-        const lng = position.coords.longitude.toFixed(6)
-        setGpsCoords({ latitude: lat, longitude: lng })
-
-        const proximoTipo = statusPonto === 'FORA_TURNO' ? 'ENTRADA' : 'SAIDA'
-        const payload = {
-          latitude: lat,
-          longitude: lng,
-          tipo: proximoTipo,
-          funcionario: { id: tecnico.id },
-          dataHora: new Date().toISOString()
-        }
-
-        try {
-          const response = await api.post('/campo/ponto', payload)
-          setStatusPonto(proximoTipo === 'ENTRADA' ? 'EM_TURNO' : 'FORA_TURNO')
-          setSuccessMsg(`Ponto de ${proximoTipo === 'ENTRADA' ? 'Entrada' : 'Saída'} registrado com sucesso às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}!`)
-          setTimeout(() => setSuccessMsg(null), 5500)
-        } catch (apiError) {
-          setStatusPonto(proximoTipo === 'ENTRADA' ? 'EM_TURNO' : 'FORA_TURNO')
-          setSuccessMsg(`[Simulado] Ponto de ${proximoTipo === 'ENTRADA' ? 'Entrada' : 'Saída'} gravado localmente!`)
-          setTimeout(() => setSuccessMsg(null), 5500)
-        } finally {
-          setLoadingPonto(false)
-        }
-      },
-      (error) => {
-        let mensagemErro = 'Erro ao obter localização.'
-        if (error.code === error.PERMISSION_DENIED) mensagemErro = 'Permissão do GPS negada. Ative a localização.'
-        setErrorGps(mensagemErro)
+      registrarPontoComLocalizacao,
+      (geolocationError) => {
         setLoadingPonto(false)
+        setErro(
+          geolocationError.code === geolocationError.PERMISSION_DENIED
+            ? 'Permissão de localização negada. Ative o GPS para registrar o ponto.'
+            : 'Não foi possível obter a localização atual.'
+        )
       },
-      gpsOptions
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     )
   }
 
-  const toggleTarefa = (osId, tarefaId) => {
-    setOrdensServico(prev => prev.map(os => os.id === osId ? { ...os, tarefas: os.tarefas.map(t => t.id === tarefaId ? { ...t, concluida: !t.concluida } : t) } : os))
-  }
-
-  const atualizarStatusOS = (osId, novoStatus) => {
-    setOrdensServico(prev => prev.map(os => os.id === osId ? { ...os, status: novoStatus } : os))
-  }
-
-  const abrirNoMaps = (endereco) => {
-    window.open(`https://maps.google.com/?q=${encodeURIComponent(endereco)}`, '_blank')
-  }
-
-  const handleUploadFoto = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setUploadingFoto(true)
-    setTimeout(() => {
-      setUploadingFoto(false)
-      setFotoEnviada('Foto enviada com sucesso!')
-      setTimeout(() => setFotoEnviada(null), 3000)
-    } , 1500)
-  }
-
   return (
-    //  MUDANÇA 1: Removido o frame de celular falso. O container agora ocupa a tela inteira com espaçamento fluido.
-    <div className="bg-slate-950 min-h-screen text-slate-100 font-sans antialiased p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* Topo do App: Header fluido */}
-        <header className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-xl">
+    <div className="min-h-screen bg-slate-950 p-4 font-sans text-slate-100 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <header className="flex flex-col items-start justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900 p-6 shadow-xl sm:flex-row sm:items-center">
           <div>
-            <p className="text-indigo-400 text-xs font-bold tracking-widest uppercase">Portal de Operações</p>
-            <h2 className="text-2xl font-black text-white tracking-tight mt-1">Olá, {tecnico.nome}</h2>
-            <p className="text-slate-400 text-xs mt-0.5">{tecnico.funcao}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400">Portal de Operações</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
+              {tecnico ? tecnico.nome : 'Selecione o técnico'}
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-400">{tecnico?.funcao || 'Operação de campo'}</p>
           </div>
-          <div className="flex items-center gap-3 bg-slate-950/60 border border-slate-800 px-4 py-2.5 rounded-xl shadow-inner">
-            <Clock className="w-5 h-5 text-indigo-400" />
-            <span className="text-sm font-semibold tracking-wide text-slate-300">Painel de Campo</span>
-          </div>
+          <label className="w-full sm:w-80">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">
+              Técnico em operação
+            </span>
+            <div className="relative">
+              <User className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+              <select
+                value={tecnicoId}
+                onChange={selecionarTecnico}
+                className="w-full rounded-md border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-sm text-white focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="">Selecione...</option>
+                {funcionarios.map((funcionario) => (
+                  <option key={funcionario.id} value={funcionario.id}>
+                    {funcionario.nome} - {funcionario.funcao || 'Técnico'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
         </header>
 
-        {/*  MUDANÇA 2: GRID SISTÊMICO RESPONSIVO */}
-        {/* No Mobile: 1 coluna (tudo empilhado). No Computador (lg): Divide em 3 colunas (1 pro Ponto, 2 paras as OS) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          
-          {/* COLUNA DA ESQUERDA: Status e Botão de Ponto (Fica fixo no scroll no Computador) */}
-          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-6">
-            
-            {/* Card de Status do Ponto */}
-            <div className={`rounded-2xl p-5 border transition-all duration-300 ${
-              statusPonto === 'EM_TURNO' 
-                ? 'bg-emerald-950/45 border-emerald-500/30 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.05)]' 
-                : 'bg-slate-900 border-slate-800 text-slate-300'
-            }`}>
-              <div className="flex items-center justify-between">
+        {erro && (
+          <div className="flex gap-3 rounded-lg border border-rose-500/30 bg-rose-950/40 p-4 text-sm text-rose-200">
+            <AlertCircle className="h-5 w-5 shrink-0 text-rose-400" />
+            <span>{erro}</span>
+          </div>
+        )}
+        {sucesso && (
+          <div className="flex gap-3 rounded-lg border border-emerald-500/30 bg-emerald-950/40 p-4 text-sm text-emerald-100">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+            <span>{sucesso}</span>
+          </div>
+        )}
+
+        {tecnico && notificacoes.length > 0 && (
+          <section className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-950/30 p-4">
+            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-200">
+              <Bell className="h-4 w-4" /> Alertas operacionais ({notificacoes.length})
+            </h2>
+            {notificacoes.slice(0, 4).map((notificacao) => (
+              <div key={notificacao.id} className="rounded-md border border-amber-500/20 bg-slate-950/40 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-white">{notificacao.titulo}</span>
+                  {notificacao.numeroOs && <span className="text-[10px] font-black text-amber-300">{notificacao.numeroOs}</span>}
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">{notificacao.mensagem}</p>
+              </div>
+            ))}
+          </section>
+        )}
+
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            <section className="rounded-lg border border-slate-800 bg-slate-900 p-5">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="relative flex h-3.5 w-3.5">
-                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${statusPonto === 'EM_TURNO' ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
-                    <span className={`relative inline-flex rounded-full h-3.5 w-3.5 ${statusPonto === 'EM_TURNO' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                  </span>
+                  <span className={`h-3.5 w-3.5 rounded-full ${statusPonto === 'EM_TURNO' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                   <div>
-                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Status da Jornada</p>
-                    <p className="text-base font-bold tracking-tight">{statusPonto === 'EM_TURNO' ? 'Em Turno de Trabalho' : 'Fora do Turno'}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jornada</p>
+                    <p className="font-bold">{statusPonto === 'EM_TURNO' ? 'Em turno' : 'Fora do turno'}</p>
                   </div>
                 </div>
-                <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${statusPonto === 'EM_TURNO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                  {statusPonto === 'EM_TURNO' ? 'ATIVO' : 'INATIVO'}
-                </span>
+                <Clock className="h-5 w-5 text-indigo-400" />
               </div>
-              {gpsCoords && statusPonto === 'EM_TURNO' && (
-                <div className="mt-3 pt-3 border-t border-emerald-500/10 flex items-center gap-1.5 text-[10px] text-emerald-400/80">
-                  <MapPin className="w-3 h-3 text-emerald-400" />
-                  <span>GPS Ativo: {gpsCoords.latitude}, {gpsCoords.longitude}</span>
-                </div>
+              {ultimoPonto && (
+                <p className="mt-3 border-t border-slate-800 pt-3 text-xs text-slate-400">
+                  Último registro: {new Date(ultimoPonto.dataHora).toLocaleString('pt-BR')}
+                </p>
               )}
-            </div>
+              {gpsCoords && (
+                <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">
+                  <MapPin className="h-3 w-3" /> {gpsCoords.latitude}, {gpsCoords.longitude}
+                </p>
+              )}
+            </section>
 
-            {/* Widget do Botão Gigante do Ponto */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-lg">
+            <section className="flex flex-col items-center rounded-lg border border-slate-800 bg-slate-900 p-6 text-center">
               <button
+                type="button"
                 onClick={handleRegistrarPonto}
-                disabled={loadingPonto}
-                className={`w-40 h-40 rounded-full flex flex-col items-center justify-center gap-2 border-8 shadow-2xl transition-all duration-300 select-none ${
-                  loadingPonto 
-                    ? 'bg-slate-800 border-slate-700 scale-95 cursor-wait' 
-                    : statusPonto === 'EM_TURNO'
-                      ? 'bg-rose-950/80 border-rose-500 hover:bg-rose-900 active:scale-95 text-rose-100 shadow-[0_0_25px_rgba(239,68,68,0.15)]'
-                      : 'bg-emerald-950/80 border-emerald-500 hover:bg-emerald-900 active:scale-95 text-emerald-100 shadow-[0_0_25px_rgba(16,185,129,0.15)]'
+                disabled={loadingPonto || !tecnico}
+                className={`flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-full border-8 transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  statusPonto === 'EM_TURNO'
+                    ? 'border-rose-500 bg-rose-950 text-rose-100'
+                    : 'border-emerald-500 bg-emerald-950 text-emerald-100'
                 }`}
               >
-                {loadingPonto ? (
-                  <>
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-                    <span className="text-[10px] font-bold text-slate-400 tracking-wider">Buscando GPS</span>
-                  </>
-                ) : (
-                  <>
-                    <Compass className={`w-10 h-10 ${statusPonto === 'EM_TURNO' ? 'text-rose-400' : 'text-emerald-400'}`} />
-                    <span className="text-[9px] uppercase font-extrabold tracking-widest text-slate-400">REGISTRAR</span>
-                    <span className="text-lg font-black tracking-tight">{statusPonto === 'EM_TURNO' ? 'SAÍDA' : 'ENTRADA'}</span>
-                  </>
-                )}
+                {loadingPonto ? <Loader2 className="h-8 w-8 animate-spin" /> : <Compass className="h-10 w-10" />}
+                <span className="text-xs font-black uppercase">
+                  {loadingPonto ? 'Validando' : statusPonto === 'EM_TURNO' ? 'Registrar saída' : 'Registrar entrada'}
+                </span>
               </button>
-              <p className="text-[11px] text-slate-500 font-medium max-w-[200px] mt-4">
-                {loadingPonto ? 'Validando localização...' : 'Toque no botão para registrar sua jornada em tempo real.'}
-              </p>
-            </div>
+            </section>
+          </aside>
 
-            {/* Alertas e Feedbacks (CORS, GPS, etc.) */}
-            <div className="space-y-3">
-              {errorGps && (
-                <div className="bg-rose-950/40 border border-rose-500/30 text-rose-200 rounded-xl p-4 flex gap-3 animate-fadeIn">
-                  <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 text-xs">
-                    <p className="font-bold">Acesso ao GPS Obrigatório</p>
-                    <p className="text-rose-300/90 mt-1 leading-relaxed">{errorGps}</p>
-                    <button onClick={() => setErrorGps(null)} className="mt-2 text-[10px] font-bold underline">Fechar</button>
-                  </div>
-                </div>
-              )}
-              {successMsg && (
-                <div className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-100 rounded-xl p-4 flex gap-3 animate-fadeIn">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 text-xs"><p className="font-bold">Sucesso!</p><p className="text-emerald-200/90 mt-1">{successMsg}</p></div>
-                </div>
-              )}
-            </div>
-
-          </div>
-
-          {/* COLUNA DA DIREITA: Lista de Ordens de Serviço (No Computador ocupa 2 colunas de largura) */}
-          <div className="lg:col-span-2 space-y-4">
-            
-            <div className="flex justify-between items-center bg-slate-900 border border-slate-800 px-5 py-4 rounded-xl shadow-sm">
+          <main className="space-y-4 lg:col-span-2">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Briefcase className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Ordens de Serviço do Dia</h3>
+                <Briefcase className="h-5 w-5 text-indigo-400" />
+                <h2 className="font-black text-white">Ordens atribuídas</h2>
               </div>
-              <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md">
-                {ordensServico.length} ATIVAS
-              </span>
+              <button
+                type="button"
+                onClick={carregarDados}
+                disabled={loading}
+                className="rounded-md border border-slate-700 p-2 text-slate-400 hover:text-white disabled:opacity-50"
+                title="Atualizar dados"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
 
-            {/*  MUDANÇA 3: AS ORDENS DE SERVIÇO NO COMPUTADOR FICAM LADO A LADO EM SUB-GRID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {ordensServico.map((os) => (
-                <div 
-                  key={os.id} 
-                  className="bg-slate-900 border border-slate-800/80 rounded-2xl p-5 hover:border-slate-700 transition-all duration-300 flex flex-col justify-between shadow-md"
-                >
-                  <div>
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="text-[10px] font-bold text-indigo-400 tracking-wider uppercase">{os.numeroOs}</p>
-                        <h4 className="text-sm font-bold text-white mt-0.5 line-clamp-1">{os.cliente}</h4>
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-900 p-10 text-sm text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin" /> Carregando dados...
+              </div>
+            ) : !tecnico ? (
+              <div className="rounded-lg border border-slate-800 bg-slate-900 p-10 text-center text-sm text-slate-400">
+                Selecione o técnico para consultar as ordens atribuídas.
+              </div>
+            ) : ordensAtribuidas.length === 0 ? (
+              <div className="rounded-lg border border-slate-800 bg-slate-900 p-10 text-center text-sm text-slate-400">
+                Nenhuma OS vinculada a este técnico como responsável do projeto.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {ordensAtribuidas.map((os) => (
+                  <article key={os.id} className="flex flex-col justify-between rounded-lg border border-slate-800 bg-slate-900 p-5 shadow-md">
+                    <div>
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-[10px] font-bold uppercase tracking-wider text-indigo-400">{os.numeroOs}</p>
+                          <h3 className="mt-0.5 truncate text-sm font-bold text-white">{os.cliente}</h3>
+                        </div>
+                        <span className="shrink-0 rounded bg-slate-800 px-2 py-1 text-[9px] font-bold text-slate-300">
+                          {String(os.status || 'ABERTA').replaceAll('_', ' ')}
+                        </span>
                       </div>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                        os.status === 'CONCLUIDA' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
-                        os.status === 'EM_EXECUCAO' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 
-                        'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                      }`}>
-                        {os.status.replace('_', ' ')}
+                      <p className="mb-4 line-clamp-3 text-xs leading-relaxed text-slate-400">{os.descricao || 'Sem descrição.'}</p>
+                      {os.endereco && (
+                        <p className="mb-3 flex items-start gap-1 text-[10px] text-slate-500">
+                          <MapPin className="mt-0.5 h-3 w-3 shrink-0" /> {os.endereco}
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-auto flex items-center justify-between border-t border-slate-800 pt-4">
+                      <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                        <Calendar className="h-3.5 w-3.5" /> {formatarData(os.dataHoraInicio || os.dataExecucao)}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/tecnico/os/${os.id}?funcionarioId=${tecnico.id}`)}
+                        className="flex items-center gap-1 rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500"
+                      >
+                        Acessar OS <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                    <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed mb-4">{os.descricao}</p>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-800/60 mt-auto">
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>{new Date(os.dataExecucao).toLocaleDateString('pt-BR')}</span>
-                    </div>
-                    
-                    <button
-                      onClick={() => navigate(`/tecnico/os/${os.id}`)}
-                      className="flex items-center gap-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-indigo-600/10"
-                    >
-                      <span>Acessar OS</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-          </div>
-
+                  </article>
+                ))}
+              </div>
+            )}
+          </main>
         </div>
       </div>
     </div>

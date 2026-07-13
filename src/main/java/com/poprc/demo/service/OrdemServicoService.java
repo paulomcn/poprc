@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -169,7 +170,8 @@ public class OrdemServicoService {
             if (materialPrevisto.getMaterialId() == null) {
                 throw new IllegalArgumentException("Todos os materiais previstos precisam estar vinculados ao estoque.");
             }
-            if (materialPrevisto.getQuantidadePrevista() == null || materialPrevisto.getQuantidadePrevista() <= 0) {
+            if (materialPrevisto.getQuantidadePrevista() == null
+                    || materialPrevisto.getQuantidadePrevista().signum() <= 0) {
                 throw new IllegalArgumentException("A quantidade prevista dos materiais deve ser maior que zero.");
             }
 
@@ -243,8 +245,8 @@ public class OrdemServicoService {
                 MaterialItem item = materialExistente.get();
                 item.setMaterial(materialProjeto.getMaterial());
                 item.setQuantidadePrevista(valorOuZero(materialProjeto.getQuantidadePrevista()));
-                if (item.getQuantidadeAuditada() == 0 && materialProjeto.getQuantidadeUtilizada() != null) {
-                    item.setQuantidadeAuditada(materialProjeto.getQuantidadeUtilizada());
+                if (item.getQuantidadeAuditada().signum() == 0 && materialProjeto.getQuantidadeUtilizada() != null) {
+                    item.setQuantidadeAuditada(BigDecimal.valueOf(materialProjeto.getQuantidadeUtilizada()));
                 }
                 materialItemRepository.save(item);
                 atualizados++;
@@ -270,8 +272,8 @@ public class OrdemServicoService {
         return new SincronizacaoMateriais(criados, atualizados);
     }
 
-    private int valorOuZero(Integer valor) {
-        return valor != null ? valor : 0;
+    private BigDecimal valorOuZero(Integer valor) {
+        return BigDecimal.valueOf(valor != null ? valor : 0);
     }
 
     private record SincronizacaoMateriais(int criados, int atualizados) {

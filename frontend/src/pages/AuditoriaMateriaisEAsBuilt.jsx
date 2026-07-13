@@ -134,7 +134,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
       await api.put(
         `/comarcas/materiais/${selectedMaterial.id}/auditoria`,
         null,
-        { params: { quantidadeAuditada: parseInt(novaQuantidade, 10) || 0 } },
+        { params: { quantidadeAuditada: parseFloat(novaQuantidade) || 0 } },
       );
       setSuccess("Divergência de material atualizada com sucesso!");
       setEditModalOpen(false);
@@ -163,7 +163,12 @@ export default function AuditoriaMateriaisEAsBuilt() {
   );
   const numeroOsSelecionada =
     dados?.numeroOs || comarcaSelecionada?.ordemServico?.numeroOs || "OS não vinculada";
-  const quantidadeAuditadaModal = parseInt(novaQuantidade, 10) || 0;
+  const quantidadeAuditadaModal = parseFloat(novaQuantidade) || 0;
+  const incrementoAuditoria = ["METRAGEM", "BOBINA", "ROLO"].includes(
+    selectedMaterial?.tipoControle,
+  )
+    ? 0.001
+    : 1;
   const saldoModal = selectedMaterial
     ? selectedMaterial.previsto - quantidadeAuditadaModal
     : 0;
@@ -180,7 +185,6 @@ export default function AuditoriaMateriaisEAsBuilt() {
     REABERTO_PARA_AJUSTE: "Reaberto para ajuste",
   };
   const statusLabel = statusLabels[asBuiltStatus] || asBuiltStatus;
-  const escaparCsv = (valor) => `"${String(valor ?? "").replaceAll('"', '""')}"`;
   const formatarDataHora = (value) => {
     if (!value) return "-";
     return new Date(value).toLocaleString("pt-BR", {
@@ -190,7 +194,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
       minute: "2-digit",
     });
   };
-  const exportarRastreabilidadeCsv = () => {
+  const exportarRastreabilidadeXlsx = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "RC Operations Hub";
+    const worksheet = workbook.addWorksheet("Rastreabilidade", {
+      views: [{ state: "frozen", ySplit: 1 }],
+    });
     const linhas = [
       [
         "OS",
@@ -227,12 +237,40 @@ export default function AuditoriaMateriaisEAsBuilt() {
         item.saldoAuditadoBaixado,
       ]),
     ];
-    const csv = `\ufeff${linhas.map((linha) => linha.map(escaparCsv).join(";")).join("\n")}`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
+    linhas.forEach((linha) => worksheet.addRow(linha));
+    worksheet.autoFilter = { from: "A1", to: "O1" };
+    worksheet.getRow(1).height = 30;
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    });
+    worksheet.columns.forEach((column) => {
+      let maior = 10;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        maior = Math.max(maior, String(cell.value ?? "").length + 2);
+        cell.alignment = { vertical: "top", wrapText: true };
+      });
+      column.width = Math.min(45, maior);
+    });
+    worksheet.eachRow((row, index) => {
+      if (index === 1) return;
+      let linhasNecessarias = 1;
+      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+        linhasNecessarias = Math.max(
+          linhasNecessarias,
+          Math.ceil(String(cell.value ?? "").length / (worksheet.getColumn(columnNumber).width || 12)),
+        );
+      });
+      row.height = Math.min(90, Math.max(20, linhasNecessarias * 15));
+    });
+    const buffer = await workbook.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `rastreabilidade-${numeroOsSelecionada}.csv`;
+    link.download = `rastreabilidade-${numeroOsSelecionada}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -400,11 +438,11 @@ export default function AuditoriaMateriaisEAsBuilt() {
                           <td className="px-6 py-4 text-center">
                             <button
                               onClick={() => abrirModalEdicao(mat)}
-                              disabled={mat.estoqueBaixado || asBuiltHomologado}
+                              disabled={asBuiltHomologado}
                               className="p-1.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-900 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-800 rounded-lg text-slate-400 hover:text-indigo-400 transition-colors"
                               title={
-                                mat.estoqueBaixado
-                                  ? "Material já baixado no estoque"
+                                asBuiltHomologado
+                                  ? "Reabra o As-Built para ajustar"
                                   : "Ajustar quantidade auditada"
                               }
                             >
@@ -562,11 +600,11 @@ export default function AuditoriaMateriaisEAsBuilt() {
               </div>
             </div>
             <button
-              onClick={exportarRastreabilidadeCsv}
+              onClick={exportarRastreabilidadeXlsx}
               disabled={rastreabilidadeItens.length === 0}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600 md:order-last"
             >
-              <Download size={14} /> Exportar CSV
+              <Download size={14} /> Exportar Excel
             </button>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
               {[
@@ -732,7 +770,9 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   <button
                     type="button"
                     onClick={() =>
-                      setNovaQuantidade(String(Math.max(0, quantidadeAuditadaModal - 1)))
+                      setNovaQuantidade(
+                        String(Math.max(0, quantidadeAuditadaModal - incrementoAuditoria)),
+                      )
                     }
                     className="bg-slate-950 border border-slate-800 rounded-lg text-slate-300 hover:text-white"
                   >
@@ -742,13 +782,16 @@ export default function AuditoriaMateriaisEAsBuilt() {
                     type="number"
                     required
                     min="0"
+                    step={incrementoAuditoria}
                     value={novaQuantidade}
                     onChange={(e) => setNovaQuantidade(e.target.value)}
                     className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500 text-center font-mono"
                   />
                   <button
                     type="button"
-                    onClick={() => setNovaQuantidade(String(quantidadeAuditadaModal + 1))}
+                    onClick={() =>
+                      setNovaQuantidade(String(quantidadeAuditadaModal + incrementoAuditoria))
+                    }
                     className="bg-slate-950 border border-slate-800 rounded-lg text-slate-300 hover:text-white"
                   >
                     +

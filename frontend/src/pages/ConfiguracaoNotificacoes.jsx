@@ -9,6 +9,8 @@ import {
   Plus,
   Pencil,
   Power,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import api from "../services/api";
 import Alert from "../components/Alert";
@@ -33,12 +35,14 @@ export default function ConfiguracaoNotificacoes() {
   const [atividadeForm, setAtividadeForm] = useState(atividadeFormInicial);
   const [atividadeEditandoId, setAtividadeEditandoId] = useState(null);
   const [loadingTest, setLoadingTest] = useState(false);
+  const [notificacoes, setNotificacoes] = useState([]);
   const [successMessage, setSuccessMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
   useEffect(() => {
     loadDbSettings();
     loadAtividadesPadrao();
+    loadNotificacoes();
   }, []);
 
   const showSuccess = (message) => {
@@ -67,6 +71,15 @@ export default function ConfiguracaoNotificacoes() {
       setAtividadesPadrao(response.data || []);
     } catch (err) {
       showError("Erro ao carregar atividades padrão.");
+    }
+  }
+
+  async function loadNotificacoes() {
+    try {
+      const response = await api.get("/alertas/notificacoes");
+      setNotificacoes(response.data || []);
+    } catch (err) {
+      showError("Erro ao carregar o histórico de notificações.");
     }
   }
 
@@ -148,13 +161,23 @@ export default function ConfiguracaoNotificacoes() {
     try {
       setLoadingTest(true);
       const response = await api.post("/alertas/disparar-todos");
-      if (response.data.status === "sucesso") {
-        showSuccess("Varredura forçada! Verifique o console do servidor.");
-      }
+      const criadas = response.data.notificacoesCriadas || 0;
+      const encontradas = response.data.alertasEncontrados || 0;
+      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s) notificação(ões).`);
+      await loadNotificacoes();
     } catch (err) {
       showError("Falha ao acionar o motor de alertas.");
     } finally {
       setLoadingTest(false);
+    }
+  };
+
+  const handleMarcarComoLida = async (id) => {
+    try {
+      await api.patch(`/alertas/notificacoes/${id}/lida`);
+      await loadNotificacoes();
+    } catch (err) {
+      showError("Falha ao marcar a notificação como lida.");
     }
   };
 
@@ -183,8 +206,11 @@ export default function ConfiguracaoNotificacoes() {
           className="bg-white p-6 rounded-xl shadow-md border border-slate-200 lg:col-span-2 space-y-6"
         >
           <h2 className="text-lg font-bold text-slate-800 border-b pb-3">
-            Destinatários
+            Parâmetros de alertas
           </h2>
+          <p className="text-sm text-slate-500">
+            Os alertas são registrados no sistema. E-mail e WhatsApp ficam reservados para uma integração externa com credenciais válidas.
+          </p>
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
@@ -196,7 +222,6 @@ export default function ConfiguracaoNotificacoes() {
               value={settings.emailGestor}
               onChange={handleInputChange}
               className="w-full px-4 py-2 border rounded-lg"
-              required
             />
           </div>
 
@@ -210,7 +235,6 @@ export default function ConfiguracaoNotificacoes() {
               value={settings.whatsappGestor}
               onChange={handleInputChange}
               className="w-full px-4 py-2 border rounded-lg"
-              required
             />
           </div>
 
@@ -263,6 +287,49 @@ export default function ConfiguracaoNotificacoes() {
           </button>
         </div>
       </div>
+
+      <section className="bg-white p-6 rounded-xl shadow-md border border-slate-200 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Bell className="text-blue-600" size={20} /> Histórico de alertas
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">Registros persistidos pela varredura de prazos, estoque e contratos.</p>
+          </div>
+          <button type="button" onClick={loadNotificacoes} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+            Atualizar
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {notificacoes.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">Nenhuma notificação registrada.</p>
+          )}
+          {notificacoes.map((notificacao) => (
+            <div key={notificacao.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 ${notificacao.lidaEm ? "border-slate-200 bg-slate-50" : "border-amber-200 bg-amber-50"}`}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${notificacao.severidade === "CRITICA" ? "bg-rose-100 text-rose-700" : notificacao.severidade === "ALERTA" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                    {notificacao.severidade}
+                  </span>
+                  {notificacao.numeroOs && <span className="text-xs font-bold text-slate-600">{notificacao.numeroOs}</span>}
+                  {notificacao.destinatarioNome && <span className="text-xs text-slate-500">Para: {notificacao.destinatarioNome}</span>}
+                </div>
+                <p className="mt-2 font-bold text-slate-800">{notificacao.titulo}</p>
+                <p className="mt-1 text-sm text-slate-600">{notificacao.mensagem}</p>
+                <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+                  <Clock size={13} /> {new Date(notificacao.criadaEm).toLocaleString("pt-BR")}
+                </p>
+              </div>
+              {!notificacao.lidaEm && (
+                <button type="button" onClick={() => handleMarcarComoLida(notificacao.id)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50">
+                  <CheckCircle2 size={16} /> Marcar como lida
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="bg-white p-6 rounded-xl shadow-md border border-slate-200 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b border-slate-200 pb-4">

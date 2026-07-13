@@ -9,6 +9,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import lombok.Data;
 
 @Entity
@@ -21,8 +22,11 @@ public class MaterialItem {
     private Long id;
 
     private String nomeMaterial;
-    private int quantidadePrevista;
-    private int quantidadeAuditada = 0; // Atualizado na tela de auditoria
+    @Column(precision = 14, scale = 3, nullable = false)
+    private BigDecimal quantidadePrevista = BigDecimal.ZERO;
+
+    @Column(precision = 14, scale = 3, nullable = false)
+    private BigDecimal quantidadeAuditada = BigDecimal.ZERO;
     private Boolean estoqueReservado = false;
     private Boolean estoqueBaixado = false;
     private Boolean materialFaltante = false;

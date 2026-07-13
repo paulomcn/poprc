@@ -9,5 +9,7 @@ public enum TipoMovimentacao {
     BAIXA,
     ESTORNO_BAIXA,
     RETIRADA_OR,
-    DEVOLUCAO_OR
+    DEVOLUCAO_OR,
+    AJUSTE_POSITIVO,
+    AJUSTE_NEGATIVO
 }
