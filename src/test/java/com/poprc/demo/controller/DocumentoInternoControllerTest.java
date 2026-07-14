@@ -78,6 +78,31 @@ class DocumentoInternoControllerTest {
         assertEquals(Boolean.TRUE, response.getBody().get("integro"));
     }
 
+    @Test
+    void deveAtualizarConteudoEnquantoDocumentoEstiverPendente() {
+        DocumentoInternoController.DocumentoVistoriaRequest request = new DocumentoInternoController.DocumentoVistoriaRequest();
+        request.setConteudoJson("{\"descricaoServicos\":\"Passagem de cabos\"}");
+        request.setRecebidoPor("Responsavel Local");
+
+        ResponseEntity<DocumentoInterno> response = controller.atualizarConteudoDocumento(1L, request, null, null);
+
+        assertEquals(request.getConteudoJson(), response.getBody().getConteudoJson());
+        assertEquals("Responsavel Local", response.getBody().getRecebidoPor());
+        verify(documentoRepository).save(documento);
+    }
+
+    @Test
+    void deveImpedirAlteracaoDoConteudoDepoisDeAssinado() {
+        documento.setAssinaturaTecnicoBase64("data:image/png;base64,iVBORw0KGgo=");
+        DocumentoInternoController.DocumentoVistoriaRequest request = new DocumentoInternoController.DocumentoVistoriaRequest();
+        request.setConteudoJson("{}");
+
+        IllegalStateException erro = assertThrows(IllegalStateException.class,
+                () -> controller.atualizarConteudoDocumento(1L, request, null, null));
+
+        assertTrue(erro.getMessage().contains("não pode ser alterado"));
+    }
+
     private DocumentoInternoController.AssinaturaPapelRequest assinaturaPngValida() {
         DocumentoInternoController.AssinaturaPapelRequest request = new DocumentoInternoController.AssinaturaPapelRequest();
         request.setNomeAssinante("Tecnico Teste");

@@ -123,6 +123,13 @@ export default function ExecutarOrdemServico() {
   const [feedbackMsg, setFeedbackMsg] = useState({ tipo: '', texto: '' })
   const [erroCarregamento, setErroCarregamento] = useState('')
 
+  const atividadesPorCategoria = atividadesPadrao.reduce((grupos, atividade) => {
+    const categoria = atividade.categoria || 'Geral'
+    if (!grupos[categoria]) grupos[categoria] = []
+    grupos[categoria].push(atividade)
+    return grupos
+  }, {})
+
   useEffect(() => {
     async function puxarDadosDaTela() {
       try {
@@ -409,35 +416,44 @@ export default function ExecutarOrdemServico() {
                 </button>
               </div>
 
-              <div className="space-y-2 bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
+              <div className="space-y-5 bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
                 {atividadesPadrao.length === 0 && (
                   <p className="text-xs text-slate-400 text-center py-4">
                     Nenhuma atividade padrão ativa cadastrada pelo Admin.
                   </p>
                 )}
 
-                {atividadesPadrao.map((atividade) => {
-                  const checked = atividadesSelecionadas.includes(atividade.id)
-                  return (
-                    <label
-                      key={atividade.id}
-                      className="flex items-start gap-3 py-2.5 cursor-pointer select-none transition hover:bg-slate-900/40 px-2 rounded-lg"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => handleToggleAtividade(atividade.id)}
-                        className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
-                      />
-                      <span className={`text-sm ${checked ? 'text-white' : 'text-slate-300'}`}>
-                        {atividade.nome}
-                        <span className="block text-[11px] text-slate-500 mt-0.5">
-                          {atividade.categoria || 'Geral'}
-                        </span>
+                {Object.entries(atividadesPorCategoria).map(([categoria, atividades]) => (
+                  <section key={categoria} className="space-y-1">
+                    <div className="flex items-center justify-between border-b border-slate-800 px-2 pb-2">
+                      <h4 className="text-[11px] font-black uppercase text-indigo-300">
+                        {categoria}
+                      </h4>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        {atividades.filter((atividade) => atividadesSelecionadas.includes(atividade.id)).length}/{atividades.length}
                       </span>
-                    </label>
-                  )
-                })}
+                    </div>
+                    {atividades.map((atividade) => {
+                      const checked = atividadesSelecionadas.includes(atividade.id)
+                      return (
+                        <label
+                          key={atividade.id}
+                          className="flex items-start gap-3 py-2.5 cursor-pointer select-none transition hover:bg-slate-900/40 px-2 rounded-lg"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleToggleAtividade(atividade.id)}
+                            className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
+                          />
+                          <span className={`text-sm leading-relaxed ${checked ? 'text-white' : 'text-slate-300'}`}>
+                            {atividade.nome}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </section>
+                ))}
               </div>
             </div>
           </div>

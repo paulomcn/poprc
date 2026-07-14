@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -81,6 +82,32 @@ public class DocumentoInternoController {
         documento.setCriadoPor(usuarioAtual(principal, usuarioHeader));
         documento.setRecebidoPor(normalizarRecebedor(request.getRecebidoPor()));
         documento.setDataGeracao(LocalDateTime.now());
+        return ResponseEntity.ok(documentoInternoRepository.save(documento));
+    }
+
+    @PutMapping("/{id}/conteudo")
+    public ResponseEntity<DocumentoInterno> atualizarConteudoDocumento(
+            @PathVariable Long id,
+            @RequestBody DocumentoVistoriaRequest request,
+            @AuthenticationPrincipal OAuth2User principal,
+            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader) {
+        DocumentoInterno documento = documentoInternoRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
+        if (!podeVisualizar(documento, usuarioAtual(principal, usuarioHeader))) {
+            return ResponseEntity.status(403).build();
+        }
+        if (!STATUS_PENDENTE.equals(documento.getStatus())
+                || temTexto(documento.getAssinaturaTecnicoBase64())
+                || temTexto(documento.getAssinaturaGestorBase64())
+                || temTexto(documento.getAssinaturaGerenteBase64())) {
+            throw new IllegalStateException(
+                    "Documento assinado não pode ser alterado. Crie uma nova versão para modificar o conteúdo.");
+        }
+        if (request.getConteudoJson() == null || request.getConteudoJson().isBlank()) {
+            throw new IllegalArgumentException("O conteúdo do documento é obrigatório.");
+        }
+        documento.setConteudoJson(request.getConteudoJson());
+        documento.setRecebidoPor(normalizarRecebedor(request.getRecebidoPor()));
         return ResponseEntity.ok(documentoInternoRepository.save(documento));
     }
 

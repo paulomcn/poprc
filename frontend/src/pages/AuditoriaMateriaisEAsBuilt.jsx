@@ -147,8 +147,37 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const materiais = dados?.materiais || [];
   const asBuiltStatus = dados?.asBuiltStatus || "PENDENTE";
   const conciliado = Boolean(dados?.conciliado);
+  const movimentacaoFisicaPorMaterial = ordensRetirada.reduce((acumulado, ordem) => {
+    (ordem.itens || []).forEach((item) => {
+      const materialId = item.material?.id || item.materialItem?.material?.id;
+      if (!materialId) return;
+      const chave = String(materialId);
+      const atual = acumulado[chave] || { retirado: 0, devolvido: 0, consumoLiquido: 0 };
+      atual.retirado += Number(item.quantidadeRetirada || 0);
+      atual.devolvido += Number(item.quantidadeDevolvida || 0);
+      atual.consumoLiquido = atual.retirado - atual.devolvido;
+      acumulado[chave] = atual;
+    });
+    return acumulado;
+  }, {});
+  const obterMovimentacaoFisica = (material) =>
+    movimentacaoFisicaPorMaterial[String(material?.materialId)] || {
+      retirado: 0,
+      devolvido: 0,
+      consumoLiquido: 0,
+    };
+  const materialPossuiPendenciaFisica = (material) => {
+    const fisico = obterMovimentacaoFisica(material);
+    if (!material.estoqueBaixado) return true;
+    if (material.categoria === "FERRAMENTA") {
+      return fisico.retirado <= 0 || Math.abs(fisico.consumoLiquido) > 0.0001;
+    }
+    return Math.abs(fisico.consumoLiquido - Number(material.utilizado || 0)) > 0.0001;
+  };
+  const materiaisComPendenciaFisica = materiais.filter(materialPossuiPendenciaFisica);
   const podeHomologar =
     materiais.length > 0 &&
+    materiaisComPendenciaFisica.length === 0 &&
     !["HOMOLOGADO", "HOMOLOGADO_COM_DIVERGENCIA"].includes(asBuiltStatus);
   const statusAsBuiltClass =
     asBuiltStatus === "HOMOLOGADO"
@@ -172,6 +201,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const saldoModal = selectedMaterial
     ? selectedMaterial.previsto - quantidadeAuditadaModal
     : 0;
+  const movimentacaoFisicaModal = obterMovimentacaoFisica(selectedMaterial);
   const rastreabilidadeItens = rastreabilidade?.itens || [];
   const rastreabilidadeTotais = rastreabilidade?.totais || {};
   const asBuiltHomologado = ["HOMOLOGADO", "HOMOLOGADO_COM_DIVERGENCIA"].includes(
@@ -335,6 +365,16 @@ export default function AuditoriaMateriaisEAsBuilt() {
           </div>
         )}
 
+        {materiaisComPendenciaFisica.length > 0 && !asBuiltHomologado && (
+          <div className="bg-amber-950/40 border border-amber-500/30 text-amber-200 p-4 rounded-xl text-sm">
+            <p className="font-black">Conciliação física pendente</p>
+            <p className="mt-1 text-amber-100/80">
+              O auditado deve corresponder ao consumo líquido da OR (retirado menos devolvido).
+              Ferramentas precisam ter retirada registrada e devolução integral.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Tabela de Discrepância de Inventário com Conciliação Dinâmica */}
           <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
@@ -352,7 +392,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
                     <th className="px-6 py-4">Item</th>
                     <th className="px-6 py-4 text-center">Previsto (A)</th>
                     <th className="px-6 py-4 text-center">Auditado (B)</th>
-                    <th className="px-6 py-4 text-center">Balanço Final</th>
+                    <th className="px-6 py-4 text-center">Conciliação</th>
                     <th className="px-6 py-4">O que está faltando</th>
                     <th className="px-6 py-4 text-center">Ajustar</th>
                   </tr>
@@ -370,6 +410,8 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   ) : (
                     materiais.map((mat, i) => {
                       const saldoDivergencia = mat.previsto - mat.utilizado;
+                      const fisico = obterMovimentacaoFisica(mat);
+                      const pendenciaFisica = materialPossuiPendenciaFisica(mat);
 
                       return (
                         <tr
@@ -377,8 +419,9 @@ export default function AuditoriaMateriaisEAsBuilt() {
                           className="hover:bg-slate-800/50 transition-colors"
                         >
                           <td className="px-6 py-4 font-medium text-slate-300">
-                            <div className="flex items-center gap-2">
-                              <span>{mat.nome}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span>{mat.nome}</span>
                               {mat.itemAdicional && (
                                 <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-400 border border-emerald-500/20">
                                   Item adicional
@@ -394,6 +437,10 @@ export default function AuditoriaMateriaisEAsBuilt() {
                                   Reservado
                                 </span>
                               )}
+                              </div>
+                              <span className="mt-1 block text-[10px] font-medium text-slate-500">
+                                OR: retirado {fisico.retirado} · devolvido {fisico.devolvido} · consumo {fisico.consumoLiquido}
+                              </span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center text-slate-400 font-mono">
@@ -405,10 +452,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
 
                           {/* Destacador visual automatizado do Saldo contábil */}
                           <td className="px-6 py-4 text-center">
-                            {saldoDivergencia === 0 ? (
+                            {pendenciaFisica ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                <AlertTriangle className="w-3 h-3" /> OR {fisico.consumoLiquido} / auditado {mat.utilizado}
+                              </span>
+                            ) : saldoDivergencia === 0 ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <CheckCircle2 className="w-3 h-3" /> Batido
-                                Perfeito
+                                <CheckCircle2 className="w-3 h-3" /> Conciliado
                               </span>
                             ) : saldoDivergencia > 0 ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
@@ -488,6 +538,8 @@ export default function AuditoriaMateriaisEAsBuilt() {
               >
                 {materiais.length === 0
                   ? "Sem Materiais Previstos"
+                  : materiaisComPendenciaFisica.length > 0
+                    ? "Conciliação física pendente"
                   : conciliado
                     ? "Homologar As-Built"
                     : "Homologar com Divergência"}
@@ -808,22 +860,28 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   <button
                     type="button"
                     onClick={() =>
+                      setNovaQuantidade(String(movimentacaoFisicaModal.consumoLiquido))
+                    }
+                    className="rounded-lg border border-slate-800 bg-slate-950 py-2 text-xs font-bold text-slate-400 hover:text-white"
+                  >
+                    Consumo OR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
                       setNovaQuantidade(String(selectedMaterial?.previsto || 0))
                     }
                     className="rounded-lg border border-slate-800 bg-slate-950 py-2 text-xs font-bold text-slate-400 hover:text-white"
                   >
                     Igual Prev.
                   </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNovaQuantidade(String((selectedMaterial?.previsto || 0) + 1))
-                    }
-                    className="rounded-lg border border-slate-800 bg-slate-950 py-2 text-xs font-bold text-slate-400 hover:text-white"
-                  >
-                    +1 Falta
-                  </button>
                 </div>
+              </div>
+              <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 text-xs text-indigo-200">
+                <p className="font-black uppercase text-[10px] text-indigo-300">Movimentação física da OR</p>
+                <p className="mt-1">
+                  Retirado: {movimentacaoFisicaModal.retirado} · Devolvido: {movimentacaoFisicaModal.devolvido} · Consumo líquido: {movimentacaoFisicaModal.consumoLiquido}
+                </p>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs">
                 {saldoModal === 0 ? (

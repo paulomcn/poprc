@@ -13,6 +13,7 @@ import {
   PenTool,
   Package,
   ShieldCheck,
+  Save,
 } from "lucide-react";
 import api from "../services/api";
 import Modal from "../components/Modal";
@@ -105,6 +106,9 @@ export default function GestaoComarcas() {
   const [documentoAssinaturaAtual, setDocumentoAssinaturaAtual] = useState(null);
   const [papelAssinaturaAtual, setPapelAssinaturaAtual] = useState(null);
   const [nomeAssinanteAtual, setNomeAssinanteAtual] = useState("");
+  const [salvandoDocumento, setSalvandoDocumento] = useState(false);
+  const [documentoSujo, setDocumentoSujo] = useState(false);
+  const [documentoMensagem, setDocumentoMensagem] = useState("");
   const [showAssinaturaModal, setShowAssinaturaModal] = useState(false);
   const [comarcaAssinaturaAtual, setComarcaAssinaturaAtual] = useState(null);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
@@ -591,6 +595,8 @@ export default function GestaoComarcas() {
     setDocumentosVistoriaHistorico(documentos);
     setDocumentoVistoria({ tipo, comarca, documentoSalvo: documentoSalvo || null });
     setDocumentoVistoriaForm(criarDocumentoVistoriaForm(comarca, tipo, conteudoBase));
+    setDocumentoSujo(false);
+    setDocumentoMensagem("");
     carregarAuditoriaDocumento(documentoSalvo);
   };
 
@@ -604,6 +610,8 @@ export default function GestaoComarcas() {
         lerConteudoDocumento(documento),
       ),
     );
+    setDocumentoSujo(false);
+    setDocumentoMensagem("");
     carregarAuditoriaDocumento(documento);
   };
 
@@ -633,6 +641,8 @@ export default function GestaoComarcas() {
     setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: null }));
     setDocumentoAssinaturasLog([]);
     setDocumentoIntegridade(null);
+    setDocumentoSujo(true);
+    setDocumentoMensagem("Nova versão ainda não salva.");
     setDocumentoVistoriaForm((prev) => ({
       ...criarDocumentoVistoriaForm(
         documentoVistoria.comarca,
@@ -644,10 +654,18 @@ export default function GestaoComarcas() {
   };
 
   const atualizarDocumentoVistoria = (campo, valor) => {
+    if (["PARCIALMENTE_ASSINADO", "REGISTRADO"].includes(documentoVistoria?.documentoSalvo?.status)) {
+      return;
+    }
     setDocumentoVistoriaForm((prev) => ({ ...prev, [campo]: valor }));
+    setDocumentoSujo(true);
+    setDocumentoMensagem("Alterações ainda não salvas.");
   };
 
   const alternarOpcaoDocumento = (campo, opcao) => {
+    if (["PARCIALMENTE_ASSINADO", "REGISTRADO"].includes(documentoVistoria?.documentoSalvo?.status)) {
+      return;
+    }
     setDocumentoVistoriaForm((prev) => {
       const selecionados = prev[campo] || [];
       return {
@@ -657,6 +675,8 @@ export default function GestaoComarcas() {
           : [...selecionados, opcao],
       };
     });
+    setDocumentoSujo(true);
+    setDocumentoMensagem("Alterações ainda não salvas.");
   };
 
   const montarConteudoDocumentoVistoria = () => ({
@@ -673,10 +693,14 @@ export default function GestaoComarcas() {
 
   const salvarDocumentoVistoria = async () => {
     if (!documentoVistoria?.comarca || !documentoVistoriaForm) return null;
-    const conteudo = montarConteudoDocumentoVistoria();
-    const response = await api.post(
-      "/documentos-internos/vistoria",
-      {
+    const documentoAtual = documentoVistoria.documentoSalvo;
+    if (["PARCIALMENTE_ASSINADO", "REGISTRADO"].includes(documentoAtual?.status)) {
+      throw new Error("Documento assinado não pode ser alterado. Crie uma nova versão.");
+    }
+    setSalvandoDocumento(true);
+    try {
+      const conteudo = montarConteudoDocumentoVistoria();
+      const payload = {
         comarcaId: documentoVistoria.comarca.id,
         tipo: documentoVistoria.tipo,
         conteudoJson: JSON.stringify(conteudo),
@@ -684,17 +708,34 @@ export default function GestaoComarcas() {
           documentoVistoriaForm.recebidoPor ||
           documentoVistoriaForm.gerenteForum ||
           "Responsável da Unidade",
-      },
-      { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
-    );
-    setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: response.data }));
-    setDocumentoAssinaturasLog([]);
-    setDocumentoIntegridade(null);
-    setDocumentosVistoriaHistorico((prev) => [
-      response.data,
-      ...prev.filter((documento) => documento.id !== response.data.id),
-    ]);
-    return response.data;
+      };
+      const config = { headers: { "X-Usuario-Atual": USUARIO_ATUAL } };
+      const response = documentoAtual?.id
+        ? await api.put(`/documentos-internos/${documentoAtual.id}/conteudo`, payload, config)
+        : await api.post("/documentos-internos/vistoria", payload, config);
+      setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: response.data }));
+      setDocumentoAssinaturasLog([]);
+      setDocumentoIntegridade(null);
+      setDocumentoSujo(false);
+      setDocumentoMensagem("Documento salvo no servidor.");
+      setDocumentosVistoriaHistorico((prev) => [
+        response.data,
+        ...prev.filter((documento) => documento.id !== response.data.id),
+      ]);
+      return response.data;
+    } finally {
+      setSalvandoDocumento(false);
+    }
+  };
+
+  const fecharDocumentoVistoria = () => {
+    if (documentoSujo && !window.confirm("Existem alterações não salvas. Deseja fechar e descartá-las?")) {
+      return;
+    }
+    setDocumentoVistoria(null);
+    setDocumentoVistoriaForm(null);
+    setDocumentoSujo(false);
+    setDocumentoMensagem("");
   };
 
   const imprimirDocumentoVistoria = () => {
@@ -893,7 +934,9 @@ export default function GestaoComarcas() {
 
   const abrirPdfServidor = async () => {
     try {
-      const documento = documentoVistoria?.documentoSalvo || (await salvarDocumentoVistoria());
+      const documento = documentoVistoria?.documentoSalvo && !documentoSujo
+        ? documentoVistoria.documentoSalvo
+        : await salvarDocumentoVistoria();
       if (!documento?.id) return;
       window.open(`${API_BASE_URL}/documentos-internos/${documento.id}/pdf`, "_blank", "noopener,noreferrer");
     } catch (err) {
@@ -909,7 +952,9 @@ export default function GestaoComarcas() {
 
   const assinarDocumentoVistoria = async (papel) => {
     try {
-      const documento = documentoVistoria?.documentoSalvo || (await salvarDocumentoVistoria());
+      const documento = documentoVistoria?.documentoSalvo && !documentoSujo
+        ? documentoVistoria.documentoSalvo
+        : await salvarDocumentoVistoria();
       if (!documento) return;
       setDocumentoAssinaturaAtual(documento);
       setPapelAssinaturaAtual(papel);
@@ -1239,6 +1284,8 @@ export default function GestaoComarcas() {
           ...prev,
           documentoSalvo: response.data,
         }));
+        setDocumentoSujo(false);
+        setDocumentoMensagem("Assinatura registrada. O conteúdo desta versão está bloqueado.");
         setDocumentosVistoriaHistorico((prev) =>
           prev.map((documento) =>
             documento.id === response.data.id ? response.data : documento,
@@ -2163,10 +2210,7 @@ export default function GestaoComarcas() {
 
       <Modal
         isOpen={!!documentoVistoria && !!documentoVistoriaForm}
-        onClose={() => {
-          setDocumentoVistoria(null);
-          setDocumentoVistoriaForm(null);
-        }}
+        onClose={fecharDocumentoVistoria}
         title={`${documentoVistoria?.tipo === DOCUMENTO_FINAL ? "Documento Final" : "Documento Inicial"} - ${documentoVistoria?.comarca?.nomeComarca || ""}`}
       >
         {documentoVistoriaForm && (
@@ -2492,13 +2536,28 @@ export default function GestaoComarcas() {
             </div>
 
             <div className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:justify-end">
+              <div className="mr-auto self-center text-xs font-semibold text-slate-500">
+                {documentoMensagem || (documentoVistoria.documentoSalvo ? "Versão salva." : "Documento ainda não salvo.")}
+              </div>
+              <button
+                type="button"
+                onClick={() => salvarDocumentoVistoria().catch((err) =>
+                  alert(err.response?.data?.erro || err.message || "Não foi possível salvar o documento."),
+                )}
+                disabled={salvandoDocumento || ["PARCIALMENTE_ASSINADO", "REGISTRADO"].includes(documentoVistoria.documentoSalvo?.status)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                <Save size={16} />
+                {salvandoDocumento ? "Salvando..." : "Salvar documento"}
+              </button>
               <button
                 type="button"
                 onClick={abrirPdfServidor}
+                title="Salva o conteúdo atual e abre o PDF gerado pelo backend. Após todas as assinaturas, essa versão fica arquivada e protegida por hash."
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"
               >
                 <Printer size={16} />
-                Abrir PDF do servidor
+                Salvar e abrir PDF oficial
               </button>
               <button
                 type="button"
