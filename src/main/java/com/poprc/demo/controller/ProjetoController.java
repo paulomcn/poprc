@@ -5,6 +5,7 @@ import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.ProjetoStatus;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.ContratoRepository;
+import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.service.ComarcaService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,12 +26,14 @@ public class ProjetoController {
     private final ProjetoRepository projetoRepository;
     private final ContratoRepository contratoRepository;
     private final ComarcaService comarcaService;
+    private final FuncionarioRepository funcionarioRepository;
 
     public ProjetoController(ProjetoRepository projetoRepository, ContratoRepository contratoRepository,
-            ComarcaService comarcaService) {
+            ComarcaService comarcaService, FuncionarioRepository funcionarioRepository) {
         this.projetoRepository = projetoRepository;
         this.contratoRepository = contratoRepository;
         this.comarcaService = comarcaService;
+        this.funcionarioRepository = funcionarioRepository;
     }
 
     @PostMapping
@@ -57,6 +60,10 @@ public class ProjetoController {
             }
 
             projeto.setContrato(contrato.get());
+            if (projeto.getResponsavel() != null && projeto.getResponsavel().getId() != null) {
+                projeto.setResponsavel(funcionarioRepository.findById(projeto.getResponsavel().getId())
+                        .orElseThrow(() -> new IllegalArgumentException("Funcionário responsável não encontrado.")));
+            }
             Projeto projetoSalvo = projetoRepository.save(projeto);
 
             projetoSalvo.setNomeComarcaVinculada(projeto.getNomeComarcaVinculada());
@@ -96,6 +103,14 @@ public class ProjetoController {
                         projeto.setStatus(dadosAtualizados.getStatus());
                     if (dadosAtualizados.getAsBuiltStatus() != null)
                         projeto.setAsBuiltStatus(dadosAtualizados.getAsBuiltStatus());
+
+                    if (dadosAtualizados.getResponsavel() != null
+                            && dadosAtualizados.getResponsavel().getId() != null) {
+                        projeto.setResponsavel(funcionarioRepository
+                                .findById(dadosAtualizados.getResponsavel().getId())
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                        "Funcionário responsável não encontrado.")));
+                    }
 
                     if (dadosAtualizados.getContrato() != null && dadosAtualizados.getContrato().getId() != null) {
                         contratoRepository.findById(dadosAtualizados.getContrato().getId())

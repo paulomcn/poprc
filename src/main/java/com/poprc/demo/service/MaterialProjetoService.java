@@ -28,13 +28,7 @@ public class MaterialProjetoService {
 
         int saldo = mp.getQuantidadePrevista() - mp.getQuantidadeUtilizada();
         
-        // Mock de custo: Como a entidade Material não possui valor monetário ainda, 
-        // multiplicamos por um valor fixo de R$ 50.00 como placeholder. 
-        // Substitua por mp.getMaterial().getPreco() quando atualizar o banco!
-        BigDecimal custoUnitarioMock = BigDecimal.valueOf(50.00);
-        BigDecimal custoAcumulado = custoUnitarioMock.multiply(BigDecimal.valueOf(mp.getQuantidadeUtilizada()));
-
-        return new MetricasMaterialDTO(saldo, custoAcumulado);
+        return new MetricasMaterialDTO(saldo, null, false);
     }
 
     // DTO interno para devolver as métricas limpas pro Controller
@@ -42,6 +36,7 @@ public class MaterialProjetoService {
     @AllArgsConstructor
     public static class MetricasMaterialDTO {
         private int saldo;
-        private BigDecimal custoAcumulado;  
+        private BigDecimal custoAcumulado;
+        private boolean custoDisponivel;
     }
 }

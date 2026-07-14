@@ -377,6 +377,9 @@ export default function GestaoOrdensServico() {
     const comarca = comarcasPorProjetoId.get(Number(projeto.id));
     return comarca && !comarca.ordemServico;
   });
+  const projetosComResponsavel = projetosDisponiveis.filter(
+    (projeto) => projeto.responsavel?.id,
+  );
 
   const atualizarMaterialOs = (index, campo, valor) => {
     setFormData((prev) => ({
@@ -405,9 +408,9 @@ export default function GestaoOrdensServico() {
   };
 
   const abrirModalCriacao = () => {
-    const pInicial = projetosDisponiveis[0];
+    const pInicial = projetosComResponsavel[0];
     if (!pInicial) {
-      alert("Não há projeto/comarca livre para abrir nova OS. As comarcas listadas já possuem OS vinculada.");
+      alert("Não há projeto/comarca livre com funcionário responsável. Atribua o responsável na página Projetos antes de emitir a OS.");
       return;
     }
 
@@ -465,17 +468,17 @@ export default function GestaoOrdensServico() {
 
             <button
               onClick={abrirModalCriacao}
-              disabled={projetosDisponiveis.length === 0}
+              disabled={projetosComResponsavel.length === 0}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 text-sm shadow-sm"
             >
               <Plus className="w-4 h-4" /> Nova OS
             </button>
           </div>
 
-          {projetosDisponiveis.length === 0 && (
+          {projetosComResponsavel.length === 0 && (
             <div className="mt-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Nenhuma comarca livre para nova OS. Use uma comarca sem OS vinculada
-              ou sincronize os vínculos se houver dados antigos.
+              Nenhuma comarca livre com funcionário responsável. Edite o projeto,
+              atribua um funcionário e depois retorne para emitir a OS.
             </div>
           )}
 
@@ -718,10 +721,10 @@ export default function GestaoOrdensServico() {
                   {projetosDisponiveis.map((p) => {
                     const comarca = comarcasPorProjetoId.get(Number(p.id));
                     return (
-                    <option key={p.id} value={p.id}>
+                    <option key={p.id} value={p.id} disabled={!p.responsavel?.id}>
                       Projeto #{p.id} -{" "}
                       {comarca?.nomeComarca || p.nomeComarcaVinculada || "Infra"} (
-                      {p.contrato?.cliente})
+                      {p.contrato?.cliente}) - {p.responsavel?.nome || "sem responsável"}
                     </option>
                     );
                   })}

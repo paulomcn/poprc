@@ -6,9 +6,12 @@ import com.poprc.demo.model.DocumentoAssinaturaLog;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.DocumentoAssinaturaLogRepository;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.service.DocumentoPdfService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -45,6 +48,7 @@ public class DocumentoInternoController {
     private final DocumentoInternoRepository documentoInternoRepository;
     private final ComarcaRepository comarcaRepository;
     private final DocumentoAssinaturaLogRepository assinaturaLogRepository;
+    private final DocumentoPdfService documentoPdfService;
 
     @GetMapping("/comarca/{comarcaId}")
     public ResponseEntity<List<DocumentoInterno>> listarPorComarca(
@@ -103,7 +107,7 @@ public class DocumentoInternoController {
         documento.setHashRegistro(gerarHash(documento));
         DocumentoInterno salvo = documentoInternoRepository.save(documento);
         registrarLogAssinatura(salvo, "LEGADO", usuarioAtual, usuarioAtual, request.getAssinaturaBase64());
-        return ResponseEntity.ok(salvo);
+        return ResponseEntity.ok(documentoPdfService.arquivarPdf(salvo));
     }
 
     @PatchMapping("/{id}/assinaturas/{papel}")
@@ -159,7 +163,28 @@ public class DocumentoInternoController {
         documento.setHashRegistro(gerarHash(documento));
         DocumentoInterno salvo = documentoInternoRepository.save(documento);
         registrarLogAssinatura(salvo, papelNormalizado, assinadoPor, usuarioAtual, request.getAssinaturaBase64());
+        if (STATUS_REGISTRADO.equals(salvo.getStatus())) {
+            salvo = documentoPdfService.arquivarPdf(salvo);
+        }
         return ResponseEntity.ok(salvo);
+    }
+
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> obterPdf(
+            @PathVariable Long id,
+            @AuthenticationPrincipal OAuth2User principal,
+            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader) {
+        DocumentoInterno documento = documentoInternoRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
+        if (!podeVisualizar(documento, usuarioAtual(principal, usuarioHeader))) {
+            return ResponseEntity.status(403).build();
+        }
+        byte[] pdf = documentoPdfService.obterPdf(documento);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=documento-os-" + id + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(pdf.length)
+                .body(pdf);
     }
 
     @GetMapping("/{id}/assinaturas/log")

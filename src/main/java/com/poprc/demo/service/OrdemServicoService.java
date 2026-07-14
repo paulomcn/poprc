@@ -61,6 +61,10 @@ public class OrdemServicoService {
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado."));
         Projeto projeto = projetoRepository.findById(request.getProjetoId())
                 .orElseThrow(() -> new IllegalArgumentException("Projeto/Comarca alvo não encontrado."));
+        if (projeto.getResponsavel() == null || projeto.getResponsavel().getId() == null) {
+            throw new IllegalArgumentException(
+                    "Atribua um funcionário responsável ao projeto antes de emitir a OS.");
+        }
 
         OrdemServico ordemServico = new OrdemServico();
         ordemServico.setNumeroOs(gerarNumeroOs(contrato));
@@ -159,9 +163,8 @@ public class OrdemServicoService {
         comarca.setOrdemServico(ordemServico);
         comarcaRepository.save(comarca);
         cadastrarMateriaisDaOs(comarca, materiaisPrevistos);
-        Comarca comarcaComMateriais = comarcaRepository.findById(comarca.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada após criação da OS."));
-        ordemRetiradaPort.criarParaOrdemServico(ordemServico, comarcaComMateriais, "Sistema");
+        comarca.setMateriais(materialItemRepository.findByComarcaIdOrderByIdAsc(comarca.getId()));
+        ordemRetiradaPort.criarParaOrdemServico(ordemServico, comarca, "Sistema");
     }
 
     private void cadastrarMateriaisDaOs(Comarca comarca,

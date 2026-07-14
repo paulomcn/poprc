@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Plus, Eye, Edit, Save, X, Briefcase, Calendar } from "lucide-react";
+import { Plus, Eye, Edit, Save, X, Briefcase, User } from "lucide-react";
 import api from "../services/api";
 import Alert from "../components/Alert";
 
 export default function Projetos() {
   const [projetos, setProjetos] = useState([]);
   const [contratos, setContratos] = useState([]); // Armazena contratos para o Select
+  const [funcionarios, setFuncionarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedProjeto, setSelectedProjeto] = useState(null);
@@ -15,6 +16,7 @@ export default function Projetos() {
   // Estado do formulário batendo com o backend
   const [formData, setFormData] = useState({
     contrato: { id: "" },
+    responsavel: { id: "" },
     dataInicio: "",
     dataFim: "",
     status: "EM_ANDAMENTO",
@@ -29,12 +31,14 @@ export default function Projetos() {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const [resProjetos, resContratos] = await Promise.all([
+      const [resProjetos, resContratos, resFuncionarios] = await Promise.all([
         api.get("/projetos"),
         api.get("/contratos"),
+        api.get("/funcionarios"),
       ]);
       setProjetos(resProjetos.data);
       setContratos(resContratos.data);
+      setFuncionarios(resFuncionarios.data || []);
     } catch (err) {
       console.error("Erro ao carregar dados", err);
       setErrorMessage("Falha ao sincronizar dados com o servidor.");
@@ -52,6 +56,7 @@ export default function Projetos() {
     if (projeto) {
       setFormData({
         contrato: { id: projeto.contrato?.id || "" },
+        responsavel: { id: projeto.responsavel?.id || "" },
         dataInicio: projeto.dataInicio || "",
         dataFim: projeto.dataFim || "",
         status: projeto.status || "EM_ANDAMENTO",
@@ -61,6 +66,7 @@ export default function Projetos() {
     } else {
       setFormData({
         contrato: { id: contratos[0]?.id || "" },
+        responsavel: { id: "" },
         dataInicio: "",
         dataFim: "",
         status: "EM_ANDAMENTO",
@@ -75,6 +81,10 @@ export default function Projetos() {
     try {
       if (!formData.contrato.id) {
         setErrorMessage("Selecione um contrato válido!");
+        return;
+      }
+      if (!formData.responsavel.id) {
+        setErrorMessage("Selecione o funcionário responsável pelo projeto e pelas OS.");
         return;
       }
 
@@ -145,6 +155,10 @@ export default function Projetos() {
                 <p>
                   <strong>As-Built:</strong> {p.asBuiltStatus || "PENDENTE"}
                 </p>
+                <p className="flex items-center gap-1.5">
+                  <User size={14} className="text-slate-400" />
+                  <strong>Responsável:</strong> {p.responsavel?.nome || "Não atribuído"}
+                </p>
               </div>
             </div>
 
@@ -210,6 +224,34 @@ export default function Projetos() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-600 uppercase">
+                  Funcionário Responsável *
+                </label>
+                <select
+                  disabled={selectedProjeto && !isEditing}
+                  value={formData.responsavel.id}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      responsavel: { id: e.target.value },
+                    })
+                  }
+                  className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
+                  required
+                >
+                  <option value="">Selecione um funcionário...</option>
+                  {funcionarios.map((funcionario) => (
+                    <option key={funcionario.id} value={funcionario.id}>
+                      {funcionario.nome} - {funcionario.funcao || "Sem função"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  As OS deste projeto aparecerão no Portal Técnico desse responsável.
+                </p>
               </div>
 
               {/* CAMPO ADICIONADO AQUI: Aparece apenas na criação */}

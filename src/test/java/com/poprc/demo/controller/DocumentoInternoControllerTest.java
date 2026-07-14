@@ -4,6 +4,7 @@ import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.DocumentoAssinaturaLogRepository;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.service.DocumentoPdfService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +34,8 @@ class DocumentoInternoControllerTest {
         controller = new DocumentoInternoController(
                 documentoRepository,
                 mock(ComarcaRepository.class),
-                logRepository);
+                logRepository,
+                mock(DocumentoPdfService.class));
 
         documento = new DocumentoInterno();
         documento.setId(1L);

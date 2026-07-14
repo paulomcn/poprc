@@ -19,7 +19,7 @@ import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca";
-import { buildApiFileUrl } from "../services/runtimeConfig";
+import { API_BASE_URL, buildApiFileUrl } from "../services/runtimeConfig";
 import rcLogo from "../assets/rclogo.jpg";
 
 const DOCUMENTO_INICIAL = "VISTORIA_INICIAL_OS";
@@ -889,6 +889,16 @@ export default function GestaoComarcas() {
     `);
     janela.document.close();
     janela.focus();
+  };
+
+  const abrirPdfServidor = async () => {
+    try {
+      const documento = documentoVistoria?.documentoSalvo || (await salvarDocumentoVistoria());
+      if (!documento?.id) return;
+      window.open(`${API_BASE_URL}/documentos-internos/${documento.id}/pdf`, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      alert(err.response?.data?.erro || "Não foi possível gerar o PDF no servidor.");
+    }
   };
 
   const getNomeAssinantePadrao = (papel) => {
@@ -2482,6 +2492,14 @@ export default function GestaoComarcas() {
             </div>
 
             <div className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={abrirPdfServidor}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"
+              >
+                <Printer size={16} />
+                Abrir PDF do servidor
+              </button>
               <button
                 type="button"
                 onClick={imprimirDocumentoVistoria}

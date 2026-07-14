@@ -2,11 +2,9 @@ package com.poprc.demo.service;
 
 import com.poprc.demo.dto.RelatorioLucratividadeDTO;
 import com.poprc.demo.model.Faturamento;
-import com.poprc.demo.model.MaterialProjeto;
 import com.poprc.demo.model.PrestacaoContas;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.repository.FaturamentoRepository;
-import com.poprc.demo.repository.MaterialProjetoRepository;
 import com.poprc.demo.repository.PrestacaoContasRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +23,6 @@ public class RelatorioFinanceiroService {
     private final ProjetoRepository projetoRepository;
     private final FaturamentoRepository faturamentoRepository;
     private final PrestacaoContasRepository prestacaoContasRepository;
-    private final MaterialProjetoRepository materialProjetoRepository;
 
     @Transactional(readOnly = true)
     public RelatorioLucratividadeDTO gerarRelatorioLucratividade(Long projetoId) {
@@ -51,22 +48,14 @@ public class RelatorioFinanceiroService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
-        // 3. CUSTO DOS MATERIAIS
-        List<MaterialProjeto> materiais = materialProjetoRepository.findByProjetoId(projetoId);
-        BigDecimal precoPadraoMaterial = new BigDecimal("50.00");
-        BigDecimal totalCustoMateriais = materiais.stream()
-                .filter(Objects::nonNull)
-                .map(m -> m.getQuantidadeUtilizada() != null
-                        ? precoPadraoMaterial.multiply(BigDecimal.valueOf(m.getQuantidadeUtilizada()))
-                        : BigDecimal.ZERO)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
+        // Custos de materiais ficam fora do cálculo até existir um valor real cadastrado.
+        BigDecimal totalCustoMateriais = null;
 
-        // 4. CONSOLIDAÇÃO E LUCRO BRUTO
-        BigDecimal custoTotalAcumulado = totalCustoViagens.add(totalCustoMateriais);
+        // 3. CONSOLIDAÇÃO PARCIAL COM APENAS CUSTOS REAIS DISPONÍVEIS
+        BigDecimal custoTotalAcumulado = totalCustoViagens;
         BigDecimal lucroBruto = totalFaturado.subtract(custoTotalAcumulado);
 
-        // 5. CÁLCULO DA MARGEM E SAÚDE FINANCEIRA
+        // 4. CÁLCULO DA MARGEM E SAÚDE FINANCEIRA PARCIAIS
         BigDecimal margemLucro = BigDecimal.ZERO;
         String saudeFinanceira = "PREJUIZO_CRITICO";
 
@@ -90,6 +79,8 @@ public class RelatorioFinanceiroService {
                 .totalFaturado(totalFaturado)
                 .totalCustoViagens(totalCustoViagens)
                 .totalCustoMateriais(totalCustoMateriais)
+                .custoMateriaisDisponivel(false)
+                .resultadoFinanceiroParcial(true)
                 .custoTotalAcumulado(custoTotalAcumulado)
                 .lucroBruto(lucroBruto)
                 .margemLucro(margemLucro)

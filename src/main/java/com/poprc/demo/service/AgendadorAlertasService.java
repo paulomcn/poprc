@@ -5,17 +5,20 @@ import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.SaldoMaterialLocal;
 import com.poprc.demo.model.StatusOS;
+import com.poprc.demo.model.TipoControleEstoque;
 import com.poprc.demo.repository.ConfiguracaoNotificacaoRepository;
 import com.poprc.demo.repository.ContratoRepository;
-import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.SaldoMaterialLocalRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -26,7 +29,7 @@ import java.time.temporal.ChronoUnit;
 public class AgendadorAlertasService {
 
     private final OrdemServicoRepository osRepository;
-    private final MaterialRepository materialRepository;
+    private final SaldoMaterialLocalRepository saldoMaterialLocalRepository;
     private final ContratoRepository contratoRepository;
     private final ConfiguracaoNotificacaoRepository configRepository;
     private final NotificacaoOperacionalService notificacaoService;
@@ -75,17 +78,34 @@ public class AgendadorAlertasService {
         }
 
         if (config.isAlertaEstoqueCritico()) {
-            for (Material material : materialRepository.findAll()) {
-                if (material.getQuantidadeDisponivel() == null || material.getQuantidadeDisponivel() > 5) {
+            for (SaldoMaterialLocal saldoLocal : saldoMaterialLocalRepository
+                    .findAllByOrderByMaterialNomeAscLocalEstoqueNomeAsc()) {
+                Material material = saldoLocal.getMaterial();
+                if (material == null || saldoLocal.getLocalEstoque() == null
+                        || Boolean.FALSE.equals(saldoLocal.getLocalEstoque().getAtivo())) {
                     continue;
                 }
+
+                BigDecimal minimo = valor(material.getEstoqueMinimo());
+                if (minimo.signum() <= 0) {
+                    continue;
+                }
+
+                BigDecimal saldoLivre = saldoLivre(saldoLocal, material);
+                if (saldoLivre.compareTo(minimo) > 0) {
+                    continue;
+                }
+
+                String local = saldoLocal.getLocalEstoque().getNome();
+                String unidade = controlaMetragem(material) ? "m" : material.getUnidadeMedida().name();
                 encontrados++;
                 boolean criada = notificacaoService.registrarSeAusente(
-                        "ESTOQUE_CRITICO:" + material.getId() + ":" + hoje,
+                        "ESTOQUE_CRITICO:" + material.getId() + ":" + saldoLocal.getLocalEstoque().getId(),
                         "ESTOQUE_CRITICO",
                         "ALERTA",
-                        "Estoque crítico: " + material.getNome(),
-                        "Saldo atual: " + material.getQuantidadeDisponivel() + " " + material.getUnidadeMedida() + ".",
+                        "Estoque crítico: " + material.getNome() + " em " + local,
+                        "Depósito: " + local + ". Saldo livre: " + formatar(saldoLivre) + " " + unidade
+                                + ". Mínimo configurado: " + formatar(minimo) + " " + unidade + ".",
                         null,
                         null);
                 if (criada) novos++;
@@ -120,6 +140,33 @@ public class AgendadorAlertasService {
 
     private boolean finalizada(StatusOS status) {
         return status == StatusOS.CONCLUIDA || status == StatusOS.FATURADA;
+    }
+
+    private BigDecimal saldoLivre(SaldoMaterialLocal saldoLocal, Material material) {
+        if (controlaMetragem(material)) {
+            return valor(saldoLocal.getMetragemDisponivel())
+                    .subtract(valor(saldoLocal.getMetragemReservada()));
+        }
+        return BigDecimal.valueOf(valor(saldoLocal.getQuantidadeDisponivel())
+                - valor(saldoLocal.getQuantidadeReservada()));
+    }
+
+    private boolean controlaMetragem(Material material) {
+        return TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+                || TipoControleEstoque.BOBINA.equals(material.getTipoControle())
+                || TipoControleEstoque.ROLO.equals(material.getTipoControle());
+    }
+
+    private int valor(Integer valor) {
+        return valor != null ? valor : 0;
+    }
+
+    private BigDecimal valor(BigDecimal valor) {
+        return valor != null ? valor : BigDecimal.ZERO;
+    }
+
+    private String formatar(BigDecimal valor) {
+        return valor.stripTrailingZeros().toPlainString();
     }
 
     public record VarreduraResultado(

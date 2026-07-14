@@ -17,6 +17,8 @@ public class RelatorioLucratividadeDTO {
     private BigDecimal totalFaturado;
     private BigDecimal totalCustoViagens;
     private BigDecimal totalCustoMateriais;
+    private Boolean custoMateriaisDisponivel;
+    private Boolean resultadoFinanceiroParcial;
     private BigDecimal custoTotalAcumulado;
     private BigDecimal lucroBruto;
     private BigDecimal margemLucro;

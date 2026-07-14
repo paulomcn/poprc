@@ -73,4 +73,11 @@ public class DocumentoInterno {
 
     @Column(length = 128)
     private String hashRegistro;
+
+    private String pdfPath;
+
+    @Column(length = 64)
+    private String pdfHash;
+
+    private LocalDateTime pdfGeradoEm;
 }
