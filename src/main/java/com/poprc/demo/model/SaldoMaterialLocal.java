@@ -41,4 +41,7 @@ public class SaldoMaterialLocal {
 
     @Column(precision = 14, scale = 3, nullable = false)
     private BigDecimal metragemReservada = BigDecimal.ZERO;
+
+    @Column(precision = 14, scale = 3)
+    private BigDecimal estoqueMinimo;
 }

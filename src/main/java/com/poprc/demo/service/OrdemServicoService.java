@@ -52,15 +52,22 @@ public class OrdemServicoService {
         if (request.getContratoId() == null) {
             throw new IllegalArgumentException("Contrato é obrigatório para criar a OS.");
         }
+        if (request.getDescricao() == null || request.getDescricao().isBlank()) {
+            throw new IllegalArgumentException("Descrição do chamado técnico é obrigatória.");
+        }
         validarDatasObrigatorias(request.getDataHoraInicio(), request.getDataHoraFim(), request.getDeadline());
         if (request.getMateriais() == null || request.getMateriais().isEmpty()) {
             throw new IllegalArgumentException("Defina ao menos um material previsto para emitir a OS.");
         }
+        validarMateriaisSemDuplicidade(request.getMateriais());
 
         Contrato contrato = contratoRepository.findById(request.getContratoId())
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado."));
         Projeto projeto = projetoRepository.findById(request.getProjetoId())
                 .orElseThrow(() -> new IllegalArgumentException("Projeto/Comarca alvo não encontrado."));
+        if (projeto.getContrato() == null || !contrato.getId().equals(projeto.getContrato().getId())) {
+            throw new IllegalArgumentException("O projeto selecionado não pertence ao contrato informado.");
+        }
         if (projeto.getResponsavel() == null || projeto.getResponsavel().getId() == null) {
             throw new IllegalArgumentException(
                     "Atribua um funcionário responsável ao projeto antes de emitir a OS.");
@@ -200,6 +207,20 @@ public class OrdemServicoService {
         }
         if (fim.isBefore(inicio)) {
             throw new IllegalArgumentException("Data e Hora de Fim não pode ser anterior ao início.");
+        }
+        if (deadline.isBefore(fim)) {
+            throw new IllegalArgumentException("Prazo limite não pode ser anterior ao fim planejado da OS.");
+        }
+    }
+
+    private void validarMateriaisSemDuplicidade(
+            List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisPrevistos) {
+        Set<Long> materiaisInformados = new java.util.HashSet<>();
+        for (CriarOrdemServicoRequest.MaterialPrevistoRequest material : materiaisPrevistos) {
+            if (material.getMaterialId() != null && !materiaisInformados.add(material.getMaterialId())) {
+                throw new IllegalArgumentException(
+                        "O mesmo material não pode ser informado mais de uma vez na OS. Some as quantidades em um único item.");
+            }
         }
     }
 

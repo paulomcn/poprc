@@ -2,18 +2,20 @@ package com.poprc.demo.service;
 
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.lowagie.text.pdf.PdfReader;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 
 class DocumentoPdfServiceTest {
 
     @Test
-    void deveGerarPdfMesmoComCamposEmBranco() {
+    void deveGerarPdfMesmoComCamposEmBranco() throws Exception {
         DocumentoPdfService service = new DocumentoPdfService(
                 new ObjectMapper(), mock(DocumentoInternoRepository.class));
         DocumentoInterno documento = new DocumentoInterno();
@@ -26,5 +28,9 @@ class DocumentoPdfServiceTest {
 
         assertTrue(pdf.length > 500);
         assertTrue(new String(pdf, 0, 4, StandardCharsets.US_ASCII).startsWith("%PDF"));
+        PdfReader reader = new PdfReader(pdf);
+        assertEquals(5, reader.getNumberOfPages());
+        assertTrue(reader.getPageSize(1).getWidth() > 590);
+        reader.close();
     }
 }

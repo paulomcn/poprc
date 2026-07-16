@@ -111,6 +111,15 @@ public class EstoqueController {
         return ResponseEntity.ok(saldoLocalService.listarSaldos(materialId));
     }
 
+    @PatchMapping("/saldos-locais/{id}/estoque-minimo")
+    public ResponseEntity<SaldoMaterialLocal> atualizarEstoqueMinimoLocal(
+            @PathVariable Long id, @RequestBody EstoqueMinimoLocalRequest request) {
+        return ResponseEntity.ok(saldoLocalService.atualizarEstoqueMinimo(id, request.estoqueMinimo()));
+    }
+
+    public record EstoqueMinimoLocalRequest(BigDecimal estoqueMinimo) {
+    }
+
     @GetMapping("/unidades-rastreaveis")
     public ResponseEntity<List<UnidadeEstoqueRastreavel>> listarUnidadesRastreaveis(
             @RequestParam(required = false) Long materialId) {

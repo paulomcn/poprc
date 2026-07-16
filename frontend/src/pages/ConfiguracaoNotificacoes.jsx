@@ -29,6 +29,8 @@ export default function ConfiguracaoNotificacoes() {
     alertaOsAtrasada: true,
     alertaEstoqueCritico: true,
     alertaContratoVencendo: true,
+    antecedenciaOsHoras: 24,
+    antecedenciaContratoDias: 30,
   });
 
   const [atividadesPadrao, setAtividadesPadrao] = useState([]);
@@ -85,7 +87,8 @@ export default function ConfiguracaoNotificacoes() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setSettings((prev) => ({ ...prev, [name]: value }));
+    const numerico = ["antecedenciaOsHoras", "antecedenciaContratoDias"].includes(name);
+    setSettings((prev) => ({ ...prev, [name]: numerico ? Number(value) : value }));
   };
 
   const handleToggleChange = (field) => {
@@ -241,6 +244,45 @@ export default function ConfiguracaoNotificacoes() {
           <h2 className="text-lg font-bold text-slate-800 border-b pt-4 pb-3">
             Regras de Varredura
           </h2>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">
+                Avisar antes do deadline da OS
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  name="antecedenciaOsHoras"
+                  min="1"
+                  max="720"
+                  required
+                  value={settings.antecedenciaOsHoras ?? 24}
+                  onChange={handleInputChange}
+                  className="w-full rounded-lg border px-4 py-2"
+                />
+                <span className="text-sm text-slate-500">horas</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">
+                Avisar antes do fim do contrato
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  name="antecedenciaContratoDias"
+                  min="1"
+                  max="365"
+                  required
+                  value={settings.antecedenciaContratoDias ?? 30}
+                  onChange={handleInputChange}
+                  className="w-full rounded-lg border px-4 py-2"
+                />
+                <span className="text-sm text-slate-500">dias</span>
+              </div>
+            </div>
+          </div>
 
           {[
             "alertaOsAtrasada",

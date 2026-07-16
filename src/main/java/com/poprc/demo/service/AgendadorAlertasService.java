@@ -38,9 +38,11 @@ public class AgendadorAlertasService {
     @Transactional
     public VarreduraResultado executarVarreduraDiariaDeAlertas() {
         ConfiguracaoNotificacao config = configRepository.findById(1L)
-                .orElseGet(() -> new ConfiguracaoNotificacao(1L, "", "", true, true, true));
+                .orElseGet(() -> configuracaoPadrao());
         LocalDateTime agora = LocalDateTime.now();
         LocalDate hoje = agora.toLocalDate();
+        int antecedenciaOsHoras = inteiroPositivo(config.getAntecedenciaOsHoras(), 24);
+        int antecedenciaContratoDias = inteiroPositivo(config.getAntecedenciaContratoDias(), 30);
         int encontrados = 0;
         int novos = 0;
 
@@ -62,14 +64,15 @@ public class AgendadorAlertasService {
                             os,
                             responsavel);
                     if (criada) novos++;
-                } else if (!os.getDeadline().isAfter(agora.plusHours(24))) {
+                } else if (!os.getDeadline().isAfter(agora.plusHours(antecedenciaOsHoras))) {
                     encontrados++;
                     boolean criada = notificacaoService.registrarSeAusente(
                             "OS_PRAZO_24H:" + os.getId() + ":" + os.getDeadline(),
                             "OS_PRAZO_24H",
                             "ALERTA",
                             "OS " + os.getNumeroOs() + " próxima do prazo",
-                            "Restam menos de 24 horas para o deadline de " + os.getDeadline() + ".",
+                            "Restam menos de " + antecedenciaOsHoras + " horas para o deadline de "
+                                    + os.getDeadline() + ".",
                             os,
                             responsavel);
                     if (criada) novos++;
@@ -86,7 +89,9 @@ public class AgendadorAlertasService {
                     continue;
                 }
 
-                BigDecimal minimo = valor(material.getEstoqueMinimo());
+                BigDecimal minimo = saldoLocal.getEstoqueMinimo() != null
+                        ? saldoLocal.getEstoqueMinimo()
+                        : valor(material.getEstoqueMinimo());
                 if (minimo.signum() <= 0) {
                     continue;
                 }
@@ -97,7 +102,9 @@ public class AgendadorAlertasService {
                 }
 
                 String local = saldoLocal.getLocalEstoque().getNome();
-                String unidade = controlaMetragem(material) ? "m" : material.getUnidadeMedida().name();
+                String unidade = controlaMetragem(material)
+                        ? "m"
+                        : material.getUnidadeMedida() == null ? "UNIDADE" : material.getUnidadeMedida().name();
                 encontrados++;
                 boolean criada = notificacaoService.registrarSeAusente(
                         "ESTOQUE_CRITICO:" + material.getId() + ":" + saldoLocal.getLocalEstoque().getId(),
@@ -118,7 +125,7 @@ public class AgendadorAlertasService {
                     continue;
                 }
                 long diasParaVencer = ChronoUnit.DAYS.between(hoje, contrato.getVigenciaFim());
-                if (diasParaVencer < 0 || diasParaVencer > 30) {
+                if (diasParaVencer < 0 || diasParaVencer > antecedenciaContratoDias) {
                     continue;
                 }
                 encontrados++;
@@ -140,6 +147,14 @@ public class AgendadorAlertasService {
 
     private boolean finalizada(StatusOS status) {
         return status == StatusOS.CONCLUIDA || status == StatusOS.FATURADA;
+    }
+
+    private ConfiguracaoNotificacao configuracaoPadrao() {
+        return new ConfiguracaoNotificacao(1L, "", "", true, true, true, 24, 30);
+    }
+
+    private int inteiroPositivo(Integer valor, int padrao) {
+        return valor == null || valor <= 0 ? padrao : valor;
     }
 
     private BigDecimal saldoLivre(SaldoMaterialLocal saldoLocal, Material material) {

@@ -17,6 +17,7 @@ import com.poprc.demo.model.ProjetoStatus;
 import com.poprc.demo.model.TipoControleEstoque;
 import com.poprc.demo.model.TipoMovimentacao;
 import com.poprc.demo.model.UnidadeMedida;
+import com.poprc.demo.model.UnidadeEstoqueRastreavel;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FuncionarioRepository;
@@ -24,10 +25,12 @@ import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.MovimentacaoEstoqueRepository;
 import com.poprc.demo.repository.OrdemRetiradaRepository;
 import com.poprc.demo.repository.ProjetoRepository;
+import com.poprc.demo.repository.UnidadeEstoqueRastreavelRepository;
 import com.poprc.demo.service.ComarcaService;
 import com.poprc.demo.service.EstoqueService;
 import com.poprc.demo.service.OrdemRetiradaService;
 import com.poprc.demo.service.OrdemServicoService;
+import com.poprc.demo.service.UnidadeEstoqueRastreavelService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +65,8 @@ class FluxoOperacionalIntegrationTest {
     @Autowired
     private EstoqueService estoqueService;
     @Autowired
+    private UnidadeEstoqueRastreavelService unidadeEstoqueRastreavelService;
+    @Autowired
     private FuncionarioRepository funcionarioRepository;
     @Autowired
     private ContratoRepository contratoRepository;
@@ -75,6 +80,8 @@ class FluxoOperacionalIntegrationTest {
     private OrdemRetiradaRepository ordemRetiradaRepository;
     @Autowired
     private MovimentacaoEstoqueRepository movimentacaoEstoqueRepository;
+    @Autowired
+    private UnidadeEstoqueRastreavelRepository unidadeEstoqueRastreavelRepository;
     @Autowired
     private EntityManager entityManager;
 
@@ -172,6 +179,127 @@ class FluxoOperacionalIntegrationTest {
         assertTrue(erro.getMessage().contains("Ferramentas devem retornar obrigatoriamente"));
     }
 
+    @Test
+    void bloqueiaCriacaoDeOsComPrazoAnteriorAoFimPlanejado() {
+        Cenario cenario = prepararCenario(false);
+        CriarOrdemServicoRequest request = novaRequisicaoOs(cenario);
+        request.setDeadline(request.getDataHoraFim().minusMinutes(1));
+
+        IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                () -> ordemServicoService.criar(request));
+
+        assertTrue(erro.getMessage().contains("Prazo limite"));
+    }
+
+    @Test
+    void bloqueiaMaterialDuplicadoNaCriacaoDaOs() {
+        Cenario cenario = prepararCenario(false);
+        CriarOrdemServicoRequest request = novaRequisicaoOs(cenario);
+        request.setMateriais(List.of(
+                materialPrevisto(cenario.consumoId(), BigDecimal.ONE),
+                materialPrevisto(cenario.consumoId(), BigDecimal.TEN)));
+
+        IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                () -> ordemServicoService.criar(request));
+
+        assertTrue(erro.getMessage().contains("mais de uma vez"));
+    }
+
+    @Test
+    void permiteMultiplasOrsSequenciaisEBloqueiaOrSobreposta() {
+        Cenario cenario = prepararCenario(false);
+        OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(4), null);
+        OrdemRetirada primeiraOr = unicaOrDaOs(os);
+
+        IllegalStateException erro = assertThrows(IllegalStateException.class,
+                () -> ordemRetiradaService.criarAdicionalParaOs(os.getId(), "Gestor Teste"));
+        assertTrue(erro.getMessage().contains("OR ativa"));
+
+        primeiraOr = ordemRetiradaService.executarRetirada(primeiraOr.getId(), retiradaAssinada());
+        ordemRetiradaService.devolver(primeiraOr.getId(), devolucao(primeiraOr, BigDecimal.ONE, null));
+
+        OrdemRetirada segundaOr = ordemRetiradaService.criarAdicionalParaOs(os.getId(), "Gestor Teste");
+        assertEquals(os.getNumeroOs() + " - OR 02", segundaOr.getNumeroOr());
+        assertEquals("GERADA", segundaOr.getStatus());
+        assertEquals(2, ordemRetiradaRepository.findByOrdemServicoIdOrderByDataGeracaoDesc(os.getId()).size());
+    }
+
+    @Test
+    void impedeExecucaoDuplicadaDaMesmaOrSemBaixarEstoqueNovamente() {
+        Cenario cenario = prepararCenario(false);
+        OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(4), null);
+        OrdemRetirada ordemRetirada = unicaOrDaOs(os);
+
+        ordemRetiradaService.executarRetirada(ordemRetirada.getId(), retiradaAssinada());
+        int saldoDepoisDaPrimeiraRetirada = materialRepository.findById(cenario.consumoId())
+                .orElseThrow().getQuantidadeDisponivel();
+
+        IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                () -> ordemRetiradaService.executarRetirada(ordemRetirada.getId(), retiradaAssinada()));
+
+        assertTrue(erro.getMessage().contains("não está disponível"));
+        assertEquals(saldoDepoisDaPrimeiraRetirada,
+                materialRepository.findById(cenario.consumoId()).orElseThrow().getQuantidadeDisponivel());
+        assertEquals(1, contarMovimentos(
+                movimentacaoEstoqueRepository.findByComarcaIdOrderByDataMovimentacaoDesc(cenario.comarcaId()),
+                TipoMovimentacao.RETIRADA_OR));
+    }
+
+    @Test
+    void rastreiaRetiradaEDevolucaoParcialDeBobina() {
+        Cenario cenario = prepararCenario(false);
+        String sufixo = UUID.randomUUID().toString().substring(0, 8);
+        Material bobina = new Material();
+        bobina.setNome("Cabo em Bobina " + sufixo);
+        bobina.setPartNumber("BOB-" + sufixo);
+        bobina.setCategoria("MATERIAL_CONSUMO");
+        bobina.setTipoControle(TipoControleEstoque.BOBINA);
+        bobina.setUnidadeMedida(UnidadeMedida.METRO);
+        bobina.setMetragemDisponivel(BigDecimal.ZERO);
+        bobina.setLocalizacao("Estoque Central");
+        bobina = estoqueService.cadastrarMaterial(bobina);
+
+        UnidadeEstoqueRastreavel unidade = unidadeEstoqueRastreavelService.cadastrar(
+                bobina.getId(), "BOBINA-" + sufixo, BigDecimal.valueOf(100), "Teste de integração", null);
+
+        CriarOrdemServicoRequest request = novaRequisicaoOs(cenario);
+        request.setMateriais(List.of(materialPrevisto(bobina.getId(), BigDecimal.valueOf(30))));
+        OrdemServico os = ordemServicoService.criar(request);
+        OrdemRetirada ordemRetirada = unicaOrDaOs(os);
+        OrdemRetiradaItem item = ordemRetirada.getItens().getFirst();
+
+        ExecutarOrdemRetiradaRequest retirada = retiradaAssinada();
+        ExecutarOrdemRetiradaRequest.AlocacaoRequest alocacao = new ExecutarOrdemRetiradaRequest.AlocacaoRequest();
+        alocacao.setItemId(item.getId());
+        alocacao.setUnidadeRastreavelId(unidade.getId());
+        alocacao.setMetragem(BigDecimal.valueOf(30));
+        retirada.setAlocacoes(List.of(alocacao));
+        ordemRetirada = ordemRetiradaService.executarRetirada(ordemRetirada.getId(), retirada);
+
+        assertEquals(0, BigDecimal.valueOf(70).compareTo(
+                unidadeEstoqueRastreavelRepository.findById(unidade.getId()).orElseThrow().getMetragemAtual()));
+        assertEquals(0, BigDecimal.valueOf(70).compareTo(
+                materialRepository.findById(bobina.getId()).orElseThrow().getMetragemDisponivel()));
+
+        DevolverOrdemRetiradaRequest devolucao = new DevolverOrdemRetiradaRequest();
+        devolucao.setDevolvidoPor("Técnico Teste");
+        devolucao.setRecebidoPor("Almoxarife Teste");
+        devolucao.setAssinaturaRecebimentoBase64(ASSINATURA);
+        devolucao.setItens(List.of());
+        DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest retorno =
+                new DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest();
+        retorno.setAlocacaoId(ordemRetirada.getItens().getFirst().getAlocacoes().getFirst().getId());
+        retorno.setMetragemDevolvida(BigDecimal.TEN);
+        devolucao.setAlocacoes(List.of(retorno));
+
+        ordemRetiradaService.devolver(ordemRetirada.getId(), devolucao);
+
+        assertEquals(0, BigDecimal.valueOf(80).compareTo(
+                unidadeEstoqueRastreavelRepository.findById(unidade.getId()).orElseThrow().getMetragemAtual()));
+        assertEquals(0, BigDecimal.valueOf(80).compareTo(
+                materialRepository.findById(bobina.getId()).orElseThrow().getMetragemDisponivel()));
+    }
+
     private Cenario prepararCenario(boolean comFerramenta) {
         String sufixo = UUID.randomUUID().toString().substring(0, 8);
 
@@ -226,14 +354,7 @@ class FluxoOperacionalIntegrationTest {
 
     private OrdemServico criarOrdemServico(Cenario cenario, BigDecimal quantidadeConsumo,
             BigDecimal quantidadeFerramenta) {
-        CriarOrdemServicoRequest request = new CriarOrdemServicoRequest();
-        request.setContratoId(cenario.contratoId());
-        request.setProjetoId(cenario.projetoId());
-        request.setDescricao("Execução do cenário de integração");
-        LocalDateTime inicio = LocalDateTime.now().plusDays(1);
-        request.setDataHoraInicio(inicio);
-        request.setDataHoraFim(inicio.plusHours(8));
-        request.setDeadline(inicio.plusDays(1));
+        CriarOrdemServicoRequest request = novaRequisicaoOs(cenario);
 
         CriarOrdemServicoRequest.MaterialPrevistoRequest consumo = materialPrevisto(
                 cenario.consumoId(), quantidadeConsumo);
@@ -244,6 +365,19 @@ class FluxoOperacionalIntegrationTest {
             request.setMateriais(List.of(consumo));
         }
         return ordemServicoService.criar(request);
+    }
+
+    private CriarOrdemServicoRequest novaRequisicaoOs(Cenario cenario) {
+        CriarOrdemServicoRequest request = new CriarOrdemServicoRequest();
+        request.setContratoId(cenario.contratoId());
+        request.setProjetoId(cenario.projetoId());
+        request.setDescricao("Execução do cenário de integração");
+        LocalDateTime inicio = LocalDateTime.now().plusDays(1);
+        request.setDataHoraInicio(inicio);
+        request.setDataHoraFim(inicio.plusHours(8));
+        request.setDeadline(inicio.plusDays(1));
+        request.setMateriais(List.of(materialPrevisto(cenario.consumoId(), BigDecimal.ONE)));
+        return request;
     }
 
     private CriarOrdemServicoRequest.MaterialPrevistoRequest materialPrevisto(Long materialId,

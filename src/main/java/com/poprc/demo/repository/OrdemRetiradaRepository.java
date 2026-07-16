@@ -12,6 +12,8 @@ public interface OrdemRetiradaRepository extends JpaRepository<OrdemRetirada, Lo
 
     List<OrdemRetirada> findByOrdemServicoIdOrderByDataGeracaoDesc(Long ordemServicoId);
 
+    boolean existsByOrdemServicoIdAndStatusIn(Long ordemServicoId, List<String> status);
+
     List<OrdemRetirada> findByComarcaIdOrderByDataGeracaoDesc(Long comarcaId);
 
     List<OrdemRetirada> findAllByOrderByDataGeracaoDesc();

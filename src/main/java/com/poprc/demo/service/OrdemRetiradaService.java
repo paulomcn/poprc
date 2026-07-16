@@ -96,6 +96,11 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     public OrdemRetirada criarAdicionalParaOs(Long ordemServicoId, String geradoPor) {
         OrdemServico ordemServico = ordemServicoRepository.findById(ordemServicoId)
                 .orElseThrow(() -> new IllegalArgumentException("OS não encontrada."));
+        if (ordemRetiradaRepository.existsByOrdemServicoIdAndStatusIn(
+                ordemServicoId, List.of(STATUS_GERADA, STATUS_RETIRADA))) {
+            throw new IllegalStateException(
+                    "Conclua a retirada e a devolução da OR ativa antes de gerar uma nova OR para esta OS.");
+        }
         if (ordemServico.getProjeto() == null || ordemServico.getProjeto().getId() == null) {
             throw new IllegalArgumentException("OS sem projeto/comarca vinculada.");
         }

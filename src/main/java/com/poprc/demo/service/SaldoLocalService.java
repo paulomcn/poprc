@@ -36,6 +36,17 @@ public class SaldoLocalService {
     }
 
     @Transactional
+    public SaldoMaterialLocal atualizarEstoqueMinimo(Long saldoId, BigDecimal estoqueMinimo) {
+        SaldoMaterialLocal saldo = saldoRepository.findById(saldoId)
+                .orElseThrow(() -> new IllegalArgumentException("Saldo local não encontrado."));
+        if (estoqueMinimo != null && estoqueMinimo.signum() < 0) {
+            throw new IllegalArgumentException("O estoque mínimo local não pode ser negativo.");
+        }
+        saldo.setEstoqueMinimo(estoqueMinimo);
+        return saldoRepository.save(saldo);
+    }
+
+    @Transactional
     public LocalEstoque cadastrarLocal(String nome, String endereco) {
         if (nome == null || nome.isBlank()) {
             throw new IllegalArgumentException("Nome do depósito é obrigatório.");

@@ -17,7 +17,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
-import api from "../services/api";
+import api, { getApiErrorMessage } from "../services/api";
 import OrdensServicoCard from "../components/OrdensServicoCard";
 import StatusModal from "../components/StatusModal";
 
@@ -99,7 +99,7 @@ export default function GestaoOrdensServico() {
       setMateriaisEstoque(materiaisResponse.data || []);
     } catch (err) {
       console.error("Erro ao puxar árvore de projetos/comarcas:", err);
-      setError("Não foi possível carregar os projetos/comarcas para abertura de OS.");
+      setError(getApiErrorMessage(err, "Não foi possível carregar os projetos/comarcas para abertura de OS."));
     }
   };
 
@@ -130,7 +130,7 @@ export default function GestaoOrdensServico() {
       });
       setOrdensServico(response.data || []);
     } catch (err) {
-      setError("Erro ao sincronizar dados com a central de filtros do banco.");
+      setError(getApiErrorMessage(err, "Erro ao sincronizar dados com a central de filtros do banco."));
       console.error(err);
     } finally {
       setLoading(false);
@@ -165,7 +165,7 @@ export default function GestaoOrdensServico() {
           o.id === ordemId ? { ...o, status: statusOrigem } : o,
         ),
       );
-      alert("Falha de comunicação com o servidor. Movimentação cancelada.");
+      alert(getApiErrorMessage(err, "Não foi possível alterar o status. A movimentação foi desfeita."));
     }
   };
 
@@ -178,7 +178,7 @@ export default function GestaoOrdensServico() {
       buscarOrdensFilttradas();
     } catch (err) {
       console.error(err);
-      alert("Erro ao alterar o status do chamado no banco.");
+      alert(getApiErrorMessage(err, "Erro ao alterar o status do chamado no banco."));
     }
   };
 
@@ -187,6 +187,7 @@ export default function GestaoOrdensServico() {
     if (
       !formData.projetoId ||
       !formData.contratoId ||
+      !formData.descricao.trim() ||
       !formData.dataHoraInicio ||
       !formData.dataHoraFim ||
       !formData.deadline ||
@@ -195,7 +196,25 @@ export default function GestaoOrdensServico() {
         (item) => !item.materialId || Number(item.quantidadePrevista) <= 0,
       )
     ) {
-      alert("Preencha projeto, prazos e ao menos um material previsto.");
+      alert("Preencha o projeto, a descrição, os prazos e ao menos um material previsto.");
+      return;
+    }
+
+    const inicio = new Date(formData.dataHoraInicio);
+    const fim = new Date(formData.dataHoraFim);
+    const prazo = new Date(formData.deadline);
+    if (fim < inicio) {
+      alert("A data e hora de fim não pode ser anterior ao início.");
+      return;
+    }
+    if (prazo < fim) {
+      alert("O prazo limite não pode ser anterior ao fim planejado da OS.");
+      return;
+    }
+
+    const idsMateriais = formData.materiais.map((item) => String(item.materialId));
+    if (new Set(idsMateriais).size !== idsMateriais.length) {
+      alert("O mesmo material não pode ser adicionado mais de uma vez. Ajuste a quantidade em um único item.");
       return;
     }
 
@@ -218,8 +237,7 @@ export default function GestaoOrdensServico() {
     } catch (err) {
       console.error(err);
       alert(
-        err.response?.data?.erro ||
-          "Erro ao salvar ordem de serviço vinculada no banco.",
+        getApiErrorMessage(err, "Erro ao salvar ordem de serviço vinculada no banco."),
       );
     }
   };
@@ -238,8 +256,7 @@ export default function GestaoOrdensServico() {
     } catch (err) {
       console.error(err);
       setError(
-        err.response?.data?.erro ||
-          "Erro ao sincronizar vínculos entre OS, comarcas e materiais.",
+        getApiErrorMessage(err, "Erro ao sincronizar vínculos entre OS, comarcas e materiais."),
       );
     } finally {
       setLoading(false);
@@ -753,6 +770,7 @@ export default function GestaoOrdensServico() {
                   <input
                     type="datetime-local"
                     required
+                    min={formData.dataHoraInicio || undefined}
                     value={formData.dataHoraFim}
                     onChange={(e) =>
                       setFormData({ ...formData, dataHoraFim: e.target.value })
@@ -767,6 +785,7 @@ export default function GestaoOrdensServico() {
                   <input
                     type="datetime-local"
                     required
+                    min={formData.dataHoraFim || undefined}
                     value={formData.deadline}
                     onChange={(e) =>
                       setFormData({ ...formData, deadline: e.target.value })
@@ -836,8 +855,13 @@ export default function GestaoOrdensServico() {
                               const reservado = saldoReservadoMaterial(material);
                               const emEstoque = saldoEstoqueMaterial(material);
                               const unidade = unidadeMaterial(material);
+                              const selecionadoEmOutraLinha = formData.materiais.some(
+                                (outroItem, outroIndex) =>
+                                  outroIndex !== index &&
+                                  String(outroItem.materialId) === String(material.id),
+                              );
                               return (
-                                <option key={material.id} value={material.id}>
+                                <option key={material.id} value={material.id} disabled={selecionadoEmOutraLinha}>
                                   {material.nome} ({saldoLivre} {unidade} disponível para OS, {reservado} {unidade} reservado, {emEstoque} {unidade} em estoque)
                                 </option>
                               );

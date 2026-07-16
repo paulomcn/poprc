@@ -11,7 +11,7 @@ import {
   X,
   Download,
 } from "lucide-react";
-import api from "../services/api";
+import api, { getApiErrorMessage } from "../services/api";
 
 export default function AuditoriaMateriaisEAsBuilt() {
   const [comarcas, setComarcas] = useState([]);
@@ -56,7 +56,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
       setOrdensRetirada(ordensRetiradaResponse.data || []);
       setError(null);
     } catch (err) {
-      setError("Erro ao carregar os dados de engenharia do servidor.");
+      setError(getApiErrorMessage(err, "Erro ao carregar os dados de engenharia do servidor."));
       console.error(err);
     } finally {
       setLoading(false);
@@ -91,8 +91,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
       );
     } catch (err) {
       setError(
-        err.response?.data?.erro ||
-          "Erro ao homologar As-Built. Verifique as divergências da auditoria.",
+        getApiErrorMessage(err, "Erro ao homologar As-Built. Verifique as divergências da auditoria."),
       );
     }
   };
@@ -116,8 +115,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
       setSuccess("As-Built reaberto para ajuste e baixa estornada no estoque.");
     } catch (err) {
       setError(
-        err.response?.data?.erro ||
-          "Erro ao reabrir As-Built. Verifique o status atual da OS.",
+        getApiErrorMessage(err, "Erro ao reabrir As-Built. Verifique o status atual da OS."),
       );
     }
   };
@@ -140,7 +138,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
       setEditModalOpen(false);
       carregarAuditoria(selectedComarcaId);
     } catch (err) {
-      setError("Erro ao atualizar dados de inventário.");
+      setError(getApiErrorMessage(err, "Erro ao atualizar dados de inventário."));
     }
   };
 

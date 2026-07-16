@@ -3,8 +3,11 @@ package com.poprc.demo.controller;
 import com.poprc.demo.dto.DevolverOrdemRetiradaRequest;
 import com.poprc.demo.dto.ExecutarOrdemRetiradaRequest;
 import com.poprc.demo.model.OrdemRetirada;
+import com.poprc.demo.service.OrdemRetiradaPdfService;
 import com.poprc.demo.service.OrdemRetiradaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +27,7 @@ import java.util.List;
 public class OrdemRetiradaController {
 
     private final OrdemRetiradaService ordemRetiradaService;
+    private final OrdemRetiradaPdfService ordemRetiradaPdfService;
 
     @GetMapping
     public ResponseEntity<List<OrdemRetirada>> listarTodas() {
@@ -38,6 +42,14 @@ public class OrdemRetiradaController {
     @GetMapping("/os/{ordemServicoId}")
     public ResponseEntity<List<OrdemRetirada>> listarPorOs(@PathVariable Long ordemServicoId) {
         return ResponseEntity.ok(ordemRetiradaService.listarPorOs(ordemServicoId));
+    }
+
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> abrirPdf(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=ordem-retirada-" + id + ".pdf")
+                .body(ordemRetiradaPdfService.gerarPdf(id));
     }
 
     @PostMapping("/os/{ordemServicoId}")

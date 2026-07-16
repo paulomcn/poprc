@@ -3,7 +3,9 @@ package com.poprc.demo.service;
 import com.poprc.demo.model.ConfiguracaoNotificacao;
 import com.poprc.demo.model.LocalEstoque;
 import com.poprc.demo.model.Material;
+import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.SaldoMaterialLocal;
+import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.model.TipoControleEstoque;
 import com.poprc.demo.model.UnidadeMedida;
 import com.poprc.demo.repository.ConfiguracaoNotificacaoRepository;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,18 +33,20 @@ import static org.mockito.Mockito.when;
 class AgendadorAlertasServiceTest {
 
     private SaldoMaterialLocalRepository saldoRepository;
+    private OrdemServicoRepository osRepository;
+    private ConfiguracaoNotificacaoRepository configRepository;
     private NotificacaoOperacionalService notificacaoService;
     private AgendadorAlertasService service;
 
     @BeforeEach
     void setUp() {
-        OrdemServicoRepository osRepository = mock(OrdemServicoRepository.class);
+        osRepository = mock(OrdemServicoRepository.class);
         saldoRepository = mock(SaldoMaterialLocalRepository.class);
         ContratoRepository contratoRepository = mock(ContratoRepository.class);
-        ConfiguracaoNotificacaoRepository configRepository = mock(ConfiguracaoNotificacaoRepository.class);
+        configRepository = mock(ConfiguracaoNotificacaoRepository.class);
         notificacaoService = mock(NotificacaoOperacionalService.class);
         when(configRepository.findById(1L)).thenReturn(Optional.of(
-                new ConfiguracaoNotificacao(1L, "", "", false, true, false)));
+                new ConfiguracaoNotificacao(1L, "", "", false, true, false, 24, 30)));
         service = new AgendadorAlertasService(
                 osRepository, saldoRepository, contratoRepository, configRepository, notificacaoService);
     }
@@ -102,6 +107,44 @@ class AgendadorAlertasServiceTest {
 
         assertEquals(0, resultado.alertasEncontrados());
         verify(notificacaoService, never()).registrarSeAusente(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void minimoLocalDeveSubstituirMinimoGlobal() {
+        Material material = material(14L, "Patch cord", TipoControleEstoque.UNIDADE,
+                UnidadeMedida.UNIDADE, "10");
+        SaldoMaterialLocal saldo = saldo(25L, "Central", material, 9, 0, "0", "0");
+        saldo.setEstoqueMinimo(new BigDecimal("5"));
+        when(saldoRepository.findAllByOrderByMaterialNomeAscLocalEstoqueNomeAsc())
+                .thenReturn(List.of(saldo));
+
+        AgendadorAlertasService.VarreduraResultado resultado = service.executarVarreduraDiariaDeAlertas();
+
+        assertEquals(0, resultado.alertasEncontrados());
+        verify(notificacaoService, never()).registrarSeAusente(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void deveUsarAntecedenciaConfiguradaParaDeadline() {
+        when(configRepository.findById(1L)).thenReturn(Optional.of(
+                new ConfiguracaoNotificacao(1L, "", "", true, false, false, 48, 30)));
+        OrdemServico os = new OrdemServico();
+        os.setId(30L);
+        os.setNumeroOs("Contrato 01 - OS 03");
+        os.setStatus(StatusOS.ABERTA);
+        os.setDeadline(LocalDateTime.now().plusHours(36));
+        when(osRepository.findAll()).thenReturn(List.of(os));
+        when(notificacaoService.registrarSeAusente(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        AgendadorAlertasService.VarreduraResultado resultado = service.executarVarreduraDiariaDeAlertas();
+
+        assertEquals(1, resultado.alertasEncontrados());
+        verify(notificacaoService).registrarSeAusente(
+                org.mockito.ArgumentMatchers.startsWith("OS_PRAZO_24H:30:"),
+                eq("OS_PRAZO_24H"), eq("ALERTA"),
+                eq("OS Contrato 01 - OS 03 próxima do prazo"),
+                org.mockito.ArgumentMatchers.contains("menos de 48 horas"), eq(os), eq(null));
     }
 
     private Material material(Long id, String nome, TipoControleEstoque tipo, UnidadeMedida unidade, String minimo) {

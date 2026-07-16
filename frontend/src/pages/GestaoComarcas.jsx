@@ -2666,9 +2666,26 @@ export default function GestaoComarcas() {
                             Gerada: {formatarDataHora(or.dataGeracao)} | Status: {or.status}
                           </p>
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {or.levadoPor && <p>Levou: {or.levadoPor}</p>}
-                          {or.devolvidoPor && <p>Devolveu: {or.devolvidoPor}</p>}
+                        <div className="flex items-center gap-3">
+                          <div className="text-xs text-slate-500">
+                            {or.levadoPor && <p>Levou: {or.levadoPor}</p>}
+                            {or.devolvidoPor && <p>Devolveu: {or.devolvidoPor}</p>}
+                          </div>
+                          <button
+                            type="button"
+                            title={`Abrir PDF de ${or.numeroOr}`}
+                            onClick={() =>
+                              window.open(
+                                `${API_BASE_URL}/ordens-retirada/${or.id}/pdf`,
+                                "_blank",
+                                "noopener,noreferrer",
+                              )
+                            }
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-blue-200 bg-white text-blue-700 transition-colors hover:bg-blue-50"
+                            aria-label={`Abrir PDF de ${or.numeroOr}`}
+                          >
+                            <Printer size={16} />
+                          </button>
                         </div>
                       </div>
                       <div className="overflow-x-auto">

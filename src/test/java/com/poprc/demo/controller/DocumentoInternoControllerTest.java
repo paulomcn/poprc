@@ -1,5 +1,6 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.DocumentoAssinaturaLogRepository;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.when;
 class DocumentoInternoControllerTest {
 
     private DocumentoInternoRepository documentoRepository;
+    private ComarcaRepository comarcaRepository;
     private DocumentoAssinaturaLogRepository logRepository;
     private DocumentoInternoController controller;
     private DocumentoInterno documento;
@@ -30,10 +32,11 @@ class DocumentoInternoControllerTest {
     @BeforeEach
     void setUp() {
         documentoRepository = mock(DocumentoInternoRepository.class);
+        comarcaRepository = mock(ComarcaRepository.class);
         logRepository = mock(DocumentoAssinaturaLogRepository.class);
         controller = new DocumentoInternoController(
                 documentoRepository,
-                mock(ComarcaRepository.class),
+                comarcaRepository,
                 logRepository,
                 mock(DocumentoPdfService.class));
 
@@ -45,6 +48,8 @@ class DocumentoInternoControllerTest {
         documento.setCriadoPor("Sistema");
         when(documentoRepository.findById(1L)).thenReturn(Optional.of(documento));
         when(documentoRepository.save(documento)).thenReturn(documento);
+        when(documentoRepository.save(org.mockito.ArgumentMatchers.any(DocumentoInterno.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
     }
 
     @Test
@@ -103,10 +108,41 @@ class DocumentoInternoControllerTest {
         assertTrue(erro.getMessage().contains("não pode ser alterado"));
     }
 
+    @Test
+    void deveGerarDocumentosInicialEFinalComoVersoesIndependentes() {
+        Comarca comarca = new Comarca();
+        comarca.setId(10L);
+        comarca.setNomeComarca("Comarca Teste");
+        when(comarcaRepository.findById(10L)).thenReturn(Optional.of(comarca));
+
+        DocumentoInterno inicial = controller.gerarDocumentoVistoria(
+                documentoRequest(10L, "VISTORIA_INICIAL_OS"), null, "Gestor Teste").getBody();
+        DocumentoInterno finalizacao = controller.gerarDocumentoVistoria(
+                documentoRequest(10L, "ENCERRAMENTO_OS"), null, "Gestor Teste").getBody();
+
+        assertEquals("VISTORIA_INICIAL_OS", inicial.getTipo());
+        assertEquals("ENCERRAMENTO_OS", finalizacao.getTipo());
+        assertEquals("PENDENTE_ASSINATURA", inicial.getStatus());
+        assertEquals("PENDENTE_ASSINATURA", finalizacao.getStatus());
+        assertEquals("Gestor Teste", inicial.getCriadoPor());
+        verify(documentoRepository, times(2))
+                .save(org.mockito.ArgumentMatchers.any(DocumentoInterno.class));
+    }
+
     private DocumentoInternoController.AssinaturaPapelRequest assinaturaPngValida() {
         DocumentoInternoController.AssinaturaPapelRequest request = new DocumentoInternoController.AssinaturaPapelRequest();
         request.setNomeAssinante("Tecnico Teste");
         request.setAssinaturaBase64("data:image/png;base64,iVBORw0KGgo=");
+        return request;
+    }
+
+    private DocumentoInternoController.DocumentoVistoriaRequest documentoRequest(Long comarcaId, String tipo) {
+        DocumentoInternoController.DocumentoVistoriaRequest request =
+                new DocumentoInternoController.DocumentoVistoriaRequest();
+        request.setComarcaId(comarcaId);
+        request.setTipo(tipo);
+        request.setConteudoJson("{}");
+        request.setRecebidoPor("Responsável Local");
         return request;
     }
 }

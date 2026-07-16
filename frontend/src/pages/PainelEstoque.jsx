@@ -14,7 +14,7 @@ import {
   ArrowRightLeft,
   Download,
 } from "lucide-react";
-import api from "../services/api";
+import api, { getApiErrorMessage } from "../services/api";
 import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
@@ -187,6 +187,7 @@ export default function PainelEstoque() {
   const [showTransferenciaModal, setShowTransferenciaModal] = useState(false);
   const [showLocalEstoqueModal, setShowLocalEstoqueModal] = useState(false);
   const [showTransferenciaUnidadeModal, setShowTransferenciaUnidadeModal] = useState(false);
+  const [showMinimoLocalModal, setShowMinimoLocalModal] = useState(false);
   const [fotoExpandida, setFotoExpandida] = useState(null);
   const [materialEmEdicao, setMaterialEmEdicao] = useState(null);
   const [ordemRetiradaAtual, setOrdemRetiradaAtual] = useState(null);
@@ -263,6 +264,7 @@ export default function PainelEstoque() {
     lancadoPor: "",
     autorizadoPor: "",
   });
+  const [minimoLocalForm, setMinimoLocalForm] = useState({ saldoId: "", estoqueMinimo: "" });
 
   useEffect(() => {
     fetchData();
@@ -298,7 +300,7 @@ export default function PainelEstoque() {
 
       setError(null);
     } catch (err) {
-      setError("Erro ao carregar dados do estoque");
+      setError(getApiErrorMessage(err, "Erro ao carregar dados do estoque."));
       console.error(err);
     } finally {
       setLoading(false);
@@ -314,6 +316,7 @@ export default function PainelEstoque() {
     setShowTransferenciaModal(false);
     setShowLocalEstoqueModal(false);
     setShowTransferenciaUnidadeModal(false);
+    setShowMinimoLocalModal(false);
     setMaterialEmEdicao(null);
     setOrdemRetiradaAtual(null);
     setFormData({ materialId: "", quantidade: "", funcionarioId: "", comarcaId: "", localEstoqueId: "" });
@@ -336,6 +339,7 @@ export default function PainelEstoque() {
     setLocalForm({ nome: "", endereco: "" });
     setUnidadeOperacao(null);
     setTransferenciaUnidadeForm({ destinoId: "", motivo: "", lancadoPor: "", autorizadoPor: "" });
+    setMinimoLocalForm({ saldoId: "", estoqueMinimo: "" });
     setNovoMaterialData({
       nome: "",
       partNumber: "",
@@ -464,9 +468,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(
-        err.response?.data?.message || "Erro ao cadastrar novo material",
-      );
+      setError(getApiErrorMessage(err, "Erro ao cadastrar novo material."));
       console.error(err);
     }
   };
@@ -492,7 +494,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.message || "Erro ao registrar entrada");
+      setError(getApiErrorMessage(err, "Erro ao registrar entrada."));
       console.error(err);
     }
   };
@@ -592,7 +594,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.erro || err.response?.data?.message || "Erro ao processar OR.");
+      setError(getApiErrorMessage(err, "Erro ao processar OR."));
       console.error(err);
     }
   };
@@ -672,7 +674,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.erro || err.response?.data?.message || "Erro ao cadastrar bobina/rolo.");
+      setError(getApiErrorMessage(err, "Erro ao cadastrar bobina/rolo."));
     }
   };
 
@@ -720,7 +722,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.erro || err.response?.data?.message || "Erro ao registrar ajuste.");
+      setError(getApiErrorMessage(err, "Erro ao registrar ajuste."));
     }
   };
 
@@ -740,7 +742,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.erro || err.response?.data?.message || "Erro ao transferir material.");
+      setError(getApiErrorMessage(err, "Erro ao transferir material."));
     }
   };
 
@@ -752,7 +754,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.erro || err.response?.data?.message || "Erro ao cadastrar depósito.");
+      setError(getApiErrorMessage(err, "Erro ao cadastrar depósito."));
     }
   };
 
@@ -775,7 +777,7 @@ export default function PainelEstoque() {
       handleCloseModal();
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.erro || err.response?.data?.message || "Erro ao transferir bobina/rolo.");
+      setError(getApiErrorMessage(err, "Erro ao transferir bobina/rolo."));
     }
   };
   const materialEntradaSelecionado = materiais.find(
@@ -787,6 +789,43 @@ export default function PainelEstoque() {
     controlaMetragem(saldo?.material)
       ? Number(saldo?.metragemDisponivel || 0)
       : Number(saldo?.quantidadeDisponivel || 0);
+  const saldoLocalLivre = (saldo) =>
+    controlaMetragem(saldo?.material)
+      ? Number(saldo?.metragemDisponivel || 0) - Number(saldo?.metragemReservada || 0)
+      : Number(saldo?.quantidadeDisponivel || 0) - Number(saldo?.quantidadeReservada || 0);
+  const minimoDoSaldo = (saldo) =>
+    Number(saldo?.estoqueMinimo ?? saldo?.material?.estoqueMinimo ?? 0);
+
+  const abrirMinimosLocais = () => {
+    const primeiroSaldo = saldosLocais[0];
+    setMinimoLocalForm({
+      saldoId: primeiroSaldo?.id ? String(primeiroSaldo.id) : "",
+      estoqueMinimo: primeiroSaldo?.estoqueMinimo == null ? "" : String(primeiroSaldo.estoqueMinimo),
+    });
+    setShowMinimoLocalModal(true);
+  };
+
+  const selecionarSaldoMinimo = (saldoId) => {
+    const saldo = saldosLocais.find((item) => String(item.id) === String(saldoId));
+    setMinimoLocalForm({
+      saldoId,
+      estoqueMinimo: saldo?.estoqueMinimo == null ? "" : String(saldo.estoqueMinimo),
+    });
+  };
+
+  const salvarMinimoLocal = async (event) => {
+    event.preventDefault();
+    try {
+      await api.patch(`/estoque/saldos-locais/${minimoLocalForm.saldoId}/estoque-minimo`, {
+        estoqueMinimo: minimoLocalForm.estoqueMinimo === "" ? null : Number(minimoLocalForm.estoqueMinimo),
+      });
+      setSuccessMessage("Estoque mínimo do depósito atualizado.");
+      handleCloseModal();
+      await fetchData();
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível atualizar o estoque mínimo local."));
+    }
+  };
   const getCategoriaMaterialLabel = (categoria) =>
     CATEGORIAS_MATERIAL.find((item) => item.value === categoria)?.label ||
     "Materiais de Consumo";
@@ -1025,12 +1064,12 @@ export default function PainelEstoque() {
   ].sort((a, b) => b.consumo - a.consumo).slice(0, 5);
 
   const alertasReposicao = saldosLocais
-    .filter((saldo) => saldoLocalValor(saldo) <= Number(saldo.material?.estoqueMinimo || 0))
+    .filter((saldo) => minimoDoSaldo(saldo) > 0 && saldoLocalLivre(saldo) <= minimoDoSaldo(saldo))
     .map((saldo) => ({
       deposito: saldo.localEstoque?.nome || "Depósito",
       material: saldo.material?.nome || "Material",
-      saldo: saldoLocalValor(saldo),
-      minimo: Number(saldo.material?.estoqueMinimo || 0),
+      saldo: saldoLocalLivre(saldo),
+      minimo: minimoDoSaldo(saldo),
       unidade: unidadeMaterial(saldo.material),
     }))
     .sort((a, b) => a.saldo - b.saldo);
@@ -1617,9 +1656,20 @@ export default function PainelEstoque() {
                 <h2 className="font-bold text-slate-800">Alertas de reposição</h2>
                 <p className="mb-3 text-xs text-slate-500">Saldo local igual ou abaixo do mínimo cadastrado.</p>
               </div>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${alertasReposicao.length ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
-                {alertasReposicao.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={abrirMinimosLocais}
+                  disabled={saldosLocais.length === 0}
+                  title="Configurar mínimos por depósito"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <SlidersHorizontal size={15} />
+                </button>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${alertasReposicao.length ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                  {alertasReposicao.length}
+                </span>
+              </div>
             </div>
             <div className="max-h-64 space-y-2 overflow-auto">
               {alertasReposicao.map((item) => (
@@ -1827,6 +1877,46 @@ export default function PainelEstoque() {
           </tbody>
         </table>
       </div>
+
+      <Modal isOpen={showMinimoLocalModal} onClose={handleCloseModal} title="Estoque Mínimo por Depósito">
+        <form onSubmit={salvarMinimoLocal} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-slate-700">Material e depósito</label>
+            <select
+              required
+              value={minimoLocalForm.saldoId}
+              onChange={(event) => selecionarSaldoMinimo(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-4 py-2"
+            >
+              <option value="">Selecione</option>
+              {saldosLocais.map((saldo) => (
+                <option key={saldo.id} value={saldo.id}>
+                  {saldo.material?.nome} - {saldo.localEstoque?.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-slate-700">Mínimo neste depósito</label>
+            <input
+              type="number"
+              min="0"
+              step="0.001"
+              value={minimoLocalForm.estoqueMinimo}
+              onChange={(event) => setMinimoLocalForm((prev) => ({ ...prev, estoqueMinimo: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-4 py-2"
+              placeholder="Vazio para usar o mínimo global do material"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Deixe vazio para herdar o mínimo cadastrado no material.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 pt-3">
+            <button type="button" onClick={handleCloseModal} className="rounded-lg border px-5 py-2">Cancelar</button>
+            <button type="submit" className="rounded-lg bg-slate-800 px-5 py-2 font-bold text-white">Salvar mínimo</button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal isOpen={showLocalEstoqueModal} onClose={handleCloseModal} title="Cadastrar Depósito">
         <form onSubmit={cadastrarLocalEstoque} className="space-y-4">

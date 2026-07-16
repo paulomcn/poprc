@@ -27,7 +27,7 @@ public class AlertaController {
     public ResponseEntity<ConfiguracaoNotificacao> obterConfiguracoes() {
         ConfiguracaoNotificacao config = configRepository.findById(1L)
                 .orElseGet(() -> configRepository.save(new ConfiguracaoNotificacao(
-                        1L, "diretoria@poprc.com", "5584999999999", true, true, true)));
+                        1L, "", "", true, true, true, 24, 30)));
         return ResponseEntity.ok(config);
     }
 
@@ -38,7 +38,18 @@ public class AlertaController {
     public ResponseEntity<ConfiguracaoNotificacao> salvarConfiguracoes(
             @RequestBody ConfiguracaoNotificacao novaConfig) {
         novaConfig.setId(1L); // Força a gravar sempre na linha 1
+        novaConfig.setAntecedenciaOsHoras(validarFaixa(
+                novaConfig.getAntecedenciaOsHoras(), 1, 720, "A antecedência da OS"));
+        novaConfig.setAntecedenciaContratoDias(validarFaixa(
+                novaConfig.getAntecedenciaContratoDias(), 1, 365, "A antecedência do contrato"));
         return ResponseEntity.ok(configRepository.save(novaConfig));
+    }
+
+    private int validarFaixa(Integer valor, int minimo, int maximo, String campo) {
+        if (valor == null || valor < minimo || valor > maximo) {
+            throw new IllegalArgumentException(campo + " deve estar entre " + minimo + " e " + maximo + ".");
+        }
+        return valor;
     }
 
     /**

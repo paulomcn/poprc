@@ -22,4 +22,6 @@ public class ConfiguracaoNotificacao {
     private boolean alertaOsAtrasada;
     private boolean alertaEstoqueCritico;
     private boolean alertaContratoVencendo;
+    private Integer antecedenciaOsHoras = 24;
+    private Integer antecedenciaContratoDias = 30;
 }
