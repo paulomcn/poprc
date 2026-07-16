@@ -81,6 +81,19 @@ class DocumentoInternoControllerTest {
         ResponseEntity<Map<String, Object>> response = controller.verificarIntegridade(1L, null, null);
 
         assertEquals(Boolean.TRUE, response.getBody().get("integro"));
+        assertEquals(Boolean.TRUE, response.getBody().get("verificavel"));
+        assertEquals("INTEGRO", response.getBody().get("situacao"));
+    }
+
+    @Test
+    void deveIdentificarDocumentoLegadoSemHashComoNaoVerificavel() {
+        documento.setHashRegistro(null);
+
+        ResponseEntity<Map<String, Object>> response = controller.verificarIntegridade(1L, null, null);
+
+        assertEquals(Boolean.FALSE, response.getBody().get("integro"));
+        assertEquals(Boolean.FALSE, response.getBody().get("verificavel"));
+        assertEquals("SEM_HASH_LEGADO", response.getBody().get("situacao"));
     }
 
     @Test

@@ -240,10 +240,14 @@ public class DocumentoInternoController {
             return ResponseEntity.status(403).build();
         }
         String hashCalculado = gerarHash(documento);
-        boolean integro = documento.getHashRegistro() != null && documento.getHashRegistro().equals(hashCalculado);
+        boolean verificavel = documento.getHashRegistro() != null && !documento.getHashRegistro().isBlank();
+        boolean integro = verificavel && documento.getHashRegistro().equals(hashCalculado);
+        String situacao = !verificavel ? "SEM_HASH_LEGADO" : integro ? "INTEGRO" : "DIVERGENTE";
         return ResponseEntity.ok(Map.of(
                 "documentoId", documento.getId(),
+                "verificavel", verificavel,
                 "integro", integro,
+                "situacao", situacao,
                 "hashRegistrado", documento.getHashRegistro() == null ? "" : documento.getHashRegistro(),
                 "hashCalculado", hashCalculado));
     }
