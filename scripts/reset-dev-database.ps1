@@ -37,4 +37,3 @@ Invoke-WithPgPassword $Password {
 Write-Output "Banco $Database recriado vazio."
 Write-Output "Inicie com: .\mvnw.cmd -Dspring-boot.run.profiles=dev spring-boot:run"
 Write-Output "O Flyway aplicara o schema e a massa de desenvolvimento automaticamente."
-

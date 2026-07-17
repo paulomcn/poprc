@@ -15,4 +15,3 @@ CREATE TRIGGER trg_documentos_assinaturas_log_append_only
 BEFORE UPDATE OR DELETE ON documentos_assinaturas_log
 FOR EACH ROW
 EXECUTE FUNCTION bloquear_alteracao_log_assinatura();
-

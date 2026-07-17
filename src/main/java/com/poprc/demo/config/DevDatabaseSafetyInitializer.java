@@ -35,4 +35,3 @@ public class DevDatabaseSafetyInitializer
         return query >= 0 ? databaseName.substring(0, query) : databaseName;
     }
 }
-

@@ -33,7 +33,6 @@ WHERE gestor.nome = 'Gestor Desenvolvimento'
   AND NOT EXISTS (
       SELECT 1 FROM contratos WHERE contrato = 'DEV-CONTRATO-001'
   );
-
 INSERT INTO projetos (
     data_inicio, data_fim, status, contrato_id, responsavel_id, as_built_status
 )
@@ -152,4 +151,3 @@ WHERE material.part_number = 'DEV-BOBINA-001'
       SELECT 1 FROM unidades_estoque_rastreaveis
       WHERE codigo = 'DEV-BOBINA-RASTREAVEL-001'
   );
-

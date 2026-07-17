@@ -29,4 +29,3 @@ Invoke-WithPgPassword $Password {
 }
 
 Write-Output $outputFile
-

@@ -1,3 +1,2 @@
 org.springframework.context.ApplicationContextInitializer=\
 com.poprc.demo.config.DevDatabaseSafetyInitializer
-

@@ -67,4 +67,3 @@ class DocumentoAssinaturaLogImutabilidadeIntegrationTest {
         return assinaturaLogRepository.saveAndFlush(log);
     }
 }
-

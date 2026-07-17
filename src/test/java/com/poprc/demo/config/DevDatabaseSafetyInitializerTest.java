@@ -41,4 +41,3 @@ class DevDatabaseSafetyInitializerTest {
         return context;
     }
 }
-

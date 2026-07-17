@@ -49,4 +49,3 @@ Invoke-WithPgPassword $Password {
 }
 
 Write-Output "Backup restaurado com sucesso em $TargetDatabase."
-
