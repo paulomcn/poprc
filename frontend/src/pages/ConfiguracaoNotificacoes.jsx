@@ -38,6 +38,12 @@ export default function ConfiguracaoNotificacoes() {
   const [atividadeEditandoId, setAtividadeEditandoId] = useState(null);
   const [loadingTest, setLoadingTest] = useState(false);
   const [notificacoes, setNotificacoes] = useState([]);
+  const [canais, setCanais] = useState({
+    emailHabilitado: false,
+    emailRemetente: "",
+    whatsappHabilitado: false,
+    whatsappDetalhe: "",
+  });
   const [successMessage, setSuccessMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -45,6 +51,7 @@ export default function ConfiguracaoNotificacoes() {
     loadDbSettings();
     loadAtividadesPadrao();
     loadNotificacoes();
+    loadCanais();
   }, []);
 
   const showSuccess = (message) => {
@@ -82,6 +89,15 @@ export default function ConfiguracaoNotificacoes() {
       setNotificacoes(response.data || []);
     } catch (err) {
       showError("Erro ao carregar o histórico de notificações.");
+    }
+  }
+
+  async function loadCanais() {
+    try {
+      const response = await api.get("/alertas/canais");
+      setCanais(response.data);
+    } catch (err) {
+      showError("Erro ao consultar os canais de notificação.");
     }
   }
 
@@ -166,7 +182,12 @@ export default function ConfiguracaoNotificacoes() {
       const response = await api.post("/alertas/disparar-todos");
       const criadas = response.data.notificacoesCriadas || 0;
       const encontradas = response.data.alertasEncontrados || 0;
-      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s) notificação(ões).`);
+      const enviados = response.data.emailsEnviados || 0;
+      const falhos = response.data.emailsFalhos || 0;
+      const email = response.data.emailHabilitado
+        ? `${enviados} e-mail(s) enviado(s)${falhos ? ` e ${falhos} com falha` : ""}`
+        : "canal de e-mail desabilitado";
+      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s) notificação(ões) e ${email}.`);
       await loadNotificacoes();
     } catch (err) {
       showError("Falha ao acionar o motor de alertas.");
@@ -212,12 +233,15 @@ export default function ConfiguracaoNotificacoes() {
             Parâmetros de alertas
           </h2>
           <p className="text-sm text-slate-500">
-            Os alertas são registrados no sistema. E-mail e WhatsApp ficam reservados para uma integração externa com credenciais válidas.
+            Os alertas sempre são registrados no sistema. O envio externo ocorre somente quando o canal estiver habilitado no servidor.
           </p>
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <Mail size={18} /> E-mail
+              <span className={`ml-auto text-xs font-bold ${canais.emailHabilitado ? "text-emerald-600" : "text-slate-400"}`}>
+                {canais.emailHabilitado ? "Habilitado" : "Desabilitado"}
+              </span>
             </label>
             <input
               type="email"
@@ -226,19 +250,26 @@ export default function ConfiguracaoNotificacoes() {
               onChange={handleInputChange}
               className="w-full px-4 py-2 border rounded-lg"
             />
+            {canais.emailHabilitado && canais.emailRemetente && (
+              <p className="text-xs text-slate-500">Remetente: {canais.emailRemetente}</p>
+            )}
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <MessageSquare size={18} /> WhatsApp
+              <span className="ml-auto text-xs font-bold text-slate-400">Indisponível</span>
             </label>
             <input
               type="text"
               name="whatsappGestor"
               value={settings.whatsappGestor}
               onChange={handleInputChange}
+              disabled={!canais.whatsappHabilitado}
+              placeholder="Aguardando integração com provedor"
               className="w-full px-4 py-2 border rounded-lg"
             />
+            <p className="text-xs text-slate-500">{canais.whatsappDetalhe}</p>
           </div>
 
           <h2 className="text-lg font-bold text-slate-800 border-b pt-4 pb-3">

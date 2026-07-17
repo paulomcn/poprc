@@ -36,6 +36,7 @@ class AgendadorAlertasServiceTest {
     private OrdemServicoRepository osRepository;
     private ConfiguracaoNotificacaoRepository configRepository;
     private NotificacaoOperacionalService notificacaoService;
+    private EmailService emailService;
     private AgendadorAlertasService service;
 
     @BeforeEach
@@ -45,10 +46,13 @@ class AgendadorAlertasServiceTest {
         ContratoRepository contratoRepository = mock(ContratoRepository.class);
         configRepository = mock(ConfiguracaoNotificacaoRepository.class);
         notificacaoService = mock(NotificacaoOperacionalService.class);
+        emailService = mock(EmailService.class);
+        when(emailService.enviarEmailAlerta(any(), any(), any())).thenReturn(
+                new EmailService.ResultadoEnvio(EmailService.StatusEnvio.DESABILITADO, "Desabilitado"));
         when(configRepository.findById(1L)).thenReturn(Optional.of(
                 new ConfiguracaoNotificacao(1L, "", "", false, true, false, 24, 30)));
         service = new AgendadorAlertasService(
-                osRepository, saldoRepository, contratoRepository, configRepository, notificacaoService);
+                osRepository, saldoRepository, contratoRepository, configRepository, notificacaoService, emailService);
     }
 
     @Test
@@ -145,6 +149,33 @@ class AgendadorAlertasServiceTest {
                 eq("OS_PRAZO_24H"), eq("ALERTA"),
                 eq("OS Contrato 01 - OS 03 próxima do prazo"),
                 org.mockito.ArgumentMatchers.contains("menos de 48 horas"), eq(os), eq(null));
+    }
+
+    @Test
+    void deveEnviarEmailSomenteQuandoCriarNovaNotificacao() {
+        when(configRepository.findById(1L)).thenReturn(Optional.of(
+                new ConfiguracaoNotificacao(1L, "gestor@empresa.com", "", true, false, false, 24, 30)));
+        when(emailService.isHabilitado()).thenReturn(true);
+        when(emailService.enviarEmailAlerta(any(), any(), any())).thenReturn(
+                new EmailService.ResultadoEnvio(EmailService.StatusEnvio.ENVIADO, "Enviado"));
+
+        OrdemServico os = new OrdemServico();
+        os.setId(31L);
+        os.setNumeroOs("Contrato 01 - OS 04");
+        os.setStatus(StatusOS.ABERTA);
+        os.setDeadline(LocalDateTime.now().minusHours(1));
+        when(osRepository.findAll()).thenReturn(List.of(os));
+        when(notificacaoService.registrarSeAusente(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        AgendadorAlertasService.VarreduraResultado resultado = service.executarVarreduraDiariaDeAlertas();
+
+        assertEquals(1, resultado.emailsEnviados());
+        assertEquals(0, resultado.emailsFalhos());
+        assertTrue(resultado.emailHabilitado());
+        verify(emailService).enviarEmailAlerta(
+                eq("gestor@empresa.com"), eq("OS Contrato 01 - OS 04 atrasada"),
+                org.mockito.ArgumentMatchers.contains("O prazo venceu"));
     }
 
     private Material material(Long id, String nome, TipoControleEstoque tipo, UnidadeMedida unidade, String minimo) {

@@ -33,6 +33,7 @@ public class AgendadorAlertasService {
     private final ContratoRepository contratoRepository;
     private final ConfiguracaoNotificacaoRepository configRepository;
     private final NotificacaoOperacionalService notificacaoService;
+    private final EmailService emailService;
 
     @Scheduled(cron = "0 0 8 * * ?")
     @Transactional
@@ -45,6 +46,8 @@ public class AgendadorAlertasService {
         int antecedenciaContratoDias = inteiroPositivo(config.getAntecedenciaContratoDias(), 30);
         int encontrados = 0;
         int novos = 0;
+        int emailsEnviados = 0;
+        int emailsFalhos = 0;
 
         if (config.isAlertaOsAtrasada()) {
             for (OrdemServico os : osRepository.findAll()) {
@@ -64,6 +67,12 @@ public class AgendadorAlertasService {
                             os,
                             responsavel);
                     if (criada) novos++;
+                    EmailService.StatusEnvio statusEmail = enviarEmailSeNovo(
+                            criada, config, "OS " + os.getNumeroOs() + " atrasada",
+                            "O prazo venceu em " + os.getDeadline()
+                                    + ". Regularize a execução ou atualize o cronograma.");
+                    if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
+                    if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
                 } else if (!os.getDeadline().isAfter(agora.plusHours(antecedenciaOsHoras))) {
                     encontrados++;
                     boolean criada = notificacaoService.registrarSeAusente(
@@ -76,6 +85,12 @@ public class AgendadorAlertasService {
                             os,
                             responsavel);
                     if (criada) novos++;
+                    EmailService.StatusEnvio statusEmail = enviarEmailSeNovo(
+                            criada, config, "OS " + os.getNumeroOs() + " próxima do prazo",
+                            "Restam menos de " + antecedenciaOsHoras + " horas para o deadline de "
+                                    + os.getDeadline() + ".");
+                    if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
+                    if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
                 }
             }
         }
@@ -116,6 +131,12 @@ public class AgendadorAlertasService {
                         null,
                         null);
                 if (criada) novos++;
+                EmailService.StatusEnvio statusEmail = enviarEmailSeNovo(
+                        criada, config, "Estoque crítico: " + material.getNome() + " em " + local,
+                        "Depósito: " + local + ". Saldo livre: " + formatar(saldoLivre) + " " + unidade
+                                + ". Mínimo configurado: " + formatar(minimo) + " " + unidade + ".");
+                if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
+                if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
             }
         }
 
@@ -139,10 +160,29 @@ public class AgendadorAlertasService {
                         null,
                         null);
                 if (criada) novos++;
+                EmailService.StatusEnvio statusEmail = enviarEmailSeNovo(
+                        criada, config, "Contrato próximo do vencimento",
+                        "Contrato " + contrato.getContrato() + " de " + contrato.getCliente()
+                                + " vence em " + contrato.getVigenciaFim() + ".");
+                if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
+                if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
             }
         }
 
-        return new VarreduraResultado(encontrados, novos, encontrados - novos, agora, "INTERNO");
+        return new VarreduraResultado(
+                encontrados, novos, encontrados - novos, agora, "INTERNO_E_EMAIL",
+                emailsEnviados, emailsFalhos, emailService.isHabilitado());
+    }
+
+    private EmailService.StatusEnvio enviarEmailSeNovo(
+            boolean notificacaoCriada,
+            ConfiguracaoNotificacao config,
+            String assunto,
+            String mensagem) {
+        if (!notificacaoCriada) {
+            return null;
+        }
+        return emailService.enviarEmailAlerta(config.getEmailGestor(), assunto, mensagem).status();
     }
 
     private boolean finalizada(StatusOS status) {
@@ -189,6 +229,9 @@ public class AgendadorAlertasService {
             int notificacoesCriadas,
             int notificacoesJaExistentes,
             LocalDateTime executadaEm,
-            String canal) {
+            String canal,
+            int emailsEnviados,
+            int emailsFalhos,
+            boolean emailHabilitado) {
     }
 }

@@ -4,6 +4,7 @@ import com.poprc.demo.model.ConfiguracaoNotificacao;
 import com.poprc.demo.model.NotificacaoOperacional;
 import com.poprc.demo.repository.ConfiguracaoNotificacaoRepository;
 import com.poprc.demo.service.AgendadorAlertasService;
+import com.poprc.demo.service.EmailService;
 import com.poprc.demo.service.NotificacaoOperacionalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,7 @@ public class AlertaController {
     private final AgendadorAlertasService agendadorAlertasService;
     private final ConfiguracaoNotificacaoRepository configRepository;
     private final NotificacaoOperacionalService notificacaoService;
+    private final EmailService emailService;
 
     /**
      * GET: Busca as configurações do banco. Se não existir, cria o padrão.
@@ -60,6 +62,15 @@ public class AlertaController {
         return ResponseEntity.ok(agendadorAlertasService.executarVarreduraDiariaDeAlertas());
     }
 
+    @GetMapping("/canais")
+    public ResponseEntity<CanaisResponse> obterCanais() {
+        return ResponseEntity.ok(new CanaisResponse(
+                emailService.isHabilitado(),
+                emailService.getRemetente(),
+                false,
+                "Integração com provedor de WhatsApp ainda não configurada."));
+    }
+
     @GetMapping("/notificacoes")
     public ResponseEntity<List<NotificacaoResponse>> listarNotificacoes(
             @RequestParam(required = false) Long funcionarioId) {
@@ -99,5 +110,12 @@ public class AlertaController {
                     notificacao.getDestinatario() == null ? null : notificacao.getDestinatario().getId(),
                     notificacao.getDestinatario() == null ? null : notificacao.getDestinatario().getNome());
         }
+    }
+
+    public record CanaisResponse(
+            boolean emailHabilitado,
+            String emailRemetente,
+            boolean whatsappHabilitado,
+            String whatsappDetalhe) {
     }
 }
