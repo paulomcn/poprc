@@ -246,6 +246,30 @@ class FluxoOperacionalIntegrationTest {
     }
 
     @Test
+    void impedeDevolucaoDuplicadaDaMesmaOrSemCreditarEstoqueNovamente() {
+        Cenario cenario = prepararCenario(false);
+        OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(4), null);
+        OrdemRetirada ordemRetirada = unicaOrDaOs(os);
+
+        ordemRetirada = ordemRetiradaService.executarRetirada(ordemRetirada.getId(), retiradaAssinada());
+        DevolverOrdemRetiradaRequest request = devolucao(ordemRetirada, BigDecimal.ONE, null);
+        ordemRetiradaService.devolver(ordemRetirada.getId(), request);
+        int saldoDepoisDaPrimeiraDevolucao = materialRepository.findById(cenario.consumoId())
+                .orElseThrow().getQuantidadeDisponivel();
+
+        Long ordemRetiradaId = ordemRetirada.getId();
+        IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                () -> ordemRetiradaService.devolver(ordemRetiradaId, request));
+
+        assertTrue(erro.getMessage().contains("precisa estar retirada"));
+        assertEquals(saldoDepoisDaPrimeiraDevolucao,
+                materialRepository.findById(cenario.consumoId()).orElseThrow().getQuantidadeDisponivel());
+        assertEquals(1, contarMovimentos(
+                movimentacaoEstoqueRepository.findByComarcaIdOrderByDataMovimentacaoDesc(cenario.comarcaId()),
+                TipoMovimentacao.DEVOLUCAO_OR));
+    }
+
+    @Test
     void rastreiaRetiradaEDevolucaoParcialDeBobina() {
         Cenario cenario = prepararCenario(false);
         String sufixo = UUID.randomUUID().toString().substring(0, 8);
