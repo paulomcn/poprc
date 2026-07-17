@@ -117,7 +117,7 @@ public class DocumentoPdfService {
         titulo.setSpacingAfter(3);
         pdf.add(titulo);
 
-        Paragraph modelo = new Paragraph(texto(conteudo, "modelo", "ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA"), SUBTITULO);
+        Paragraph modelo = new Paragraph(texto(conteudo, "modelo", modeloPadrao(documento)), SUBTITULO);
         modelo.setAlignment(Element.ALIGN_CENTER);
         modelo.setSpacingAfter(15);
         pdf.add(modelo);
@@ -140,6 +140,12 @@ public class DocumentoPdfService {
 
         adicionarAviso(pdf, "Documento gerado pelo sistema", "Este documento deve acompanhar a abertura e o encerramento da OS. Quando impresso em branco, os campos podem ser preenchidos e assinados no local.");
         adicionarAuditoria(pdf, documento);
+    }
+
+    private String modeloPadrao(DocumentoInterno documento) {
+        return "VISTORIA_INICIAL_OS".equals(documento.getTipo()) || "VISTORIA_OS".equals(documento.getTipo())
+                ? "ABERTURA E VISTORIA TÉCNICA INICIAL"
+                : "ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA";
     }
 
     private void adicionarObjetoEInicio(Document pdf, JsonNode conteudo) throws Exception {

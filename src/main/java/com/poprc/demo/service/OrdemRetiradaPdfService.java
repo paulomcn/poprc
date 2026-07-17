@@ -125,10 +125,12 @@ public class OrdemRetiradaPdfService {
         } else {
             for (OrdemRetiradaItem item : ordem.getItens()) {
                 dado(tabela, item.getNomeMaterial(), Element.ALIGN_LEFT);
-                dado(tabela, item.getCategoria(), Element.ALIGN_LEFT);
+                dado(tabela, categoria(item.getCategoria()), Element.ALIGN_LEFT);
                 dado(tabela, quantidade(item.getQuantidadeSolicitada()), Element.ALIGN_RIGHT);
-                dado(tabela, quantidade(item.getQuantidadeRetirada()), Element.ALIGN_RIGHT);
-                dado(tabela, quantidade(item.getQuantidadeDevolvida()), Element.ALIGN_RIGHT);
+                dado(tabela, quantidadeOperacao(item.getQuantidadeRetirada(), ordem.getDataRetirada() != null),
+                        Element.ALIGN_RIGHT);
+                dado(tabela, quantidadeOperacao(item.getQuantidadeDevolvida(), ordem.getDataDevolucao() != null),
+                        Element.ALIGN_RIGHT);
             }
         }
         pdf.add(tabela);
@@ -226,6 +228,20 @@ public class OrdemRetiradaPdfService {
 
     private String quantidade(BigDecimal quantidade) {
         return quantidade == null ? "0" : quantidade.stripTrailingZeros().toPlainString();
+    }
+
+    private String quantidadeOperacao(BigDecimal quantidade, boolean realizada) {
+        return realizada ? quantidade(quantidade) : "________________";
+    }
+
+    private String categoria(String categoria) {
+        if ("MATERIAL_CONSUMO".equals(categoria)) {
+            return "Material de consumo";
+        }
+        if ("FERRAMENTA".equals(categoria)) {
+            return "Ferramenta";
+        }
+        return categoria;
     }
 
     private String valor(String texto) {
