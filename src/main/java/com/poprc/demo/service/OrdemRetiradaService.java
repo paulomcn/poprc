@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.HashSet;
@@ -62,6 +63,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         if (comarca == null || comarca.getMateriais() == null || comarca.getMateriais().isEmpty()) {
             throw new IllegalArgumentException("A OS precisa ter materiais previstos para gerar uma OR.");
         }
+        ordemServico = ordemServicoRepository.findByIdForUpdate(ordemServico.getId())
+                .orElseThrow(() -> new IllegalArgumentException("OS não encontrada."));
 
         OrdemRetirada ordemRetirada = new OrdemRetirada();
         ordemRetirada.setNumeroOr(gerarNumeroOr(ordemServico));
@@ -94,7 +97,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
 
     @Transactional
     public OrdemRetirada criarAdicionalParaOs(Long ordemServicoId, String geradoPor) {
-        OrdemServico ordemServico = ordemServicoRepository.findById(ordemServicoId)
+        OrdemServico ordemServico = ordemServicoRepository.findByIdForUpdate(ordemServicoId)
                 .orElseThrow(() -> new IllegalArgumentException("OS não encontrada."));
         if (ordemRetiradaRepository.existsByOrdemServicoIdAndStatusIn(
                 ordemServicoId, List.of(STATUS_GERADA, STATUS_RETIRADA))) {
@@ -145,8 +148,9 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         ordemRetirada.setLevadoPor(request.getLevadoPor().trim());
 
         LocalDateTime agora = LocalDateTime.now();
-        for (OrdemRetiradaItem item : ordemRetirada.getItens()) {
-            Material material = item.getMaterial();
+        for (OrdemRetiradaItem item : itensOrdenados(ordemRetirada)) {
+            Material material = bloquearMaterial(item.getMaterial());
+            item.setMaterial(material);
             BigDecimal quantidade = valor(item.getQuantidadeSolicitada());
             String origemLocal = null;
             if (rastreavel(material)) {
@@ -232,7 +236,9 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         ordemRetirada.setDevolvidoPor(request.getDevolvidoPor().trim());
         ordemRetirada.setRecebidoPor(request.getRecebidoPor().trim());
 
-        for (OrdemRetiradaItem item : ordemRetirada.getItens()) {
+        for (OrdemRetiradaItem item : itensOrdenados(ordemRetirada)) {
+            Material materialBloqueado = bloquearMaterial(item.getMaterial());
+            item.setMaterial(materialBloqueado);
             BigDecimal retirada = valor(item.getQuantidadeRetirada());
             BigDecimal devolvida = rastreavel(item.getMaterial())
                     ? devolverUnidadesRastreaveis(ordemRetirada, item, devolucoesAlocacao, request)
@@ -275,8 +281,22 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     }
 
     private OrdemRetirada buscar(Long id) {
-        return ordemRetiradaRepository.findById(id)
+        return ordemRetiradaRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Ordem de Retirada não encontrada."));
+    }
+
+    private List<OrdemRetiradaItem> itensOrdenados(OrdemRetirada ordemRetirada) {
+        return ordemRetirada.getItens().stream()
+                .sorted(Comparator.comparing(item -> item.getMaterial().getId()))
+                .toList();
+    }
+
+    private Material bloquearMaterial(Material material) {
+        if (material == null || material.getId() == null) {
+            throw new IllegalArgumentException("Material da OR não encontrado.");
+        }
+        return materialRepository.findByIdForUpdate(material.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Material da OR não encontrado."));
     }
 
     private String gerarNumeroOr(OrdemServico ordemServico) {
@@ -360,7 +380,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                 throw new IllegalArgumentException("A mesma bobina/rolo não pode ser repetida no item.");
             }
             UnidadeEstoqueRastreavel unidade = unidadeRastreavelRepository
-                    .findById(requisicao.getUnidadeRastreavelId())
+                    .findByIdForUpdate(requisicao.getUnidadeRastreavelId())
                     .orElseThrow(() -> new IllegalArgumentException("Bobina/rolo não encontrado."));
             if (!unidade.getMaterial().getId().equals(item.getMaterial().getId())) {
                 throw new IllegalArgumentException("A bobina/rolo " + unidade.getCodigo() + " pertence a outro material.");
@@ -405,19 +425,22 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             DevolverOrdemRetiradaRequest request) {
         BigDecimal totalDevolvido = BigDecimal.ZERO;
         for (OrdemRetiradaAlocacao alocacao : item.getAlocacoes()) {
+            UnidadeEstoqueRastreavel unidade = unidadeRastreavelRepository
+                    .findByIdForUpdate(alocacao.getUnidadeRastreavel().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Bobina/rolo não encontrado."));
+            alocacao.setUnidadeRastreavel(unidade);
             BigDecimal devolvida = valor(devolucoes.getOrDefault(alocacao.getId(),
                     new DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest()).getMetragemDevolvida());
             BigDecimal saldoRetirado = valor(alocacao.getMetragemRetirada())
                     .subtract(valor(alocacao.getMetragemDevolvida()));
             if (devolvida.signum() < 0 || devolvida.compareTo(saldoRetirado) > 0) {
                 throw new IllegalArgumentException("Metragem devolvida inválida para "
-                        + alocacao.getUnidadeRastreavel().getCodigo() + ".");
+                        + unidade.getCodigo() + ".");
             }
             if (devolvida.signum() == 0) {
                 continue;
             }
 
-            UnidadeEstoqueRastreavel unidade = alocacao.getUnidadeRastreavel();
             unidade.setMetragemAtual(unidade.getMetragemAtual().add(devolvida));
             unidade.setStatus(StatusUnidadeRastreavel.DEVOLVIDA_ESTOQUE);
             unidadeRastreavelRepository.save(unidade);

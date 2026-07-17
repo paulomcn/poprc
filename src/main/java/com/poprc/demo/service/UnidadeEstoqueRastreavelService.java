@@ -45,7 +45,7 @@ public class UnidadeEstoqueRastreavelService {
             throw new IllegalArgumentException("Já existe uma bobina/rolo com este código.");
         }
 
-        Material material = materialRepository.findById(materialId)
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
         if (!rastreavel(material.getTipoControle())) {
             throw new IllegalArgumentException("O material deve usar controle por bobina ou rolo.");
@@ -91,8 +91,10 @@ public class UnidadeEstoqueRastreavelService {
         validarTexto(motivo, "Motivo da transferência é obrigatório.");
         validarTexto(lancadoPor, "Informe quem lançou a transferência.");
         validarTexto(autorizadoPor, "Informe quem autorizou a transferência.");
-        UnidadeEstoqueRastreavel unidade = unidadeRepository.findById(unidadeId)
+        UnidadeEstoqueRastreavel unidade = unidadeRepository.findByIdForUpdate(unidadeId)
                 .orElseThrow(() -> new IllegalArgumentException("Bobina/rolo não encontrado."));
+        materialRepository.findByIdForUpdate(unidade.getMaterial().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
         if (unidade.getLocalEstoque() == null) {
             throw new IllegalArgumentException("Bobina/rolo sem depósito de origem definido.");
         }

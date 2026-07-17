@@ -40,7 +40,7 @@ public class EstoqueService {
 
     @Transactional
     public Material atualizarMaterial(Long id, Material dados) {
-        Material material = materialRepository.findById(id)
+        Material material = materialRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
 
         TipoControleEstoque controleAtual = material.getTipoControle() != null
@@ -78,7 +78,7 @@ public class EstoqueService {
     @Transactional
     public MovimentacaoEstoque registrarEntrada(Long materialId, Integer quantidade, BigDecimal metragem,
             Long funcionarioId, Long localEstoqueId) {
-        Material material = materialRepository.findById(materialId)
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado"));
         
         Funcionario funcionario = funcionarioRepository.findById(funcionarioId)
@@ -139,7 +139,7 @@ public class EstoqueService {
         validarTexto(autorizadoPor, "Informe quem autorizou o ajuste.");
         validarPositivo(valorAjuste, "O valor do ajuste deve ser maior que zero.");
 
-        Material material = materialRepository.findById(materialId)
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
@@ -177,7 +177,7 @@ public class EstoqueService {
         validarTexto(lancadoPor, "Informe quem lançou a transferência.");
         validarTexto(autorizadoPor, "Informe quem autorizou a transferência.");
 
-        Material material = materialRepository.findById(materialId)
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {

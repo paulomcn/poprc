@@ -2,6 +2,7 @@ package com.poprc.demo.service;
 
 import com.poprc.demo.model.SaldoMaterialLocal;
 import com.poprc.demo.repository.LocalEstoqueRepository;
+import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.SaldoMaterialLocalRepository;
 import org.junit.jupiter.api.Test;
 
@@ -19,10 +20,11 @@ class SaldoLocalServiceTest {
     @Test
     void deveSalvarMinimoLocalEPermitirRetornoAoPadraoGlobal() {
         SaldoMaterialLocalRepository repository = mock(SaldoMaterialLocalRepository.class);
-        SaldoLocalService service = new SaldoLocalService(mock(LocalEstoqueRepository.class), repository);
+        SaldoLocalService service = new SaldoLocalService(
+                mock(LocalEstoqueRepository.class), repository, mock(MaterialRepository.class));
         SaldoMaterialLocal saldo = new SaldoMaterialLocal();
         saldo.setId(8L);
-        when(repository.findById(8L)).thenReturn(Optional.of(saldo));
+        when(repository.findByIdForUpdate(8L)).thenReturn(Optional.of(saldo));
         when(repository.save(saldo)).thenReturn(saldo);
 
         service.atualizarEstoqueMinimo(8L, new BigDecimal("12.5"));
@@ -36,9 +38,10 @@ class SaldoLocalServiceTest {
     @Test
     void deveRejeitarMinimoLocalNegativo() {
         SaldoMaterialLocalRepository repository = mock(SaldoMaterialLocalRepository.class);
-        SaldoLocalService service = new SaldoLocalService(mock(LocalEstoqueRepository.class), repository);
+        SaldoLocalService service = new SaldoLocalService(
+                mock(LocalEstoqueRepository.class), repository, mock(MaterialRepository.class));
         SaldoMaterialLocal saldo = new SaldoMaterialLocal();
-        when(repository.findById(9L)).thenReturn(Optional.of(saldo));
+        when(repository.findByIdForUpdate(9L)).thenReturn(Optional.of(saldo));
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> service.atualizarEstoqueMinimo(9L, new BigDecimal("-1")));

@@ -637,7 +637,7 @@ public class ComarcaService {
             throw new IllegalArgumentException("Selecione um material cadastrado no estoque.");
         }
 
-        return materialRepository.findById(materialId)
+        return materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material do estoque não encontrado."));
     }
 
@@ -651,7 +651,8 @@ public class ComarcaService {
     }
 
     private void reservarEstoque(Comarca comarca, MaterialItem item, BigDecimal quantidade) {
-        Material material = item.getMaterial();
+        Material material = bloquearMaterial(item.getMaterial());
+        item.setMaterial(material);
         if (controlaMetragem(material)) {
             material.setMetragemReservada(metragemReservada(material).add(quantidade));
         } else {
@@ -671,7 +672,8 @@ public class ComarcaService {
             return;
         }
 
-        Material material = item.getMaterial();
+        Material material = bloquearMaterial(item.getMaterial());
+        item.setMaterial(material);
         if (controlaMetragem(material)) {
             material.setMetragemReservada(metragemReservada(material).subtract(quantidade).max(BigDecimal.ZERO));
         } else {
@@ -685,6 +687,14 @@ public class ComarcaService {
 
         item.setEstoqueReservado(false);
         materialItemRepository.save(item);
+    }
+
+    private Material bloquearMaterial(Material material) {
+        if (material == null || material.getId() == null) {
+            throw new IllegalArgumentException("Material do estoque não encontrado.");
+        }
+        return materialRepository.findByIdForUpdate(material.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Material do estoque não encontrado."));
     }
 
     private void registrarMovimentacaoEstoque(Comarca comarca, Material material, BigDecimal quantidade, TipoMovimentacao tipo,

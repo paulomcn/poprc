@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +62,7 @@ public class OrdemServicoService {
         }
         validarMateriaisSemDuplicidade(request.getMateriais());
 
-        Contrato contrato = contratoRepository.findById(request.getContratoId())
+        Contrato contrato = contratoRepository.findByIdForUpdate(request.getContratoId())
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado."));
         Projeto projeto = projetoRepository.findById(request.getProjetoId())
                 .orElseThrow(() -> new IllegalArgumentException("Projeto/Comarca alvo não encontrado."));
@@ -176,7 +177,10 @@ public class OrdemServicoService {
 
     private void cadastrarMateriaisDaOs(Comarca comarca,
             List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisPrevistos) {
-        for (CriarOrdemServicoRequest.MaterialPrevistoRequest materialPrevisto : materiaisPrevistos) {
+        List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisOrdenados = materiaisPrevistos.stream()
+                .sorted(Comparator.comparing(CriarOrdemServicoRequest.MaterialPrevistoRequest::getMaterialId))
+                .toList();
+        for (CriarOrdemServicoRequest.MaterialPrevistoRequest materialPrevisto : materiaisOrdenados) {
             if (materialPrevisto.getMaterialId() == null) {
                 throw new IllegalArgumentException("Todos os materiais previstos precisam estar vinculados ao estoque.");
             }
