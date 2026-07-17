@@ -6,6 +6,7 @@ import com.poprc.demo.repository.ViagemRepository;
 import com.poprc.demo.repository.FuncionarioRepository; // 💥 Import novo
 import com.poprc.demo.repository.ProjetoRepository; // 💥 Import novo
 import com.poprc.demo.service.FinanceiroService;
+import com.poprc.demo.service.ComprovantePrestacaoService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional; // 💥 Import 
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/financeiro")
@@ -25,6 +29,7 @@ public class ViagemController {
     private final ViagemRepository viagemRepository;
     private final FuncionarioRepository funcionarioRepository; // 💥 Injetado para o update
     private final ProjetoRepository projetoRepository; // 💥 Injetado para o update
+    private final ComprovantePrestacaoService comprovantePrestacaoService;
 
     /**
      * 📋 Listar todas as viagens cadastradas
@@ -57,6 +62,9 @@ public class ViagemController {
     public ResponseEntity<Viagem> atualizarViagem(@PathVariable Long id, @RequestBody NovaViagemDTO dto) {
         return viagemRepository.findById(id)
                 .map(viagem -> {
+                    if (viagem.getStatus() == com.poprc.demo.model.StatusViagem.CONCLUIDA) {
+                        throw new IllegalStateException("Uma viagem concluída não pode mais ser editada.");
+                    }
                     viagem.setSolicitacaoVeiculo(dto.getSolicitacaoVeiculo());
                     viagem.setHospedagemDetalhes(dto.getHospedagemDetalhes());
                     viagem.setAdiantamentoDiarias(dto.getAdiantamentoDiarias());
@@ -78,13 +86,19 @@ public class ViagemController {
     /**
      * 💰 POST: Prestar contas e liquidar custos
      */
-    @PostMapping("/prestacao-contas")
-    public ResponseEntity<PrestacaoContas> fecharPrestacao(@RequestBody PrestacaoContasDTO dto) {
-        PrestacaoContas prestacao = financeiroService.fecharPrestacaoContas(
-                dto.getViagemId(),
-                dto.getCustoReal(),
-                dto.getCaminhoNotaFiscal());
+    @PostMapping(value = "/prestacao-contas", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PrestacaoContas> fecharPrestacao(
+            @RequestParam Long viagemId,
+            @RequestParam BigDecimal custoReal,
+            @RequestParam("comprovante") MultipartFile comprovante) {
+        PrestacaoContas prestacao = comprovantePrestacaoService.fecharPrestacao(
+                viagemId, custoReal, comprovante);
         return ResponseEntity.status(HttpStatus.CREATED).body(prestacao);
+    }
+
+    @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
+    public ResponseEntity<Map<String, String>> tratarErroDeRegra(RuntimeException ex) {
+        return ResponseEntity.badRequest().body(Map.of("erro", ex.getMessage()));
     }
 
     @Data
@@ -97,10 +111,4 @@ public class ViagemController {
         private Long projetoId;
     }
 
-    @Data
-    public static class PrestacaoContasDTO {
-        private Long viagemId;
-        private BigDecimal custoReal;
-        private String caminhoNotaFiscal;
-    }
 }

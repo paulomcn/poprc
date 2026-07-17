@@ -1,16 +1,23 @@
 package com.poprc.demo.controller;
 
 import com.poprc.demo.model.Faturamento;
-import com.poprc.demo.model.SituacaoFaturamento;
-import com.poprc.demo.repository.FaturamentoRepository;
-import com.poprc.demo.repository.ContratoRepository;
+import com.poprc.demo.service.FaturamentoService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -20,114 +27,59 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class FaturamentoController {
 
-    private final FaturamentoRepository faturamentoRepository;
-    private final ContratoRepository contratoRepository;
+    private final FaturamentoService faturamentoService;
 
-    /**
-     * 📋 Listar todas as medições/faturamentos
-     */
     @GetMapping
     public ResponseEntity<List<Faturamento>> listarTodos() {
-        return ResponseEntity.ok(faturamentoRepository.findAll());
+        return ResponseEntity.ok(faturamentoService.listarTodos());
     }
 
-    /**
-     * 💾 POST: Criar novo faturamento/medição do zero
-     */
     @PostMapping
-    @Transactional
-    public ResponseEntity<Map<String, Object>> criarFaturamento(@RequestBody Faturamento faturamento) {
-        Map<String, Object> response = new HashMap<>();
-        try {
-            if (faturamento.getContrato() == null || faturamento.getContrato().getId() == null) {
-                response.put("erro", "Contrato vinculado é obrigatório!");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-            }
-
-            contratoRepository.findById(faturamento.getContrato().getId())
-                    .ifPresent(faturamento::setContrato);
-
-            // ⚡ REMOVIDO O BLOCO QUE TENTAVA FORÇAR "PENDENTE" VIA CÓDIGO E DAVA ERRO
-
-            Faturamento salvo = faturamentoRepository.save(faturamento);
-            response.put("faturamento", salvo);
-            response.put("mensagem", "Nova medição registrada com sucesso!");
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            response.put("erro", "Erro ao criar faturamento: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
+    public ResponseEntity<Faturamento> criarFaturamento(@RequestBody Faturamento faturamento) {
+        Long contratoId = idContrato(faturamento);
+        Long projetoId = idProjeto(faturamento);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(faturamentoService.registrarMedicao(faturamento, contratoId, projetoId));
     }
 
-    /**
-     * ✏️ PUT /{id}: Editar QUALQUER campo do faturamento
-     */
     @PutMapping("/{id}")
-    @Transactional
-    public ResponseEntity<Map<String, Object>> atualizarFaturamento(@PathVariable Long id,
-            @RequestBody Faturamento dados) {
-        Map<String, Object> response = new HashMap<>();
-
-        return faturamentoRepository.findById(id)
-                .map(faturamento -> {
-                    faturamento.setServicosExecutados(dados.getServicosExecutados());
-                    faturamento.setValorMedicao(dados.getValorMedicao());
-                    faturamento.setDataVencimento(dados.getDataVencimento());
-                    faturamento.setNumeroNotaFiscal(dados.getNumeroNotaFiscal());
-                    faturamento.setSituacao(dados.getSituacao());
-
-                    if (dados.getContrato() != null && dados.getContrato().getId() != null) {
-                        contratoRepository.findById(dados.getContrato().getId())
-                                .ifPresent(faturamento::setContrato);
-                    }
-
-                    Faturamento salvo = faturamentoRepository.save(faturamento);
-                    response.put("faturamento", salvo);
-                    response.put("mensagem", "Faturamento atualizado com sucesso!");
-                    return ResponseEntity.ok(response);
-                })
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * 🧾 PUT: Emitir Nota Fiscal
-     */
-    @PutMapping("/{id}/emitir-nota")
-    @Transactional
-    public ResponseEntity<Map<String, Object>> emitirNotaFiscal(
+    public ResponseEntity<Faturamento> atualizarFaturamento(
             @PathVariable Long id,
-            @RequestParam String numeroNotaFiscal) {
-
-        Map<String, Object> response = new HashMap<>();
-        return faturamentoRepository.findById(id)
-                .map(faturamento -> {
-                    faturamento.setNumeroNotaFiscal(numeroNotaFiscal);
-                    faturamento.setSituacao(SituacaoFaturamento.FATURADO); // 💥 CORRIGIDO!
-
-                    Faturamento salvo = faturamentoRepository.save(faturamento);
-                    response.put("faturamento", salvo);
-                    response.put("mensagem", "Nota Fiscal emitida e registrada no banco!");
-                    return ResponseEntity.ok(response);
-                })
-                .orElse(ResponseEntity.notFound().build());
+            @RequestBody Faturamento dados) {
+        return ResponseEntity.ok(faturamentoService.atualizarMedicao(
+                id, dados, idContrato(dados), idProjeto(dados)));
     }
 
-    /**
-     * 💰 PUT: Baixar Pagamento
-     */
-    @PutMapping("/{id}/baixar-pagamento")
-    @Transactional
-    public ResponseEntity<Map<String, Object>> baixarPagamento(@PathVariable Long id) {
-        Map<String, Object> response = new HashMap<>();
-        return faturamentoRepository.findById(id)
-                .map(faturamento -> {
-                    faturamento.setSituacao(SituacaoFaturamento.PAGO); // 💥 CORRIGIDO!
+    @PutMapping("/{id}/emitir-nota")
+    public ResponseEntity<Faturamento> emitirNotaFiscal(
+            @PathVariable Long id,
+            @RequestParam String numeroNotaFiscal,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataVencimento) {
+        return ResponseEntity.ok(
+                faturamentoService.emitirNotaFiscal(id, numeroNotaFiscal, dataVencimento));
+    }
 
-                    Faturamento salvo = faturamentoRepository.save(faturamento);
-                    response.put("faturamento", salvo);
-                    response.put("mensagem", "Pagamento baixado com sucesso! Saldo atualizado.");
-                    return ResponseEntity.ok(response);
-                })
-                .orElse(ResponseEntity.notFound().build());
+    @PutMapping("/{id}/baixar-pagamento")
+    public ResponseEntity<Faturamento> baixarPagamento(@PathVariable Long id) {
+        return ResponseEntity.ok(faturamentoService.darBaixaPagamento(id));
+    }
+
+    @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
+    public ResponseEntity<Map<String, String>> tratarErroDeRegra(RuntimeException ex) {
+        return ResponseEntity.badRequest().body(Map.of("erro", ex.getMessage()));
+    }
+
+    private Long idContrato(Faturamento faturamento) {
+        if (faturamento.getContrato() == null || faturamento.getContrato().getId() == null) {
+            throw new IllegalArgumentException("O contrato é obrigatório.");
+        }
+        return faturamento.getContrato().getId();
+    }
+
+    private Long idProjeto(Faturamento faturamento) {
+        if (faturamento.getProjeto() == null || faturamento.getProjeto().getId() == null) {
+            throw new IllegalArgumentException("O projeto é obrigatório.");
+        }
+        return faturamento.getProjeto().getId();
     }
 }

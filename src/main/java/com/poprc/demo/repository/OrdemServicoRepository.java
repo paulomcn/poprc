@@ -23,4 +23,8 @@ public interface OrdemServicoRepository extends JpaRepository<OrdemServico, Long
     long countByContratoId(Long contratoId);
 
     boolean existsByNumeroOs(String numeroOs);
+
+    List<OrdemServico> findByContratoId(Long contratoId);
+
+    List<OrdemServico> findByProjetoId(Long projetoId);
 }

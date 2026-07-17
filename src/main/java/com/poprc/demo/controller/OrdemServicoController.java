@@ -1,10 +1,12 @@
 package com.poprc.demo.controller;
 
 import com.poprc.demo.dto.CriarOrdemServicoRequest;
+import com.poprc.demo.dto.ArquivamentoRequest;
 import com.poprc.demo.exception.SaldoInsuficienteException;
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.service.OrdemServicoService;
+import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.repository.OrdemServicoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,6 +24,7 @@ public class OrdemServicoController {
 
     private final OrdemServicoService ordemServicoService;
     private final OrdemServicoRepository ordemServicoRepository;
+    private final ArquivamentoService arquivamentoService;
 
     /**
      * 🛠️ POST: Criar nova Ordem de Serviço amarrada ao contrato
@@ -63,10 +66,25 @@ public class OrdemServicoController {
     @GetMapping
     public ResponseEntity<List<OrdemServico>> listarTodas(
             @RequestParam(required = false) String numeroOs,
-            @RequestParam(required = false) String cliente) {
+            @RequestParam(required = false) String cliente,
+            @RequestParam(defaultValue = "false") boolean incluirArquivados) {
         // Adeus findAll() genérico! Agora a busca vai blindada e cirúrgica
-        List<OrdemServico> ordens = ordemServicoRepository.buscarComFiltros(numeroOs, cliente);
+        List<OrdemServico> ordens = ordemServicoRepository.buscarComFiltros(numeroOs, cliente).stream()
+                .filter(item -> incluirArquivados || !Boolean.TRUE.equals(item.getArquivado()))
+                .toList();
         return ResponseEntity.ok(ordens);
+    }
+
+    @PatchMapping("/{id}/arquivar")
+    public ResponseEntity<OrdemServico> arquivar(
+            @PathVariable Long id, @RequestBody ArquivamentoRequest request) {
+        return ResponseEntity.ok(
+                arquivamentoService.arquivarOrdemServico(id, request.getUsuario(), request.getMotivo()));
+    }
+
+    @PatchMapping("/{id}/restaurar")
+    public ResponseEntity<OrdemServico> restaurar(@PathVariable Long id) {
+        return ResponseEntity.ok(arquivamentoService.restaurarOrdemServico(id));
     }
 
     @GetMapping("/{id}")
@@ -100,7 +118,8 @@ public class OrdemServicoController {
         }
     }
 
-    @ExceptionHandler({ IllegalArgumentException.class, SaldoInsuficienteException.class })
+    @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class,
+            SaldoInsuficienteException.class })
     public ResponseEntity<Map<String, String>> handleBadRequest(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erro", ex.getMessage()));
     }

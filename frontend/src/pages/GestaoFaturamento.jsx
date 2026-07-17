@@ -19,6 +19,7 @@ import Alert from "../components/Alert";
 export default function GestaoFaturamento() {
   const [faturamentos, setFaturamentos] = useState([]);
   const [contratos, setContratos] = useState([]);
+  const [projetos, setProjetos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -31,10 +32,14 @@ export default function GestaoFaturamento() {
   const [nfModalOpen, setNfModalOpen] = useState(false);
   const [baixaModalOpen, setBaixaModalOpen] = useState(false);
   const [numeroNF, setNumeroNF] = useState("");
+  const [vencimentoNF, setVencimentoNF] = useState("");
+  const [filtroContrato, setFiltroContrato] = useState("");
+  const [filtroSituacao, setFiltroSituacao] = useState("");
 
   // FORMULÁRIO COMPLETO
   const [formData, setFormData] = useState({
     contrato: { id: "" },
+    projeto: { id: "" },
     servicosExecutados: "",
     valorMedicao: "",
     dataVencimento: "",
@@ -49,12 +54,14 @@ export default function GestaoFaturamento() {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const [resFat, resCont] = await Promise.all([
+      const [resFat, resCont, resProj] = await Promise.all([
         api.get("/faturamentos"),
         api.get("/contratos"),
+        api.get("/projetos"),
       ]);
       setFaturamentos(resFat.data);
       setContratos(resCont.data);
+      setProjetos((resProj.data || []).filter((projeto) => !projeto.arquivado));
     } catch (err) {
       console.error(err);
       setError("Erro ao sincronizar dados financeiros com o servidor.");
@@ -79,11 +86,26 @@ export default function GestaoFaturamento() {
     { aFaturar: 0, faturado: 0, pago: 0, emAtraso: 0 },
   );
 
+  const faturamentosFiltrados = faturamentos.filter((faturamento) => {
+    const contratoOk = !filtroContrato || String(faturamento.contrato?.id) === filtroContrato;
+    const situacaoOk = !filtroSituacao || String(faturamento.situacao) === filtroSituacao;
+    return contratoOk && situacaoOk;
+  });
+
+  const projetosDoContrato = projetos.filter(
+    (projeto) => String(projeto.contrato?.id) === String(formData.contrato.id),
+  );
+
   const handleOpenCreate = () => {
+    const contratoId = contratos[0]?.id || "";
+    const primeiroProjeto = projetos.find(
+      (projeto) => String(projeto.contrato?.id) === String(contratoId),
+    );
     setIsEditing(false);
     setSelectedId(null);
     setFormData({
-      contrato: { id: contratos[0]?.id || "" },
+      contrato: { id: contratoId },
+      projeto: { id: primeiroProjeto?.id || "" },
       servicosExecutados: "",
       valorMedicao: "",
       dataVencimento: "",
@@ -98,6 +120,7 @@ export default function GestaoFaturamento() {
     setSelectedId(f.id);
     setFormData({
       contrato: { id: f.contrato?.id || "" },
+      projeto: { id: f.projeto?.id || "" },
       servicosExecutados: f.servicosExecutados || "",
       valorMedicao: f.valorMedicao || "",
       dataVencimento: f.dataVencimento || "",
@@ -125,26 +148,31 @@ export default function GestaoFaturamento() {
       carregarDados();
     } catch (err) {
       console.error(err);
-      setError("Erro ao salvar dados do faturamento.");
+      setError(err.response?.data?.erro || "Erro ao salvar dados do faturamento.");
     }
   };
 
   const handleEmitirNota = async (id) => {
     setSelectedId(id);
     setNumeroNF("");
+    setVencimentoNF("");
     setNfModalOpen(true);
   };
   const confirmarEmitirNota = async (e) => {
     e.preventDefault();
+    if (!numeroNF.trim() || !vencimentoNF) {
+      setError("Informe o número da nota fiscal e a data de vencimento.");
+      return;
+    }
     try {
       await api.put(`/faturamentos/${selectedId}/emitir-nota`, null, {
-        params: { numeroNotaFiscal: numeroNF },
+        params: { numeroNotaFiscal: numeroNF, dataVencimento: vencimentoNF },
       });
       setSuccess("Nota Fiscal registrada corporativamente!");
       setNfModalOpen(false);
       carregarDados();
     } catch (err) {
-      setError("Erro ao emitir nota.");
+      setError(err.response?.data?.erro || "Erro ao emitir nota.");
     }
   };
 
@@ -159,7 +187,7 @@ export default function GestaoFaturamento() {
       setBaixaModalOpen(false);
       carregarDados();
     } catch (err) {
-      setError("Erro ao liquidar faturamento.");
+      setError(err.response?.data?.erro || "Erro ao liquidar faturamento.");
     }
   };
 
@@ -176,12 +204,11 @@ export default function GestaoFaturamento() {
       {/* Header Principal */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-800 flex items-center gap-2">
-            <FileText size={32} className="text-blue-600" /> Gestão de
-            Faturamentos
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
+            <FileText size={30} className="text-blue-600" /> Gestão de Faturamento
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Módulo Contábil - Controle operacional de recebíveis em tempo real
+            Medições, emissão de notas e recebimentos vinculados aos projetos
           </p>
         </div>
         <button
@@ -202,6 +229,26 @@ export default function GestaoFaturamento() {
           onClose={() => setSuccess(null)}
         />
       )}
+
+      <div className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+        <label>
+          <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Contrato</span>
+          <select value={filtroContrato} onChange={(event) => setFiltroContrato(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+            <option value="">Todos os contratos</option>
+            {contratos.map((contrato) => <option key={contrato.id} value={contrato.id}>{contrato.contrato} - {contrato.cliente}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Situação</span>
+          <select value={filtroSituacao} onChange={(event) => setFiltroSituacao(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+            <option value="">Todas as situações</option>
+            <option value="A_FATURAR">A faturar</option>
+            <option value="FATURADO">Faturado</option>
+            <option value="EM_ATRASO">Em atraso</option>
+            <option value="PAGO">Pago</option>
+          </select>
+        </label>
+      </div>
 
       {/* 📊 SEÇÃO DE METRICAS DINÂMICAS REESTILIZADAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -263,11 +310,12 @@ export default function GestaoFaturamento() {
       </div>
 
       {/* Tabela Principal */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
               <th className="p-4">Contrato</th>
+              <th className="p-4">Projeto</th>
               <th className="p-4">Serviços Executados</th>
               <th className="p-4">Valor</th>
               <th className="p-4">Vencimento</th>
@@ -278,7 +326,7 @@ export default function GestaoFaturamento() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-            {faturamentos.map((f) => {
+            {faturamentosFiltrados.map((f) => {
               const situacaoStr = String(f.situacao).toUpperCase();
               return (
                 <tr
@@ -287,6 +335,9 @@ export default function GestaoFaturamento() {
                 >
                   <td className="p-4 font-bold text-slate-800">
                     {f.contrato?.contrato || "---"}
+                  </td>
+                  <td className="p-4 text-xs font-semibold text-slate-600">
+                    {f.projeto?.id ? `Projeto #${f.projeto.id}` : "Histórico sem projeto"}
                   </td>
                   <td className="p-4 max-w-xs truncate text-slate-500">
                     {f.servicosExecutados || "---"}
@@ -314,7 +365,7 @@ export default function GestaoFaturamento() {
                       }`}
                     >
                       {situacaoStr === "EM_ATRASO"
-                        ? "⚠️ EM ATRASO"
+                        ? "EM ATRASO"
                         : f.situacao}
                     </span>
                   </td>
@@ -352,7 +403,9 @@ export default function GestaoFaturamento() {
                   <td className="p-4 text-center">
                     <button
                       onClick={() => handleOpenEdit(f)}
-                      className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      disabled={situacaoStr !== "A_FATURAR"}
+                      title={situacaoStr === "A_FATURAR" ? "Editar medição" : "Medições faturadas não podem ser editadas"}
+                      className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30"
                     >
                       <Edit size={16} />
                     </button>
@@ -360,6 +413,9 @@ export default function GestaoFaturamento() {
                 </tr>
               );
             })}
+            {faturamentosFiltrados.length === 0 && (
+              <tr><td colSpan="9" className="p-10 text-center text-sm text-slate-500">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -387,12 +443,17 @@ export default function GestaoFaturamento() {
                   </label>
                   <select
                     value={formData.contrato.id}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const contratoId = e.target.value;
+                      const primeiroProjeto = projetos.find(
+                        (projeto) => String(projeto.contrato?.id) === contratoId,
+                      );
                       setFormData({
                         ...formData,
-                        contrato: { id: e.target.value },
-                      })
-                    }
+                        contrato: { id: contratoId },
+                        projeto: { id: primeiroProjeto?.id || "" },
+                      });
+                    }}
                     className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   >
@@ -400,6 +461,22 @@ export default function GestaoFaturamento() {
                       <option key={c.id} value={c.id}>
                         {c.contrato} - {c.cliente}
                       </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-600 uppercase">
+                    Projeto Vinculado *
+                  </label>
+                  <select
+                    value={formData.projeto.id}
+                    onChange={(e) => setFormData({ ...formData, projeto: { id: e.target.value } })}
+                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Selecione o projeto</option>
+                    {projetosDoContrato.map((projeto) => (
+                      <option key={projeto.id} value={projeto.id}>Projeto #{projeto.id}</option>
                     ))}
                   </select>
                 </div>
@@ -419,57 +496,6 @@ export default function GestaoFaturamento() {
                     placeholder="0.00"
                   />
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 uppercase">
-                    Data Vencimento *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.dataVencimento}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        dataVencimento: e.target.value,
-                      })
-                    }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 uppercase">
-                    Situação / Status *
-                  </label>
-                  <select
-                    value={formData.situacao}
-                    onChange={(e) =>
-                      setFormData({ ...formData, situacao: e.target.value })
-                    }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="A_FATURAR">A FATURAR</option>
-                    <option value="FATURADO">FATURADO</option>
-                    <option value="PAGO">PAGO</option>
-                    <option value="EM_ATRASO">EM ATRASO</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-600 uppercase">
-                  Número da Nota (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.numeroNotaFiscal}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      numeroNotaFiscal: e.target.value,
-                    })
-                  }
-                  className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ex: NF-2026-XXXX"
-                />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-600 uppercase">
@@ -515,6 +541,16 @@ export default function GestaoFaturamento() {
               className="w-full p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Número da NF-e"
             />
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-600">Vencimento *</span>
+              <input
+                type="date"
+                required
+                value={vencimentoNF}
+                onChange={(event) => setVencimentoNF(event.target.value)}
+                className="w-full p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </label>
             <div className="flex gap-3">
               <button
                 onClick={confirmarEmitirNota}

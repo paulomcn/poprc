@@ -1,307 +1,335 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  Briefcase,
-  DollarSign,
-  CheckCircle,
   AlertTriangle,
-  Plane,
-  Percent,
-  TrendingUp,
-  Filter,
+  Briefcase,
+  Building2,
   Calendar,
+  CheckCircle,
+  ChevronRight,
+  ClipboardList,
+  DollarSign,
+  Filter,
+  Layers,
+  Plane,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react";
 import api from "../services/api";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 
+const indicadorClasses = {
+  neutro: "border-slate-200 bg-white text-slate-700",
+  azul: "border-blue-200 bg-blue-50 text-blue-700",
+  vermelho: "border-red-200 bg-red-50 text-red-700",
+  verde: "border-emerald-200 bg-emerald-50 text-emerald-700",
+};
+
+function BarraDistribuicao({ itens, total }) {
+  const base = Math.max(total, 1);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex h-3 w-full overflow-hidden rounded bg-slate-100">
+        {itens.map((item) => (
+          <div
+            key={item.label}
+            className={item.corBarra}
+            style={{ width: `${(item.valor / base) * 100}%` }}
+            title={`${item.label}: ${item.valor}`}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4">
+        {itens.map((item) => (
+          <div key={item.label} className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${item.corBarra}`} />
+              <span className="truncate text-xs font-medium text-slate-500">
+                {item.label}
+              </span>
+            </div>
+            <p className="mt-1 text-xl font-bold text-slate-900">{item.valor}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Indicador({ icon: Icon, label, valor, detalhe, variante = "neutro" }) {
+  return (
+    <div className={`min-h-32 rounded-lg border p-5 ${indicadorClasses[variante]}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{valor}</p>
+        </div>
+        <Icon size={22} aria-hidden="true" />
+      </div>
+      <p className="mt-3 text-xs text-slate-500">{detalhe}</p>
+    </div>
+  );
+}
+
 export default function DashboardExecutivo() {
-  //  ️ CONTROLE DE PERFIL (Mude para 'CLIENTE' para testar a trava visual do prompt!)
-  const [userRole, setUserRole] = useState("DIRETORIA");
-
   const [data, setData] = useState(null);
+  const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
   const [error, setError] = useState(null);
-
-  //  ️ ESTADOS DOS FILTROS (Requisito do Prompt 4/4)
   const [filtroContrato, setFiltroContrato] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [filtroContrato, dataInicio, dataFim]); // Recarrega se o filtro mudar
+    api
+      .get("/contratos")
+      .then((response) => setContratos(response.data || []))
+      .catch(() => setError("Não foi possível carregar os contratos para o filtro."));
+  }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async (exibirLoading = false) => {
+    if (dataInicio && dataFim && dataInicio > dataFim) {
+      setError("A data inicial não pode ser posterior à data final.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      setLoading(true);
-      // Passa os filtros via query params para a API (opcional no seu backend atual)
+      if (exibirLoading) setAtualizando(true);
       const response = await api.get("/dashboard/executivo", {
-        params: { contrato: filtroContrato, inicio: dataInicio, fim: dataFim },
+        params: {
+          contrato: filtroContrato || undefined,
+          inicio: dataInicio || undefined,
+          fim: dataFim || undefined,
+        },
       });
       setData(response.data);
       setError(null);
     } catch (err) {
-      setError("Falha ao carregar os indicadores estratégicos.");
       console.error(err);
+      setError("Falha ao carregar os indicadores do painel executivo.");
     } finally {
       setLoading(false);
+      setAtualizando(false);
     }
-  };
+  }, [dataFim, dataInicio, filtroContrato]);
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat("pt-BR", {
+  useEffect(() => {
+    const timeout = setTimeout(() => fetchDashboardData(), 250);
+    return () => clearTimeout(timeout);
+  }, [fetchDashboardData]);
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
+      maximumFractionDigits: 0,
     }).format(value || 0);
-  };
+
+  const obrasAtivas =
+    (data?.obrasEmVistoria || 0) +
+    (data?.obrasEmInfraestrutura || 0) +
+    (data?.obrasEmViradaRede || 0);
+  const totalObras = obrasAtivas + (data?.totalComarcasConcluidas || 0);
+  const percentualConclusao = totalObras
+    ? Math.round(((data?.totalComarcasConcluidas || 0) / totalObras) * 100)
+    : 0;
+  const totalFinanceiro = Number(data?.valorTotalContratado || 0);
+  const faturado = Number(data?.valorFaturado || 0);
+  const percentualFaturado = totalFinanceiro
+    ? Math.min(100, Math.round((faturado / totalFinanceiro) * 100))
+    : 0;
+
+  const etapas = useMemo(
+    () => [
+      { label: "Vistoria", valor: data?.obrasEmVistoria || 0, corBarra: "bg-amber-500" },
+      { label: "Infraestrutura", valor: data?.obrasEmInfraestrutura || 0, corBarra: "bg-cyan-600" },
+      { label: "Virada de rede", valor: data?.obrasEmViradaRede || 0, corBarra: "bg-blue-600" },
+      { label: "Concluídas", valor: data?.totalComarcasConcluidas || 0, corBarra: "bg-emerald-600" },
+    ],
+    [data],
+  );
+
+  const statusOrdens = useMemo(
+    () => [
+      { label: "Abertas", valor: data?.ordensAbertas || 0, corBarra: "bg-slate-400" },
+      { label: "Em execução", valor: data?.ordensEmExecucao || 0, corBarra: "bg-blue-600" },
+      { label: "Concluídas", valor: data?.ordensConcluidas || 0, corBarra: "bg-emerald-600" },
+    ],
+    [data],
+  );
 
   if (loading) return <LoadingSpinner />;
 
-  const total = data?.valorTotalContratado || 1;
-  const faturadoPercent = ((data?.valorFaturado || 0) / total) * 100;
-
   return (
-    <div className="space-y-8">
-      {/* Header e Toggle de Perfil para testes de homologação */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+    <div className="mx-auto max-w-[1500px] space-y-6">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
-            <TrendingUp className="text-slate-700" size={32} /> Dashboard
-            Executivo
-          </h1>
-          <p className="text-slate-600 mt-1">
-            Visão analítica macro do sistema
+          <p className="text-xs font-bold uppercase text-blue-600">Visão operacional</p>
+          <h1 className="mt-1 text-3xl font-bold text-slate-900">Dashboard Executivo</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Contratos, prazos e execução das obras em uma única leitura.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => fetchDashboardData(true)}
+          disabled={atualizando}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+        >
+          <RefreshCw size={17} className={atualizando ? "animate-spin" : ""} />
+          Atualizar dados
+        </button>
+      </header>
 
-        {/* Simulador de Perfil para você testar na hora */}
-        <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-fit">
-          <span className="text-xs font-bold text-slate-500 uppercase px-2">
-            Visualizar como:
+      <section className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+            <Filter size={14} /> Contrato
           </span>
-          <button
-            onClick={() => setUserRole("DIRETORIA")}
-            className={`px-3 py-1 text-xs font-bold rounded ${userRole === "DIRETORIA" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}
-          >
-            Diretoria
-          </button>
-          <button
-            onClick={() => setUserRole("CLIENTE")}
-            className={`px-3 py-1 text-xs font-bold rounded ${userRole === "CLIENTE" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
-          >
-            Cliente
-          </button>
-        </div>
-      </div>
-
-      {/*  ️ BARRA DE FILTROS DO TOPO (Requisito da Parte 4/4) */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-            <Filter size={14} /> Filtrar por Contrato
-          </label>
           <select
             value={filtroContrato}
-            onChange={(e) => setFiltroContrato(e.target.value)}
-            className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            onChange={(event) => setFiltroContrato(event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">Todos os Contratos</option>
-            <option value="CT-2026-001">Contrato TJ-RN</option>
-            <option value="CT-2026-002">Contrato TRT-21</option>
+            <option value="">Todos os contratos</option>
+            {contratos.map((contrato) => (
+              <option key={contrato.id} value={contrato.contrato}>
+                {contrato.contrato} - {contrato.cliente}
+              </option>
+            ))}
           </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-            <Calendar size={14} /> Data Início
-          </label>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+            <Calendar size={14} /> Início do período
+          </span>
           <input
             type="date"
             value={dataInicio}
-            onChange={(e) => setDataInicio(e.target.value)}
-            className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-50 focus:outline-none"
+            onChange={(event) => setDataInicio(event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
           />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-            <Calendar size={14} /> Data Fim
-          </label>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+            <Calendar size={14} /> Fim do período
+          </span>
           <input
             type="date"
             value={dataFim}
-            onChange={(e) => setDataFim(e.target.value)}
-            className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-50 focus:outline-none"
+            onChange={(event) => setDataFim(event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
           />
-        </div>
-      </div>
+        </label>
+      </section>
 
       {error && <Alert type="error" message={error} />}
 
-      {/* Grid Principal de KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Card 1: Contratos (Visível para Ambos) */}
-        <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200 flex items-center justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-slate-500 uppercase">
-              Contratos Ativos
-            </p>
-            <h3 className="text-3xl font-bold text-slate-800">
-              {data?.contratosAtivos}
-            </h3>
-          </div>
-          <div className="p-4 bg-slate-100 text-slate-700 rounded-lg">
-            <Briefcase size={24} />
-          </div>
-        </div>
-
-        {/* Card 2: Valor Global (Visível para Ambos) */}
-        <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200 flex items-center justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-slate-500 uppercase">
-              Total Alocado
-            </p>
-            <h3 className="text-2xl font-bold text-slate-800">
-              {formatCurrency(data?.valorTotalContratado)}
-            </h3>
-          </div>
-          <div className="p-4 bg-green-50 text-green-700 rounded-lg">
-            <DollarSign size={24} />
-          </div>
-        </div>
-
-        {/*  ️ REGRAS DO PROMPT: ESCONDE SE FOR PERFIL 'CLIENTE' */}
-        {userRole === "DIRETORIA" ? (
-          <>
-            {/* Card 3: Faturado Global (Só Diretoria) */}
-            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200 flex items-center justify-between">
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-500 uppercase">
-                  Faturado Global RC
-                </p>
-                <h3 className="text-2xl font-bold text-green-600">
-                  {formatCurrency(data?.valorFaturado)}
-                </h3>
-              </div>
-              <div className="p-4 bg-green-100/50 text-green-600 rounded-lg">
-                <Percent size={24} />
-              </div>
-            </div>
-
-            {/* Card 4: Custos de Viagem (Só Diretoria) */}
-            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200 flex items-center justify-between">
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-500 uppercase">
-                  Custos Viagem Internos
-                </p>
-                <h3 className="text-2xl font-bold text-red-600">
-                  {formatCurrency(data?.custosAcumuladosViagem)}
-                </h3>
-              </div>
-              <div className="p-4 bg-red-50 text-red-600 rounded-lg">
-                <Plane size={24} />
-              </div>
-            </div>
-          </>
-        ) : (
-          /* Placeholder visual para o Cliente não ver buraco na tela, mantendo o grid limpo */
-          <div className="lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-100 flex items-center justify-center">
-            <p className="text-sm font-medium text-blue-700 text-center">
-              {" "}
-              Indicadores internos de rentabilidade e custos restritos à gestão
-              RC.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Seção Inferior: Saúde Financeira (Condicional) e Comarcas */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Gráfico/Barra de Progresso de Faturamento (Só Diretoria vê) */}
-        <div
-          className={`bg-white p-6 rounded-xl shadow-md border border-slate-200 lg:col-span-2 space-y-6 ${userRole !== "DIRETORIA" && "opacity-40 pointer-events-none"}`}
-        >
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            Saúde do Faturamento {userRole !== "DIRETORIA" && " (Restrito)"}
-          </h2>
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm font-medium">
-              <span className="text-green-600">
-                Faturado ({faturadoPercent.toFixed(1)}%)
-              </span>
-              <span className="text-amber-600">Pendente</span>
-            </div>
-            <div className="w-full bg-slate-100 h-5 rounded-full overflow-hidden flex border">
-              <div
-                style={{ width: `${faturadoPercent}%` }}
-                className="bg-green-500 h-full"
-              ></div>
-              <div className="flex-1 bg-amber-400 h-full"></div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t text-sm">
+      {(data?.totalComarcasEmAtraso || 0) > 0 && (
+        <section className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 shrink-0 text-red-600" size={20} />
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase">
-                Realizado
-              </p>
-              <p className="font-bold text-slate-700">
-                {userRole === "DIRETORIA"
-                  ? formatCurrency(data?.valorFaturado)
-                  : "---"}
+              <p className="font-bold text-red-900">Atenção aos prazos</p>
+              <p className="text-sm text-red-700">
+                {data.totalComarcasEmAtraso} OS {data.totalComarcasEmAtraso === 1 ? "está atrasada" : "estão atrasadas"} e exige acompanhamento.
               </p>
             </div>
+          </div>
+          <Link to="/ordens-servico" className="inline-flex items-center gap-1 text-sm font-bold text-red-700 hover:text-red-900">
+            Ver ordens <ChevronRight size={16} />
+          </Link>
+        </section>
+      )}
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Indicador icon={Briefcase} label="Contratos ativos" valor={data?.contratosAtivos || 0} detalhe="Contratos vigentes no recorte" />
+        <Indicador icon={Building2} label="Obras em andamento" valor={obrasAtivas} detalhe={`${totalObras} obras acompanhadas`} variante="azul" />
+        <Indicador icon={AlertTriangle} label="OS atrasadas" valor={data?.totalComarcasEmAtraso || 0} detalhe={`${data?.ordensProximasPrazo || 0} vencem nas próximas 24h`} variante={(data?.totalComarcasEmAtraso || 0) > 0 ? "vermelho" : "neutro"} />
+        <Indicador icon={CheckCircle} label="Obras concluídas" valor={data?.totalComarcasConcluidas || 0} detalhe={`${percentualConclusao}% do total acompanhado`} variante="verde" />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <div className="rounded-lg border border-slate-200 bg-white p-5 xl:col-span-3">
+          <div className="mb-6 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase">
-                A Receber
-              </p>
-              <p className="font-bold text-slate-700">
-                {userRole === "DIRETORIA"
-                  ? formatCurrency(data?.valorPendenteFaturamento)
-                  : "---"}
-              </p>
+              <h2 className="font-bold text-slate-900">Fluxo das obras</h2>
+              <p className="text-xs text-slate-500">Distribuição pelas etapas operacionais</p>
+            </div>
+            <Link to="/obras" className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900">
+              Gestão de Obras <ChevronRight size={16} />
+            </Link>
+          </div>
+          <BarraDistribuicao itens={etapas} total={totalObras} />
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-5 xl:col-span-2">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-bold text-slate-900">Ordens de serviço</h2>
+              <p className="text-xs text-slate-500">{data?.totalOrdensServico || 0} ordens no recorte</p>
+            </div>
+            <ClipboardList size={20} className="text-slate-500" />
+          </div>
+          <BarraDistribuicao itens={statusOrdens} total={data?.totalOrdensServico || 0} />
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-5 xl:col-span-2">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <DollarSign size={20} className="text-emerald-700" />
+                <h2 className="font-bold text-slate-900">Posição financeira</h2>
+              </div>
+              <p className="mt-4 text-3xl font-bold text-slate-900">{formatCurrency(data?.valorFaturado)}</p>
+              <p className="mt-1 text-xs text-slate-500">faturado de {formatCurrency(data?.valorTotalContratado)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-6 text-sm sm:text-right">
+              <div>
+                <p className="text-xs font-medium text-slate-500">A receber</p>
+                <p className="mt-1 font-bold text-amber-700">{formatCurrency(data?.valorPendenteFaturamento)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500">Viagens aprovadas</p>
+                <p className="mt-1 font-bold text-slate-800">{formatCurrency(data?.custosAcumuladosViagem)}</p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-6">
+            <div className="mb-2 flex justify-between text-xs font-semibold text-slate-500">
+              <span>Execução financeira</span>
+              <span>{percentualFaturado}%</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded bg-slate-100">
+              <div className="h-full bg-emerald-600" style={{ width: `${percentualFaturado}%` }} />
             </div>
           </div>
         </div>
 
-        {/* Status de Comarcas / SLAs (Ambos Vêem - Foco total do Cliente) */}
-        <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200 space-y-6 flex flex-col justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 mb-4">
-              Status de Entregas & SLA
-            </h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-slate-50 border rounded-lg">
-                <div className="flex items-center gap-3 text-slate-700 text-sm font-medium">
-                  <CheckCircle className="text-green-500" size={20} />
-                  <span>Comarcas Concluídas</span>
-                </div>
-                <span className="text-lg font-bold text-slate-800">
-                  {data?.totalComarcasConcluidas}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-red-50/50 border rounded-lg">
-                <div className="flex items-center gap-3 text-slate-700 text-sm font-medium">
-                  <AlertTriangle className="text-red-500" size={20} />
-                  <span>Comarcas em Atraso</span>
-                </div>
-                <span className="text-sm font-bold text-red-600 bg-red-100 px-2.5 py-0.5 rounded-full">
-                  {data?.totalComarcasEmAtraso} Fora do Prazo
-                </span>
-              </div>
-            </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
+          <h2 className="font-bold text-slate-900">Acessos rápidos</h2>
+          <div className="mt-4 divide-y divide-slate-100">
+            {[
+              { to: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço" },
+              { to: "/auditoria/tecnica", icon: Layers, label: "Auditoria de retirada/devolução" },
+              { to: "/financeiro/faturamento", icon: TrendingUp, label: "Gestão de faturamento" },
+              { to: "/logistica/viagens", icon: Plane, label: "Viagens e reembolsos" },
+            ].map((item) => (
+              <Link key={item.to} to={item.to} className="flex min-h-12 items-center gap-3 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700">
+                <item.icon size={18} className="text-slate-400" />
+                <span className="flex-1">{item.label}</span>
+                <ChevronRight size={16} />
+              </Link>
+            ))}
           </div>
-
-          <button
-            onClick={fetchDashboardData}
-            className="w-full mt-4 py-2.5 bg-slate-700 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg transition-colors"
-          >
-            Atualizar Painel
-          </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

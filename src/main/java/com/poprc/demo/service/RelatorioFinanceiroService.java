@@ -32,7 +32,7 @@ public class RelatorioFinanceiroService {
         // 1. FATURAMENTO (Entradas)
         BigDecimal totalFaturado = BigDecimal.ZERO;
         if (projeto.getContrato() != null) {
-            List<Faturamento> faturamentos = faturamentoRepository.findByContratoId(projeto.getContrato().getId());
+            List<Faturamento> faturamentos = faturamentoRepository.findByProjetoId(projetoId);
             totalFaturado = faturamentos.stream()
                     .filter(Objects::nonNull)
                     .map(f -> f.getValorMedicao())

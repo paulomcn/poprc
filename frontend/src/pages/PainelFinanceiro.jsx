@@ -1,109 +1,143 @@
-import React, { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
-import api from '../services/api';
+import { useEffect, useState } from "react";
+import { AlertCircle, Briefcase, DollarSign, TrendingDown, TrendingUp } from "lucide-react";
+import api from "../services/api";
+import Alert from "../components/Alert";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 export default function PainelFinanceiro() {
+  const [projetos, setProjetos] = useState([]);
+  const [projetoId, setProjetoId] = useState("");
   const [dados, setDados] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    async function carregarLucratividade() {
-      try {
-        setLoading(true);
-        // Bate no endpoint consolidado que criamos no Java
-        const response = await api.get('/relatorios/projeto/1/lucratividade');
-        setDados(response.data);
-        setError(null);
-      } catch (err) {
-        setError('Não foi possível carregar o relatório financeiro.');
-        console.error(err);
-      } finally {
+    api
+      .get("/projetos")
+      .then((response) => {
+        const ativos = (response.data || []).filter((projeto) => !projeto.arquivado);
+        setProjetos(ativos);
+        setProjetoId(ativos[0]?.id ? String(ativos[0].id) : "");
+        if (!ativos.length) setLoading(false);
+      })
+      .catch(() => {
+        setError("Não foi possível carregar os projetos.");
         setLoading(false);
-      }
-    }
-    carregarLucratividade();
+      });
   }, []);
 
-  const formatarMoeda = (valor) => 
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+  useEffect(() => {
+    if (!projetoId) {
+      setDados(null);
+      return;
+    }
+    setLoading(true);
+    api
+      .get(`/relatorios/projeto/${projetoId}/lucratividade`)
+      .then((response) => {
+        setDados(response.data);
+        setError(null);
+      })
+      .catch(() => setError("Não foi possível carregar o relatório do projeto."))
+      .finally(() => setLoading(false));
+  }, [projetoId]);
 
-  if (loading) return (
-    <div className="min-h-screen bg-slate-950 flex justify-center items-center">
-      <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-    </div>
-  );
+  const moeda = (valor) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor || 0);
 
-  if (error || !dados) return (
-    <div className="min-h-screen bg-slate-950 p-8 flex items-center justify-center">
-      <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 p-6 rounded-xl flex items-center gap-3 max-w-lg">
-        <AlertCircle className="w-6 h-6 shrink-0" />
-        <p>{error || 'Erro desconhecido no servidor.'}</p>
-      </div>
-    </div>
-  );
-
-  const getBadgeSaude = (status) => {
-    if (status === 'LUCRO_SAUDAVEL') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-    if (status === 'ALERTA_MARGEM_BAIXA') return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-    return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-  };
+  const projetoSelecionado = projetos.find((projeto) => String(projeto.id) === projetoId);
+  const resultadoPositivo = Number(dados?.lucroBruto || 0) >= 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 md:p-8 font-sans text-slate-100">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        <header>
-          <h1 className="text-3xl font-black tracking-tight text-white">Dashboard de Lucratividade</h1>
-          <p className="text-slate-400 text-sm mt-1">Valores financeiros registrados para {dados.nomeProjeto}</p>
-        </header>
-
-        {!dados.custoMateriaisDisponivel && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-            Custos de materiais ainda não são controlados e não estão incluídos nos totais, no resultado ou na margem.
-          </div>
-        )}
-
-        {/* KPIs vindos direto da matemática do Java */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 text-sm font-bold uppercase tracking-wider">Total Faturado</p>
-              <div className="p-2 bg-indigo-500/10 rounded-lg"><DollarSign className="w-5 h-5 text-indigo-400" /></div>
-            </div>
-            <p className="text-3xl font-black mt-4">{formatarMoeda(dados.totalFaturado)}</p>
-          </div>
-          
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 text-sm font-bold uppercase tracking-wider">Custos Registrados</p>
-              <div className="p-2 bg-rose-500/10 rounded-lg"><TrendingUp className="w-5 h-5 text-rose-400" /></div>
-            </div>
-            <p className="text-3xl font-black mt-4 text-rose-400">{formatarMoeda(dados.custoTotalAcumulado)}</p>
-            <p className="mt-2 text-xs text-slate-500">Despesas com valores efetivamente informados</p>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 text-sm font-bold uppercase tracking-wider">Resultado Parcial</p>
-              <div className="p-2 bg-emerald-500/10 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-400" /></div>
-            </div>
-            <p className="text-3xl font-black mt-4 text-emerald-400">{formatarMoeda(dados.lucroBruto)}</p>
-          </div>
+    <div className="mx-auto max-w-[1400px] space-y-6">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase text-emerald-700">Gestão financeira</p>
+          <h1 className="mt-1 text-3xl font-bold text-slate-900">Lucratividade por Projeto</h1>
+          <p className="mt-1 text-sm text-slate-500">Receitas e despesas efetivamente vinculadas à obra.</p>
         </div>
-
-        {/* Card de Saúde Financeira */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl flex flex-col items-center justify-center text-center max-w-2xl mx-auto">
-          <h2 className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-4">Margem Parcial</h2>
-          <div className="text-7xl font-black text-white mb-6">
-            {dados.margemLucro}%
-          </div>
-          <span className={`px-6 py-2 rounded-full border text-sm font-black tracking-widest uppercase ${getBadgeSaude(dados.saudeFinanceira)}`}>
-            {dados.saudeFinanceira ? dados.saudeFinanceira.replace(/_/g, ' ') : 'SEM MOVIMENTAÇÃO'}
+        <label className="block w-full md:w-96">
+          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
+            <Briefcase size={14} /> Projeto analisado
           </span>
-        </div>
+          <select
+            value={projetoId}
+            onChange={(event) => setProjetoId(event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {projetos.length === 0 && <option value="">Nenhum projeto disponível</option>}
+            {projetos.map((projeto) => (
+              <option key={projeto.id} value={projeto.id}>
+                Projeto #{projeto.id} - {projeto.contrato?.contrato || "Sem contrato"}
+              </option>
+            ))}
+          </select>
+        </label>
+      </header>
 
-      </div>
+      {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
+      {!projetoId && !error && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+          Cadastre um projeto para iniciar a análise financeira.
+        </div>
+      )}
+      {loading && <LoadingSpinner />}
+
+      {!loading && dados && (
+        <>
+          {!dados.custoMateriaisDisponivel && (
+            <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <AlertCircle size={19} className="shrink-0" />
+              <p>Resultado parcial: custos de materiais ainda não fazem parte deste cálculo. Receita e viagens já usam somente registros vinculados ao projeto selecionado.</p>
+            </div>
+          )}
+
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between text-slate-500">
+                <p className="text-xs font-bold uppercase">Receita vinculada</p>
+                <DollarSign size={20} />
+              </div>
+              <p className="mt-4 text-3xl font-bold text-slate-900">{moeda(dados.totalFaturado)}</p>
+              <p className="mt-2 text-xs text-slate-500">Medições atribuídas ao Projeto #{projetoSelecionado?.id}</p>
+            </div>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-5">
+              <div className="flex items-center justify-between text-rose-700">
+                <p className="text-xs font-bold uppercase">Custos de viagens</p>
+                <TrendingDown size={20} />
+              </div>
+              <p className="mt-4 text-3xl font-bold text-slate-900">{moeda(dados.totalCustoViagens)}</p>
+              <p className="mt-2 text-xs text-slate-500">Prestações de contas concluídas</p>
+            </div>
+            <div className={`rounded-lg border p-5 ${resultadoPositivo ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+              <div className={`flex items-center justify-between ${resultadoPositivo ? "text-emerald-700" : "text-red-700"}`}>
+                <p className="text-xs font-bold uppercase">Resultado parcial</p>
+                <TrendingUp size={20} />
+              </div>
+              <p className="mt-4 text-3xl font-bold text-slate-900">{moeda(dados.lucroBruto)}</p>
+              <p className="mt-2 text-xs text-slate-500">Margem parcial de {dados.margemLucro || 0}%</p>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-bold text-slate-900">Leitura do resultado</h2>
+                <p className="mt-1 text-sm text-slate-500">Situação calculada com os custos atualmente disponíveis.</p>
+              </div>
+              <span className={`w-fit rounded border px-3 py-1.5 text-xs font-bold ${
+                dados.saudeFinanceira === "LUCRO_SAUDAVEL"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : dados.saudeFinanceira === "ALERTA_MARGEM_BAIXA"
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+              }`}>
+                {(dados.saudeFinanceira || "SEM_MOVIMENTACAO").replaceAll("_", " ")}
+              </span>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

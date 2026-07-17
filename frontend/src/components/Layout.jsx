@@ -1,16 +1,23 @@
-import Sidebar from './Sidebar'
-import Header from './Header'
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
+import Sidebar from "./Sidebar";
+import Header from "./Header";
 
-export default function Layout({ children, userName = 'Usuário' }) {
+export default function Layout({ children, userName = "Usuário" }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
   return (
     <div className="flex h-screen bg-slate-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden md:ml-0">
-        <Header userName={userName} />
-        <main className="flex-1 overflow-auto p-6">
-          {children}
-        </main>
+      <Sidebar isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Header userName={userName} onMenuClick={() => setMenuOpen(true)} />
+        <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
-  )
+  );
 }

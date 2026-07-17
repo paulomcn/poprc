@@ -1,0 +1,3 @@
+UPDATE projetos_membros
+SET papel = 'LIDER_EQUIPE'
+WHERE papel IN ('RESPONSAVEL_TECNICO', 'SUPERVISOR');

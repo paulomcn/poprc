@@ -9,4 +9,7 @@ public interface DocumentoInternoRepository extends JpaRepository<DocumentoInter
     List<DocumentoInterno> findByComarcaIdAndTipoOrderByDataGeracaoDesc(Long comarcaId, String tipo);
 
     List<DocumentoInterno> findByComarcaIdOrderByDataGeracaoDesc(Long comarcaId);
+
+    List<DocumentoInterno> findByComarcaIdAndTipoAndStatusOrderByDataGeracaoDesc(
+            Long comarcaId, String tipo, String status);
 }

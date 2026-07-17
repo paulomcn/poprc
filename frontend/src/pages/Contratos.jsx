@@ -13,6 +13,8 @@ import {
   User,
   Calendar,
   DollarSign,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 import api from "../services/api";
 
@@ -31,6 +33,7 @@ export default function Contratos() {
   const [selectedContrato, setSelectedContrato] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showFiltrosAvancados, setShowFiltrosAvancados] = useState(false);
+  const [incluirArquivados, setIncluirArquivados] = useState(false);
 
   // 💥 1. FILTROS CORE (Principais)
   const [recorrencia, setRecorrencia] = useState("");
@@ -96,6 +99,7 @@ export default function Contratos() {
     valorMin,
     valorMax,
     gestor,
+    incluirArquivados,
   ]);
 
   const carregarContratos = async () => {
@@ -116,6 +120,7 @@ export default function Contratos() {
           dataFim: dataFim || null,
           valorMin: valorMin || null,
           valorMax: valorMax || null,
+          incluirArquivados,
         },
       });
       setContratos(res.data || []);
@@ -123,6 +128,24 @@ export default function Contratos() {
       console.error("Erro ao carregar contratos filtrados", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const alterarArquivamento = async (contratoAtual) => {
+    try {
+      if (contratoAtual.arquivado) {
+        await api.patch(`/contratos/${contratoAtual.id}/restaurar`);
+      } else {
+        const motivo = window.prompt("Informe o motivo para arquivar este contrato:");
+        if (!motivo?.trim()) return;
+        await api.patch(`/contratos/${contratoAtual.id}/arquivar`, {
+          usuario: "Paulo Morais",
+          motivo: motivo.trim(),
+        });
+      }
+      carregarContratos();
+    } catch (err) {
+      alert(err.response?.data?.erro || "Não foi possível alterar o arquivamento do contrato.");
     }
   };
 
@@ -214,12 +237,22 @@ export default function Contratos() {
             Gerenciamento completo de minutas e vigências operacionais
           </p>
         </div>
-        <button
-          onClick={() => handleOpenModal(null, false)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-colors text-sm"
-        >
-          <Plus size={18} /> Novo Contrato
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <input
+              type="checkbox"
+              checked={incluirArquivados}
+              onChange={(event) => setIncluirArquivados(event.target.checked)}
+            />
+            Mostrar arquivados
+          </label>
+          <button
+            onClick={() => handleOpenModal(null, false)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-colors text-sm"
+          >
+            <Plus size={18} /> Novo Contrato
+          </button>
+        </div>
       </div>
 
       {/* 🛠️ ARQUITETURA DE FILTROS CORE E AVANÇADOS REESTRUTURADA 💥 */}
@@ -542,7 +575,7 @@ export default function Contratos() {
               {contratos.map((c) => (
                 <tr
                   key={c.id}
-                  className="hover:bg-slate-50/50 transition-colors"
+                  className={`hover:bg-slate-50/50 transition-colors ${c.arquivado ? "opacity-60" : ""}`}
                 >
                   <td className="p-4 font-semibold text-slate-800">
                     {c.cliente}
@@ -561,12 +594,14 @@ export default function Contratos() {
                   <td className="p-4">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        c.status === "ATIVO"
+                        c.arquivado
+                          ? "bg-slate-200 text-slate-600 border border-slate-300"
+                          : c.status === "ATIVO"
                           ? "bg-green-50 text-green-700 border border-green-200"
                           : "bg-slate-100 text-slate-600 border border-slate-200"
                       }`}
                     >
-                      {c.status || "ATIVO"}
+                      {c.arquivado ? "ARQUIVADO" : c.status || "ATIVO"}
                     </span>
                   </td>
                   <td className="p-4 flex justify-center gap-1.5">
@@ -578,9 +613,17 @@ export default function Contratos() {
                     </button>
                     <button
                       onClick={() => handleOpenModal(c, true)}
+                      disabled={c.arquivado}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     >
                       <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => alterarArquivamento(c)}
+                      title={c.arquivado ? "Restaurar contrato" : "Arquivar contrato"}
+                      className={`p-2 rounded-lg transition-colors ${c.arquivado ? "text-emerald-600 hover:bg-emerald-50" : "text-red-600 hover:bg-red-50"}`}
+                    >
+                      {c.arquivado ? <RotateCcw size={16} /> : <Archive size={16} />}
                     </button>
                   </td>
                 </tr>

@@ -1,129 +1,144 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { API_ORIGIN } from "../services/runtimeConfig";
+import rcLogo from "../assets/rclogo.jpg";
 import {
-  LayoutDashboard,
-  FileText,
-  Briefcase,
-  Users,
-  Building2,
-  Package,
-  LogOut,
-  Menu,
-  X,
-  Smartphone,
-  // 💥 ÍCONE NOVO PARA A O.S.
-  ClipboardList,
-  TrendingUp,
-  DollarSign,
-  Plane,
-  Layers,
   Bell,
+  Briefcase,
+  Building2,
+  ClipboardList,
+  DollarSign,
+  FileText,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Package,
+  Plane,
+  Smartphone,
+  TrendingUp,
+  Users,
+  X,
 } from "lucide-react";
 
-export default function Sidebar() {
-  const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
+const secoesMenu = [
+  {
+    titulo: "Visão geral",
+    itens: [{ path: "/", icon: LayoutDashboard, label: "Dashboard Executivo", end: true }],
+  },
+  {
+    titulo: "Operação",
+    itens: [
+      { path: "/contratos", icon: FileText, label: "Contratos" },
+      { path: "/projetos", icon: Briefcase, label: "Projetos" },
+      { path: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço" },
+      { path: "/obras", icon: Building2, label: "Gestão de Obras" },
+      { path: "/funcionarios", icon: Users, label: "Equipes" },
+    ],
+  },
+  {
+    titulo: "Materiais e auditoria",
+    itens: [
+      { path: "/estoque", icon: Package, label: "Estoque" },
+      { path: "/auditoria/tecnica", icon: Layers, label: "Retirada e Devolução" },
+    ],
+  },
+  {
+    titulo: "Gestão",
+    itens: [
+      { path: "/financeiro/lucratividade", icon: TrendingUp, label: "Lucratividade" },
+      { path: "/financeiro/faturamento", icon: DollarSign, label: "Faturamento" },
+      { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos" },
+      { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações" },
+    ],
+  },
+];
 
-  // 🎛️ ARRAY ATUALIZADO COM A ORDEM DE SERVIÇO NO LUGAR CERTO 💥
-  const menuItems = [
-    { path: "/", icon: LayoutDashboard, label: "Dashboard Executivo" },
-    { path: "/contratos", icon: FileText, label: "Contratos" },
-    { path: "/projetos", icon: Briefcase, label: "Projetos" },
-    {
-      path: "/ordens-servico",
-      icon: ClipboardList,
-      label: "Ordens de Serviço",
-    }, // 💥 LINK INJETADO AQUI!
-    { path: "/funcionarios", icon: Users, label: "Funcionários" },
-    { path: "/obras", icon: Building2, label: "Gestão de Obras" },
-    { path: "/estoque", icon: Package, label: "Estoque de Materiais" },
-
-    // Novas páginas do financeiro, logística e engenharia
-    {
-      path: "/financeiro/lucratividade",
-      icon: TrendingUp,
-      label: "Lucratividade",
-    },
-    {
-      path: "/financeiro/faturamento",
-      icon: DollarSign,
-      label: "Gestão Faturamento",
-    },
-    { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos" },
-    { path: "/auditoria/tecnica", icon: Layers, label: "Auditoria de Retirada/Devolução" },
-    { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações" },
-
-    { path: "/tecnico", icon: Smartphone, label: "Área do Técnico" },
-  ];
-
-  const isActive = (path) => location.pathname === path;
-
+export default function Sidebar({ isOpen, onClose }) {
   const handleLogout = () => {
     window.location.href = `${API_ORIGIN}/logout`;
   };
 
   return (
     <>
-      {/* Mobile Toggle */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-slate-100"
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-
-      {/* Sidebar */}
       <aside
-        className={`${
+        aria-label="Navegação principal"
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-transform duration-200 md:static md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
-        } md:translate-x-0 fixed md:static top-0 left-0 h-screen w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white transition-transform duration-300 z-40 flex flex-col`}
+        }`}
       >
-        {/* Logo */}
-        <div className="p-6 border-b border-slate-700">
-          <h1 className="text-2xl font-bold text-white">RC Hub</h1>
-          <p className="text-slate-400 text-sm mt-1">Operations</p>
+        <div className="flex min-h-18 items-center gap-3 border-b border-slate-800 px-4">
+          <img src={rcLogo} alt="RC Technology" className="h-10 w-10 rounded object-cover" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-white">RC Operations Hub</p>
+            <p className="text-xs text-slate-400">Central operacional</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar menu"
+            title="Fechar menu"
+            className="rounded p-2 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
+          >
+            <X size={19} />
+          </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <ul className="space-y-2">
-            {menuItems.map((item) => (
-              <li key={item.path}>
-                <Link
-                  to={item.path}
-                  onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive(item.path)
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-300 hover:bg-slate-700"
-                  }`}
-                >
-                  <item.icon size={20} />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
+          {secoesMenu.map((secao) => (
+            <div key={secao.titulo} className="mb-4">
+              <p className="mb-1 px-3 text-[10px] font-bold uppercase text-slate-500">
+                {secao.titulo}
+              </p>
+              <ul className="space-y-0.5">
+                {secao.itens.map((item) => (
+                  <li key={item.path}>
+                    <NavLink
+                      to={item.path}
+                      end={item.end}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `flex min-h-9 items-center gap-3 rounded px-3 py-2 text-sm transition-colors ${
+                          isActive
+                            ? "bg-blue-600 font-semibold text-white"
+                            : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                        }`
+                      }
+                    >
+                      <item.icon size={17} aria-hidden="true" />
+                      <span className="min-w-0 leading-4">{item.label}</span>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
 
-        {/* Logout */}
-        <div className="p-4 border-t border-slate-700">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors"
+        <div className="border-t border-slate-800 p-3">
+          <NavLink
+            to="/tecnico"
+            onClick={onClose}
+            className="mb-2 flex min-h-10 items-center gap-3 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:bg-slate-900"
           >
-            <LogOut size={20} />
-            <span>Logout</span>
+            <Smartphone size={17} />
+            <span>Área do Técnico</span>
+          </NavLink>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex min-h-9 w-full items-center gap-3 rounded px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <LogOut size={17} />
+            <span>Sair</span>
           </button>
         </div>
       </aside>
 
-      {/* Mobile Overlay */}
       {isOpen && (
-        <div
-          onClick={() => setIsOpen(false)}
-          className="fixed inset-0 bg-black/50 md:hidden z-30"
+        <button
+          type="button"
+          aria-label="Fechar menu"
+          onClick={onClose}
+          className="fixed inset-0 z-30 bg-slate-950/60 md:hidden"
         />
       )}
     </>

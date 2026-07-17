@@ -12,7 +12,8 @@ import {
   RefreshCw,
   Save,
   Clock,
-  ListChecks
+  ListChecks,
+  Users
 } from 'lucide-react'
 import api from '../services/api'
 import { buildApiFileUrl } from '../services/runtimeConfig'
@@ -115,6 +116,7 @@ export default function ExecutarOrdemServico() {
   const [os, setOs] = useState(null)
   const [tecnico, setTecnico] = useState(null)
   const [evidencias, setEvidencias] = useState([])
+  const [evidenciasComErro, setEvidenciasComErro] = useState({})
   const [atividadesPadrao, setAtividadesPadrao] = useState([])
   const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -155,7 +157,10 @@ export default function ExecutarOrdemServico() {
 
         const ordem = osResponse.data
         const responsavelId = ordem?.projeto?.responsavel?.id
-        if (!responsavelId || String(responsavelId) !== String(tecnicoSelecionado.id)) {
+        const membroSelecionado = ordem?.projeto?.equipe?.find(
+          (membro) => String(membro.funcionario?.id) === String(tecnicoSelecionado.id),
+        )
+        if (!membroSelecionado && (!responsavelId || String(responsavelId) !== String(tecnicoSelecionado.id))) {
           throw new Error('Esta OS não está atribuída ao técnico selecionado.')
         }
 
@@ -166,7 +171,8 @@ export default function ExecutarOrdemServico() {
           ...ordem,
           cliente: comarca?.nomeComarca || ordem.contrato?.cliente || ordem.projeto?.nome,
           endereco: comarca?.endereco || ordem.projeto?.endereco,
-          contato: comarca?.contatoResponsavel || comarca?.gerenteResponsavel
+          contato: comarca?.contatoResponsavel || comarca?.gerenteResponsavel,
+          papelTecnico: membroSelecionado?.papel || 'LIDER_EQUIPE',
         })
         setAtividadesSelecionadas(parseChecklistIds(ordem?.checklist))
         setAtividadesPadrao(atividadesResponse.data || [])
@@ -271,8 +277,10 @@ export default function ExecutarOrdemServico() {
         formData.append('longitude', lon)
 
         try {
-          const response = await api.post('/campo/upload-foto', formData)
-          setEvidencias((atuais) => [response.data, ...atuais])
+          await api.post('/campo/upload-foto', formData)
+          const evidenciasResponse = await api.get(`/campo/evidencias/os/${os.id}`)
+          setEvidencias(evidenciasResponse.data || [])
+          setEvidenciasComErro({})
           mostrarFeedback('sucesso', 'Evidência fotográfica salva com sucesso no servidor!')
         } catch (err) {
           mostrarFeedback('erro', getApiErrorMessage(err, 'Falha ao enviar a evidência fotográfica.'))
@@ -479,28 +487,72 @@ export default function ExecutarOrdemServico() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-cyan-900/60 bg-slate-900 p-5 shadow-md">
+              <h4 className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-white">
+                <Users className="h-4 w-4 text-cyan-400" /> Equipe em campo
+              </h4>
+              <p className="mt-2 text-[10px] font-bold text-cyan-300">
+                Sua função: {os.papelTecnico === 'LIDER_EQUIPE' ? 'Supervisor técnico / Líder da equipe' : 'Técnico'}
+              </p>
+              <div className="mt-3 space-y-2">
+                {(os.projeto?.equipe || []).map((membro) => (
+                  <div key={membro.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                    <span className="truncate text-xs font-semibold text-slate-200">{membro.funcionario?.nome}</span>
+                    <span className="shrink-0 text-[9px] font-bold uppercase text-slate-500">
+                      {membro.papel === 'LIDER_EQUIPE' ? 'Líder' : 'Técnico'}
+                    </span>
+                  </div>
+                ))}
+                {!os.projeto?.equipe?.length && (
+                  <p className="text-xs text-slate-500">Equipe legada: {os.projeto?.responsavel?.nome || tecnico?.nome}</p>
+                )}
+              </div>
+            </div>
+
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
               <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Relatório Fotográfico</h4>
+              {evidencias.length === 0 && !uploadingFoto && (
+                <p className="rounded-lg border border-dashed border-slate-700 px-3 py-4 text-center text-xs text-slate-500">
+                  Nenhuma evidência fotográfica enviada para esta OS.
+                </p>
+              )}
               {evidencias.length > 0 && (
                 <div className="grid grid-cols-2 gap-2">
                   {evidencias.map((evidencia) => (
-                    <a
-                      key={evidencia.id}
-                      href={buildApiFileUrl(evidencia.caminhoArquivo)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="group overflow-hidden rounded-lg border border-slate-800 bg-slate-950"
-                      title={`Registrada por ${evidencia.funcionarioNome || 'técnico'} em ${formatDate(evidencia.dataUpload)}`}
-                    >
-                      <img
-                        src={buildApiFileUrl(evidencia.caminhoArquivo)}
-                        alt={`Evidência da OS ${os.numeroOs}`}
-                        className="aspect-square w-full object-cover transition group-hover:opacity-80"
-                      />
+                    <div key={evidencia.id} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+                      {evidenciasComErro[evidencia.id] ? (
+                        <div className="flex aspect-square flex-col items-center justify-center gap-2 p-2 text-center text-[10px] text-rose-300">
+                          <AlertCircle className="h-5 w-5" />
+                          <span>Arquivo salvo, mas a imagem não pôde ser exibida.</span>
+                          <a
+                            href={buildApiFileUrl(evidencia.caminhoArquivo)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-bold text-indigo-300 underline"
+                          >
+                            Abrir arquivo
+                          </a>
+                        </div>
+                      ) : (
+                        <a
+                          href={buildApiFileUrl(evidencia.caminhoArquivo)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="group block"
+                          title={`Registrada por ${evidencia.funcionarioNome || 'técnico'} em ${formatDate(evidencia.dataUpload)}`}
+                        >
+                          <img
+                            src={`${buildApiFileUrl(evidencia.caminhoArquivo)}?v=${evidencia.id}`}
+                            alt={`Evidência da OS ${os.numeroOs}`}
+                            onError={() => setEvidenciasComErro((atuais) => ({ ...atuais, [evidencia.id]: true }))}
+                            className="aspect-square w-full object-cover transition group-hover:opacity-80"
+                          />
+                        </a>
+                      )}
                       <span className="block truncate px-2 py-1.5 text-[9px] text-slate-500">
                         {formatDate(evidencia.dataUpload)}
                       </span>
-                    </a>
+                    </div>
                   ))}
                 </div>
               )}

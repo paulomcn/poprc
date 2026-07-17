@@ -2,9 +2,11 @@ package com.poprc.demo.controller;
 
 import com.poprc.demo.exception.ArquivoInvalidoException;
 import com.poprc.demo.exception.SaldoInsuficienteException;
+import com.poprc.demo.dto.ArquivamentoRequest;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.service.ComarcaService;
+import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.repository.ComarcaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -36,11 +38,25 @@ public class ComarcaController {
 
     private final ComarcaService comarcaService;
     private final ComarcaRepository comarcaRepository;
+    private final ArquivamentoService arquivamentoService;
 
     @GetMapping
-    public ResponseEntity<List<Comarca>> listarTodas() {
-        List<Comarca> comarcas = comarcaRepository.findAll();
+    public ResponseEntity<List<Comarca>> listarTodas(
+            @RequestParam(defaultValue = "false") boolean incluirArquivados) {
+        List<Comarca> comarcas = comarcaRepository.findAll().stream()
+                .filter(item -> incluirArquivados || !Boolean.TRUE.equals(item.getArquivado()))
+                .toList();
         return ResponseEntity.ok(comarcas);
+    }
+
+    @PatchMapping("/{id}/arquivar")
+    public ResponseEntity<Comarca> arquivar(@PathVariable Long id, @RequestBody ArquivamentoRequest request) {
+        return ResponseEntity.ok(arquivamentoService.arquivarComarca(id, request.getUsuario(), request.getMotivo()));
+    }
+
+    @PatchMapping("/{id}/restaurar")
+    public ResponseEntity<Comarca> restaurar(@PathVariable Long id) {
+        return ResponseEntity.ok(arquivamentoService.restaurarComarca(id));
     }
 
     @GetMapping("/{id}")
@@ -101,6 +117,21 @@ public class ComarcaController {
         return ResponseEntity.ok(comarcaService.salvarProvaViradaRede(id, foto));
     }
 
+    @DeleteMapping("/{id}/vistoria/foto")
+    public ResponseEntity<Comarca> removerFotoVistoria(@PathVariable Long id) {
+        return ResponseEntity.ok(comarcaService.removerFotoVistoria(id));
+    }
+
+    @DeleteMapping("/{id}/vistoria/assinatura")
+    public ResponseEntity<Comarca> removerAssinaturaVistoria(@PathVariable Long id) {
+        return ResponseEntity.ok(comarcaService.removerAssinaturaVistoria(id));
+    }
+
+    @DeleteMapping("/{id}/virada-rede/prova")
+    public ResponseEntity<Comarca> removerProvaViradaRede(@PathVariable Long id) {
+        return ResponseEntity.ok(comarcaService.removerProvaViradaRede(id));
+    }
+
     @PatchMapping("/{id}/avancar-etapa")
     public ResponseEntity<Comarca> avancarEtapa(@PathVariable Long id) {
         Comarca comarca = comarcaService.avancarParaInfraestrutura(id);
@@ -143,6 +174,13 @@ public class ComarcaController {
     @PatchMapping("/{id}/as-built/homologar")
     public ResponseEntity<Map<String, Object>> homologarAsBuilt(@PathVariable Long id) {
         return ResponseEntity.ok(comarcaService.homologarAsBuilt(id));
+    }
+
+    @PatchMapping("/{id}/concluir")
+    public ResponseEntity<ComarcaService.EncerramentoObraResultado> concluirObra(
+            @PathVariable Long id,
+            @RequestBody ConcluirObraRequest request) {
+        return ResponseEntity.ok(comarcaService.concluirObra(id, request.getConcluidaPor()));
     }
 
     @PatchMapping("/{id}/as-built/reabrir")
@@ -266,6 +304,18 @@ public class ComarcaController {
 
         public void setPendencias(String pendencias) {
             this.pendencias = pendencias;
+        }
+    }
+
+    public static class ConcluirObraRequest {
+        private String concluidaPor;
+
+        public String getConcluidaPor() {
+            return concluidaPor;
+        }
+
+        public void setConcluidaPor(String concluidaPor) {
+            this.concluidaPor = concluidaPor;
         }
     }
 
@@ -401,7 +451,8 @@ public class ComarcaController {
         }
     }
 
-    @ExceptionHandler({ ArquivoInvalidoException.class, IllegalArgumentException.class, SaldoInsuficienteException.class })
+    @ExceptionHandler({ ArquivoInvalidoException.class, IllegalArgumentException.class,
+            IllegalStateException.class, SaldoInsuficienteException.class })
     public ResponseEntity<Map<String, String>> handleBadRequest(RuntimeException ex) {
         Map<String, String> response = new HashMap<>();
         response.put("erro", ex.getMessage());

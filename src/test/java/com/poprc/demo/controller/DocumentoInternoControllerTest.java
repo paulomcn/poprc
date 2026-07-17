@@ -142,6 +142,41 @@ class DocumentoInternoControllerTest {
                 .save(org.mockito.ArgumentMatchers.any(DocumentoInterno.class));
     }
 
+    @Test
+    void deveInvalidarDocumentoEPreservarOrigemNaNovaVersao() {
+        documento.setStatus("REGISTRADO");
+        documento.setAssinaturaTecnicoBase64("data:image/png;base64,iVBORw0KGgo=");
+        DocumentoInternoController.InvalidacaoDocumentoRequest request =
+                new DocumentoInternoController.InvalidacaoDocumentoRequest();
+        request.setMotivo("Descrição técnica incorreta");
+
+        DocumentoInterno novaVersao = controller
+                .invalidarECriarNovaVersao(1L, request, null, "Sistema")
+                .getBody();
+
+        assertEquals("INVALIDADO", documento.getStatus());
+        assertEquals("Descrição técnica incorreta", documento.getMotivoInvalidacao());
+        assertEquals("PENDENTE_ASSINATURA", novaVersao.getStatus());
+        assertEquals(documento, novaVersao.getDocumentoOrigem());
+        assertEquals(documento.getConteudoJson(), novaVersao.getConteudoJson());
+        assertEquals(null, novaVersao.getAssinaturaTecnicoBase64());
+    }
+
+    @Test
+    void deveImpedirInvalidacaoDeDocumentoDeObraConcluida() {
+        Comarca comarca = new Comarca();
+        comarca.setSituacao("CONCLUIDA");
+        documento.setComarca(comarca);
+        DocumentoInternoController.InvalidacaoDocumentoRequest request =
+                new DocumentoInternoController.InvalidacaoDocumentoRequest();
+        request.setMotivo("Tentativa tardia");
+
+        IllegalStateException erro = assertThrows(IllegalStateException.class,
+                () -> controller.invalidarECriarNovaVersao(1L, request, null, "Sistema"));
+
+        assertTrue(erro.getMessage().contains("obra está concluída"));
+    }
+
     private DocumentoInternoController.AssinaturaPapelRequest assinaturaPngValida() {
         DocumentoInternoController.AssinaturaPapelRequest request = new DocumentoInternoController.AssinaturaPapelRequest();
         request.setNomeAssinante("Tecnico Teste");

@@ -9,4 +9,6 @@ import java.util.List;
 public interface FaturamentoRepository extends JpaRepository<Faturamento, Long> {
     
     List<Faturamento> findByContratoId(Long contratoId);
+
+    List<Faturamento> findByProjetoId(Long projetoId);
 }

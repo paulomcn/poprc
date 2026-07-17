@@ -20,6 +20,6 @@ public interface ContratoRepository extends JpaRepository<Contrato, Long>, JpaSp
     @Query("SELECT c FROM Contrato c WHERE c.cliente = ?1")
     List<Contrato> findByCliente(String cliente);
 
-    @Query("SELECT c FROM Contrato c WHERE CURRENT_DATE BETWEEN c.vigenciaInicio AND c.vigenciaFim")
+    @Query("SELECT c FROM Contrato c WHERE c.arquivado = false AND CURRENT_DATE BETWEEN c.vigenciaInicio AND c.vigenciaFim")
     List<Contrato> findContratoAtivos();
 }

@@ -1,18 +1,29 @@
-import React, { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Plane,
-  Upload,
   AlertCircle,
-  CheckCircle2,
-  Loader2,
-  Plus,
-  X,
-  DollarSign,
   Briefcase,
-  User,
   Edit,
+  ExternalLink,
+  FileText,
+  Plane,
+  Plus,
+  Upload,
+  User,
+  X,
 } from "lucide-react";
 import api from "../services/api";
+import { buildApiFileUrl } from "../services/runtimeConfig";
+import Alert from "../components/Alert";
+import LoadingSpinner from "../components/LoadingSpinner";
+
+const formularioVazio = {
+  solicitacaoVeiculo: "",
+  hospedagemDetalhes: "",
+  adiantamentoDiarias: "",
+  custoPlanejado: "",
+  funcionarioId: "",
+  projetoId: "",
+};
 
 export default function PainelViagensEReembolso() {
   const [viagens, setViagens] = useState([]);
@@ -21,449 +32,224 @@ export default function PainelViagensEReembolso() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [inputs, setInputs] = useState({});
-
-  // CONTROLES DO MODAL CRUD 💥
+  const [custosReais, setCustosReais] = useState({});
+  const [comprovantes, setComprovantes] = useState({});
+  const [filtroProjeto, setFiltroProjeto] = useState("");
+  const [filtroFuncionario, setFiltroFuncionario] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const [formData, setFormData] = useState(formularioVazio);
 
-  const [formData, setFormData] = useState({
-    solicitacaoVeiculo: "",
-    hospedagemDetalhes: "",
-    adiantamentoDiarias: "",
-    custoPlanejado: "",
-    funcionarioId: "",
-    projetoId: "",
-  });
-
-  const carregarDadosGerais = async () => {
+  const carregarDados = async () => {
     try {
       setLoading(true);
-      const [resViagens, resFunc, resProj] = await Promise.all([
+      const [resViagens, resFuncionarios, resProjetos] = await Promise.all([
         api.get("/financeiro/viagens"),
         api.get("/funcionarios"),
         api.get("/projetos"),
       ]);
       setViagens(Array.isArray(resViagens.data) ? resViagens.data : []);
-      setFuncionarios(resFunc.data || []);
-      setProjetos(resProj.data || []);
+      setFuncionarios(resFuncionarios.data || []);
+      setProjetos((resProjetos.data || []).filter((projeto) => !projeto.arquivado));
       setError(null);
     } catch (err) {
-      setError("Erro ao sincronizar o ecossistema de viagens e reembolsos.");
       console.error(err);
+      setError("Não foi possível carregar as viagens e prestações de contas.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    carregarDadosGerais();
+    carregarDados();
   }, []);
 
-  // 💾 DISPARAR ABERTURA PARA CRIAÇÃO
-  const handleOpenCreate = () => {
-    setIsEditing(false);
+  const viagensFiltradas = useMemo(
+    () => viagens.filter((viagem) => {
+      const concluida = Boolean(viagem.prestacaoContas);
+      return (
+        (!filtroProjeto || String(viagem.projeto?.id) === filtroProjeto) &&
+        (!filtroFuncionario || String(viagem.funcionario?.id) === filtroFuncionario) &&
+        (!filtroStatus || (filtroStatus === "CONCLUIDA") === concluida)
+      );
+    }),
+    [filtroFuncionario, filtroProjeto, filtroStatus, viagens],
+  );
+
+  const metricas = viagens.reduce(
+    (resultado, viagem) => {
+      resultado.planejado += Number(viagem.custoPlanejado || 0);
+      resultado.realizado += Number(viagem.prestacaoContas?.custoReal || 0);
+      if (viagem.prestacaoContas) resultado.concluidas += 1;
+      return resultado;
+    },
+    { planejado: 0, realizado: 0, concluidas: 0 },
+  );
+
+  const moeda = (valor) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor || 0);
+
+  const abrirCriacao = () => {
     setSelectedId(null);
     setFormData({
-      solicitacaoVeiculo: "",
-      hospedagemDetalhes: "",
-      adiantamentoDiarias: "",
-      custoPlanejado: "",
+      ...formularioVazio,
       funcionarioId: funcionarios[0]?.id || "",
       projetoId: projetos[0]?.id || "",
     });
     setModalOpen(true);
   };
 
-  // ✏️ DISPARAR ABERTURA PARA EDIÇÃO 💥
-  const handleOpenEdit = (v) => {
-    setIsEditing(true);
-    setSelectedId(v.id);
+  const abrirEdicao = (viagem) => {
+    setSelectedId(viagem.id);
     setFormData({
-      solicitacaoVeiculo: v.solicitacaoVeiculo || "",
-      hospedagemDetalhes: v.hospedagemDetalhes || "",
-      adiantamentoDiarias: v.adiantamentoDiarias || "",
-      custoPlanejado: v.custoPlanejado || "",
-      funcionarioId: v.funcionario?.id || "",
-      projetoId: v.projeto?.id || "",
+      solicitacaoVeiculo: viagem.solicitacaoVeiculo || "",
+      hospedagemDetalhes: viagem.hospedagemDetalhes || "",
+      adiantamentoDiarias: viagem.adiantamentoDiarias || "",
+      custoPlanejado: viagem.custoPlanejado || "",
+      funcionarioId: viagem.funcionario?.id || "",
+      projetoId: viagem.projeto?.id || "",
     });
     setModalOpen(true);
   };
 
-  // 🚀 SUBMIT DO FORMULÁRIO CORRIGIDO SEM LONG() FANTASMA 💥
-  const handleSaveViagem = async (e) => {
-    e.preventDefault();
+  const salvarViagem = async (event) => {
+    event.preventDefault();
     try {
       const payload = {
         ...formData,
-        adiantamentoDiarias: parseFloat(formData.adiantamentoDiarias) || 0,
-        custoPlanejado: parseFloat(formData.custoPlanejado) || 0,
-        funcionarioId: formData.funcionarioId
-          ? parseInt(formData.funcionarioId, 10)
-          : null,
-        projetoId: formData.projetoId ? parseInt(formData.projetoId, 10) : null,
+        adiantamentoDiarias: Number(formData.adiantamentoDiarias || 0),
+        custoPlanejado: Number(formData.custoPlanejado || 0),
+        funcionarioId: Number(formData.funcionarioId),
+        projetoId: Number(formData.projetoId),
       };
-
-      if (isEditing) {
-        await api.put(`/financeiro/viagens/${selectedId}`, payload);
-        setSuccess("Planejamento de viagem atualizado com sucesso!");
-      } else {
-        await api.post("/financeiro/viagens", payload);
-        setSuccess("Nova ordem de viagem lançada e salva no Postgres!");
-      }
+      if (selectedId) await api.put(`/financeiro/viagens/${selectedId}`, payload);
+      else await api.post("/financeiro/viagens", payload);
+      setSuccess(selectedId ? "Viagem atualizada." : "Viagem planejada com sucesso.");
       setModalOpen(false);
-      carregarDadosGerais();
+      await carregarDados();
     } catch (err) {
-      setError("Falha ao salvar planejamento de viagem no banco.");
-      console.error(err);
+      setError(err.response?.data?.erro || "Não foi possível salvar a viagem.");
     }
   };
 
-  const handleFechamento = async (viagemId) => {
-    const valorReal = parseFloat(inputs[viagemId]);
-    if (!valorReal || valorReal <= 0) {
-      setError("Por favor, insira um valor real de custo válido.");
+  const fecharPrestacao = async (viagemId) => {
+    const custoReal = Number(custosReais[viagemId]);
+    const comprovante = comprovantes[viagemId];
+    if (!custoReal || custoReal <= 0 || !comprovante) {
+      setError("Informe o custo real e selecione o comprovante em PDF, JPG ou PNG.");
       return;
     }
+    const payload = new FormData();
+    payload.append("viagemId", String(viagemId));
+    payload.append("custoReal", String(custoReal));
+    payload.append("comprovante", comprovante);
     try {
-      await api.post("/financeiro/prestacao-contas", {
-        viagemId: viagemId,
-        custoReal: valorReal,
-        caminhoNotaFiscal: `upload_nota_fiscal_id_${viagemId}.pdf`,
-      });
-      setSuccess("Prestação de contas fechada e salva!");
-      carregarDadosGerais();
+      await api.post("/financeiro/prestacao-contas", payload);
+      setSuccess("Prestação de contas concluída e comprovante arquivado.");
+      setCustosReais((atual) => ({ ...atual, [viagemId]: "" }));
+      setComprovantes((atual) => ({ ...atual, [viagemId]: null }));
+      await carregarDados();
     } catch (err) {
-      setError("Erro ao fechar prestação de contas.");
+      setError(err.response?.data?.erro || "Não foi possível concluir a prestação de contas.");
     }
   };
 
-  const format = (v) =>
-    new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(v || 0);
-
-  if (loading)
-    return (
-      <div className="min-h-screen bg-slate-950 flex justify-center items-center">
-        <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-      </div>
-    );
+  if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 md:p-8 font-sans text-slate-100">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-white flex items-center gap-3">
-              <Plane className="w-8 h-8 text-indigo-400" /> Viagens e Reembolsos
-            </h1>
-            <p className="text-slate-400 text-sm mt-1">
-              Acerto de contas operacional com o financeiro
-            </p>
-          </div>
-          <button
-            onClick={handleOpenCreate}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all"
-          >
-            <Plus size={18} /> Nova Viagem
-          </button>
-        </header>
-
-        {error && (
-          <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 p-4 rounded-xl text-sm">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 p-4 rounded-xl text-sm">
-            {success}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-6">
-          {viagens.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500">
-              Nenhuma viagem localizada no banco de dados.
-            </div>
-          ) : (
-            viagens.map((viagem) => {
-              const custoReal = viagem.prestacaoContas?.custoReal;
-              const statusFechado = custoReal > 0;
-              const estourou = custoReal > viagem.custoPlanejado;
-
-              return (
-                <div
-                  key={viagem.id}
-                  className={`bg-slate-900 border ${estourou ? "border-rose-500/30 bg-rose-950/10" : "border-slate-800"} rounded-2xl p-6 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 transition-all`}
-                >
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-bold text-white">
-                        {viagem.solicitacaoVeiculo || "Veículo Comum"}
-                      </h3>
-                      <span
-                        className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${statusFechado ? "bg-emerald-500/20 text-emerald-400" : "bg-indigo-500/20 text-indigo-400"}`}
-                      >
-                        {statusFechado ? "CONCLUÍDA" : "EM ANDAMENTO"}
-                      </span>
-                      {/* Botão de Editar Injetado na lista 💥 */}
-                      <button
-                        onClick={() => handleOpenEdit(viagem)}
-                        className="text-slate-500 hover:text-indigo-400 p-1 rounded transition-colors"
-                      >
-                        <Edit size={15} />
-                      </button>
-                    </div>
-                    <p className="text-sm text-slate-400">
-                      {viagem.hospedagemDetalhes ||
-                        "Sem detalhes de hospedagem"}
-                    </p>
-                    <div className="flex gap-4 text-xs text-slate-500 font-medium">
-                      <p className="flex items-center gap-1">
-                        <User size={14} /> Colaborador:{" "}
-                        {viagem.funcionario?.nome || "Não Informado"}
-                      </p>
-                      <p className="flex items-center gap-1">
-                        <Briefcase size={14} /> Proj ID: #
-                        {viagem.projeto?.id || "Global"}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-6 pt-2">
-                      <div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                          Orçamento Planejado
-                        </p>
-                        <p className="text-base font-bold text-slate-300">
-                          {format(viagem.custoPlanejado)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                          Diárias Adiantadas
-                        </p>
-                        <p className="text-base font-bold text-slate-400">
-                          {format(viagem.adiantamentoDiarias)}
-                        </p>
-                      </div>
-                      {statusFechado && (
-                        <div>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                            Custo Real Final
-                          </p>
-                          <p
-                            className={`text-base font-bold flex items-center gap-1 ${estourou ? "text-rose-400" : "text-emerald-400"}`}
-                          >
-                            {format(custoReal)}{" "}
-                            {estourou ? (
-                              <AlertCircle className="w-4 h-4" />
-                            ) : (
-                              <CheckCircle2 className="w-4 h-4" />
-                            )}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {!statusFechado ? (
-                    <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                      <div className="flex-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                          Custo Real (R$)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="0.00"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                          onChange={(e) =>
-                            setInputs({
-                              ...inputs,
-                              [viagem.id]: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2 justify-end">
-                        <label className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 px-4 rounded-lg cursor-pointer transition">
-                          <Upload className="w-4 h-4" /> Nota Fiscal
-                          <input type="file" className="hidden" />
-                        </label>
-                        <button
-                          onClick={() => handleFechamento(viagem.id)}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition"
-                        >
-                          Fechar Viagem
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-full md:w-auto text-right p-4">
-                      {estourou ? (
-                        <p className="text-xs text-rose-400 font-bold max-w-[200px]">
-                          Orçamento estourou em{" "}
-                          {format(custoReal - viagem.custoPlanejado)}.
-                        </p>
-                      ) : (
-                        <p className="text-xs text-emerald-400 font-bold flex items-center gap-2 justify-end">
-                          <CheckCircle2 className="w-4 h-4" /> Prestação
-                          Aprovada
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
+    <div className="mx-auto max-w-[1450px] space-y-6">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase text-cyan-700">Logística e despesas</p>
+          <h1 className="mt-1 text-3xl font-bold text-slate-900">Viagens e Reembolsos</h1>
+          <p className="mt-1 text-sm text-slate-500">Planejamento, execução e prestação de contas por projeto.</p>
         </div>
-      </div>
+        <button onClick={abrirCriacao} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">
+          <Plus size={18} /> Nova viagem
+        </button>
+      </header>
 
-      {/* 🛑 MODAL COMPLETO CRUD COM INTEGRAÇÃO REFEITA */}
+      {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
+      {success && <Alert type="success" message={success} onClose={() => setSuccess(null)} />}
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-5"><p className="text-xs font-bold uppercase text-slate-500">Viagens abertas</p><p className="mt-2 text-3xl font-bold text-slate-900">{viagens.length - metricas.concluidas}</p></div>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-5"><p className="text-xs font-bold uppercase text-slate-500">Custo planejado</p><p className="mt-2 text-2xl font-bold text-slate-900">{moeda(metricas.planejado)}</p></div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5"><p className="text-xs font-bold uppercase text-slate-500">Custo comprovado</p><p className="mt-2 text-2xl font-bold text-slate-900">{moeda(metricas.realizado)}</p></div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <select value={filtroProjeto} onChange={(event) => setFiltroProjeto(event.target.value)} className="h-10 rounded-lg border border-slate-300 px-3 text-sm"><option value="">Todos os projetos</option>{projetos.map((projeto) => <option key={projeto.id} value={projeto.id}>Projeto #{projeto.id} - {projeto.contrato?.contrato}</option>)}</select>
+        <select value={filtroFuncionario} onChange={(event) => setFiltroFuncionario(event.target.value)} className="h-10 rounded-lg border border-slate-300 px-3 text-sm"><option value="">Todos os colaboradores</option>{funcionarios.map((funcionario) => <option key={funcionario.id} value={funcionario.id}>{funcionario.nome}</option>)}</select>
+        <select value={filtroStatus} onChange={(event) => setFiltroStatus(event.target.value)} className="h-10 rounded-lg border border-slate-300 px-3 text-sm"><option value="">Todos os status</option><option value="ABERTA">Em andamento</option><option value="CONCLUIDA">Concluída</option></select>
+      </section>
+
+      <section className="space-y-4">
+        {viagensFiltradas.map((viagem) => {
+          const prestacao = viagem.prestacaoContas;
+          const excedeu = Number(prestacao?.custoReal || 0) > Number(viagem.custoPlanejado || 0);
+          const comprovanteDisponivel =
+            prestacao?.caminhoNotaFiscal?.startsWith("/") ||
+            prestacao?.caminhoNotaFiscal?.startsWith("http://") ||
+            prestacao?.caminhoNotaFiscal?.startsWith("https://");
+          return (
+            <article key={viagem.id} className="rounded-lg border border-slate-200 bg-white p-5">
+              <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Plane size={19} className="text-blue-600" />
+                    <h2 className="font-bold text-slate-900">{viagem.solicitacaoVeiculo || "Transporte não informado"}</h2>
+                    <span className={`rounded border px-2 py-0.5 text-[10px] font-bold ${prestacao ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>{prestacao ? "CONCLUÍDA" : "EM ANDAMENTO"}</span>
+                    {!prestacao && <button onClick={() => abrirEdicao(viagem)} title="Editar viagem" className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-700"><Edit size={16} /></button>}
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">{viagem.hospedagemDetalhes || "Sem hospedagem informada"}</p>
+                  <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600">
+                    <span className="flex items-center gap-1.5"><User size={14} /> {viagem.funcionario?.nome || "Sem colaborador"}</span>
+                    <span className="flex items-center gap-1.5"><Briefcase size={14} /> Projeto #{viagem.projeto?.id || "-"}</span>
+                    <span>Planejado: <strong>{moeda(viagem.custoPlanejado)}</strong></span>
+                    <span>Adiantado: <strong>{moeda(viagem.adiantamentoDiarias)}</strong></span>
+                  </div>
+                </div>
+
+                {prestacao ? (
+                  <div className={`w-full rounded-lg border p-4 xl:w-80 ${excedeu ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+                    <p className="text-xs font-bold uppercase text-slate-500">Custo real comprovado</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">{moeda(prestacao.custoReal)}</p>
+                    {comprovanteDisponivel ? (
+                      <a href={buildApiFileUrl(prestacao.caminhoNotaFiscal)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-blue-700 hover:text-blue-900"><FileText size={16} /> Abrir comprovante <ExternalLink size={14} /></a>
+                    ) : (
+                      <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-700"><AlertCircle size={15} /> Comprovante legado indisponível</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid w-full gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[140px_1fr_auto] xl:w-auto xl:min-w-[520px]">
+                    <label><span className="mb-1 block text-xs font-bold text-slate-500">Custo real *</span><input type="number" min="0.01" step="0.01" value={custosReais[viagem.id] || ""} onChange={(event) => setCustosReais((atual) => ({ ...atual, [viagem.id]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" placeholder="0,00" /></label>
+                    <label><span className="mb-1 block text-xs font-bold text-slate-500">Comprovante *</span><span className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600"><Upload size={16} /> <span className="truncate">{comprovantes[viagem.id]?.name || "Selecionar PDF, JPG ou PNG"}</span><input type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={(event) => setComprovantes((atual) => ({ ...atual, [viagem.id]: event.target.files?.[0] || null }))} /></span></label>
+                    <button onClick={() => fecharPrestacao(viagem.id)} className="mt-5 h-10 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700">Concluir</button>
+                  </div>
+                )}
+              </div>
+            </article>
+          );
+        })}
+        {viagensFiltradas.length === 0 && <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">Nenhuma viagem encontrada.</div>}
+      </section>
+
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Plane size={20} className="text-indigo-400" />{" "}
-                {isEditing
-                  ? "✏️ Editar Ordem de Viagem"
-                  : "Planejar Nova Viagem"}
-              </h2>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X size={22} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveViagem} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Colaborador / Viajante *
-                  </label>
-                  <select
-                    required
-                    value={formData.funcionarioId}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        funcionarioId: e.target.value,
-                      })
-                    }
-                    className="w-full mt-1.5 p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                  >
-                    <option value="">Selecione...</option>
-                    {funcionarios.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.nome} ({f.funcao})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Projeto Vinculado *
-                  </label>
-                  <select
-                    required
-                    value={formData.projetoId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, projetoId: e.target.value })
-                    }
-                    className="w-full mt-1.5 p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                  >
-                    <option value="">Selecione...</option>
-                    {projetos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        Projeto #{p.id} - {p.contrato?.cliente || "Logística"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Custo Planejado (Orçamento) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.custoPlanejado}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        custoPlanejado: e.target.value,
-                      })
-                    }
-                    className="w-full mt-1.5 p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Adiantamento de Diárias (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.adiantamentoDiarias}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        adiantamentoDiarias: e.target.value,
-                      })
-                    }
-                    className="w-full mt-1.5 p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                    placeholder="0.00"
-                  />
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-5"><h2 className="font-bold text-slate-900">{selectedId ? "Editar viagem" : "Planejar nova viagem"}</h2><button onClick={() => setModalOpen(false)} title="Fechar" className="rounded p-2 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
+            <form onSubmit={salvarViagem} className="space-y-4 p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label><span className="text-xs font-bold uppercase text-slate-500">Colaborador *</span><select required value={formData.funcionarioId} onChange={(event) => setFormData({ ...formData, funcionarioId: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{funcionarios.map((funcionario) => <option key={funcionario.id} value={funcionario.id}>{funcionario.nome}</option>)}</select></label>
+                <label><span className="text-xs font-bold uppercase text-slate-500">Projeto *</span><select required value={formData.projetoId} onChange={(event) => setFormData({ ...formData, projetoId: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{projetos.map((projeto) => <option key={projeto.id} value={projeto.id}>Projeto #{projeto.id} - {projeto.contrato?.contrato}</option>)}</select></label>
+                <label><span className="text-xs font-bold uppercase text-slate-500">Custo planejado *</span><input required min="0.01" step="0.01" type="number" value={formData.custoPlanejado} onChange={(event) => setFormData({ ...formData, custoPlanejado: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+                <label><span className="text-xs font-bold uppercase text-slate-500">Adiantamento</span><input min="0" step="0.01" type="number" value={formData.adiantamentoDiarias} onChange={(event) => setFormData({ ...formData, adiantamentoDiarias: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Solicitação do Veículo / Transporte *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.solicitacaoVeiculo}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      solicitacaoVeiculo: e.target.value,
-                    })
-                  }
-                  className="w-full mt-1.5 p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                  placeholder="Ex: Locação de SUV / Carro da Empresa / Reembolso Km"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Detalhes da Hospedagem / Acomodação
-                </label>
-                <textarea
-                  rows="2"
-                  value={formData.hospedagemDetalhes}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      hospedagemDetalhes: e.target.value,
-                    })
-                  }
-                  className="w-full mt-1.5 p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:border-indigo-500"
-                  placeholder="Ex: Hotel Executive Natal..."
-                ></textarea>
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-lg font-bold text-sm transition-colors shadow-lg shadow-indigo-600/20"
-              >
-                Salvar Viagem
-              </button>
+              <label className="block"><span className="text-xs font-bold uppercase text-slate-500">Transporte / veículo *</span><input required value={formData.solicitacaoVeiculo} onChange={(event) => setFormData({ ...formData, solicitacaoVeiculo: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+              <label className="block"><span className="text-xs font-bold uppercase text-slate-500">Hospedagem e observações</span><textarea rows="3" value={formData.hospedagemDetalhes} onChange={(event) => setFormData({ ...formData, hospedagemDetalhes: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 p-3 text-sm" /></label>
+              <button type="submit" className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-700">Salvar viagem</button>
             </form>
           </div>
         </div>

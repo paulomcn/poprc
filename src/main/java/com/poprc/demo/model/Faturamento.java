@@ -40,4 +40,9 @@ public class Faturamento {
     @JoinColumn(name = "contrato_id", nullable = false)
     @JsonIgnoreProperties("projetos")
     private Contrato contrato;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "projeto_id")
+    @JsonIgnoreProperties({ "materiais", "equipe", "responsavel" })
+    private Projeto projeto;
 }

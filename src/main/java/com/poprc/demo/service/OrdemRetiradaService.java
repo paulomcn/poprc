@@ -99,6 +99,9 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     public OrdemRetirada criarAdicionalParaOs(Long ordemServicoId, String geradoPor) {
         OrdemServico ordemServico = ordemServicoRepository.findByIdForUpdate(ordemServicoId)
                 .orElseThrow(() -> new IllegalArgumentException("OS não encontrada."));
+        if (Boolean.TRUE.equals(ordemServico.getArquivado())) {
+            throw new IllegalStateException("Não é possível gerar Ordem de Retirada para uma OS arquivada.");
+        }
         if (ordemRetiradaRepository.existsByOrdemServicoIdAndStatusIn(
                 ordemServicoId, List.of(STATUS_GERADA, STATUS_RETIRADA))) {
             throw new IllegalStateException(

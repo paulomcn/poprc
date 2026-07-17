@@ -6,12 +6,19 @@ import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.model.MovimentacaoEstoque;
+import com.poprc.demo.model.DocumentoInterno;
+import com.poprc.demo.model.OrdemRetirada;
 import com.poprc.demo.model.Projeto;
+import com.poprc.demo.model.ProjetoStatus;
+import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.model.TipoMovimentacao;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.MaterialItemRepository;
 import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.MovimentacaoEstoqueRepository;
+import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.repository.OrdemRetiradaRepository;
+import com.poprc.demo.repository.ProjetoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,11 +52,17 @@ public class ComarcaService {
     private static final String AS_BUILT_HOMOLOGADO = "HOMOLOGADO";
     private static final String AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA = "HOMOLOGADO_COM_DIVERGENCIA";
     private static final String AS_BUILT_REABERTO = "REABERTO_PARA_AJUSTE";
+    private static final String DOCUMENTO_ENCERRAMENTO = "ENCERRAMENTO_OS";
+    private static final String DOCUMENTO_REGISTRADO = "REGISTRADO";
+    private static final String OBRA_CONCLUIDA = "CONCLUIDA";
 
     private final ComarcaRepository comarcaRepository;
     private final MaterialItemRepository materialItemRepository;
     private final MaterialRepository materialRepository;
     private final MovimentacaoEstoqueRepository movimentacaoEstoqueRepository;
+    private final OrdemRetiradaRepository ordemRetiradaRepository;
+    private final DocumentoInternoRepository documentoInternoRepository;
+    private final ProjetoRepository projetoRepository;
 
     public Optional<Comarca> obterPorId(Long id) {
         return comarcaRepository.findById(id);
@@ -105,8 +118,11 @@ public class ComarcaService {
 
         Comarca comarca = comarcaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        validarVistoriaEditavel(comarca);
 
         String fotoUrl = salvarArquivoFotoVistoria(foto);
+        removerArquivoUpload(comarca.getFotoVistoriaUrl(), DIRETORIO_FOTO_VISTORIA,
+                "/uploads/comarcas/vistoria/");
         comarca.setFotoVistoriaUrl(fotoUrl);
         sincronizarPercentualVistoria(comarca);
         return comarcaRepository.save(comarca);
@@ -123,6 +139,7 @@ public class ComarcaService {
 
         Comarca comarca = comarcaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        validarVistoriaEditavel(comarca);
 
         comarca.setAssinaturaBase64(assinaturaBase64);
         sincronizarPercentualVistoria(comarca);
@@ -137,9 +154,45 @@ public class ComarcaService {
 
         Comarca comarca = comarcaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        validarViradaRedeEditavel(comarca);
 
+        removerArquivoUpload(comarca.getViradaRedeProvasFuncionamento(), DIRETORIO_PROVA_VIRADA_REDE,
+                "/uploads/comarcas/virada-rede/");
         comarca.setViradaRedeProvasFuncionamento(salvarArquivoImagem(foto, DIRETORIO_PROVA_VIRADA_REDE,
                 "/uploads/comarcas/virada-rede/"));
+        return comarcaRepository.save(comarca);
+    }
+
+    @Transactional
+    public Comarca removerFotoVistoria(Long id) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        validarVistoriaEditavel(comarca);
+        removerArquivoUpload(comarca.getFotoVistoriaUrl(), DIRETORIO_FOTO_VISTORIA,
+                "/uploads/comarcas/vistoria/");
+        comarca.setFotoVistoriaUrl(null);
+        sincronizarPercentualVistoria(comarca);
+        return comarcaRepository.save(comarca);
+    }
+
+    @Transactional
+    public Comarca removerAssinaturaVistoria(Long id) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        validarVistoriaEditavel(comarca);
+        comarca.setAssinaturaBase64(null);
+        sincronizarPercentualVistoria(comarca);
+        return comarcaRepository.save(comarca);
+    }
+
+    @Transactional
+    public Comarca removerProvaViradaRede(Long id) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        validarViradaRedeEditavel(comarca);
+        removerArquivoUpload(comarca.getViradaRedeProvasFuncionamento(), DIRETORIO_PROVA_VIRADA_REDE,
+                "/uploads/comarcas/virada-rede/");
+        comarca.setViradaRedeProvasFuncionamento(null);
         return comarcaRepository.save(comarca);
     }
 
@@ -429,9 +482,68 @@ public class ComarcaService {
     }
 
     @Transactional
+    public EncerramentoObraResultado concluirObra(Long id, String concluidaPor) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Obra não encontrada."));
+
+        if (OBRA_CONCLUIDA.equals(comarca.getSituacao()) && comarca.getDataConclusao() != null) {
+            return montarEncerramento(comarca);
+        }
+        if (concluidaPor == null || concluidaPor.isBlank()) {
+            throw new IllegalArgumentException("Informe quem está concluindo a obra.");
+        }
+        if (!Boolean.TRUE.equals(comarca.getViradaRedeConcluida())) {
+            throw new IllegalArgumentException("Conclua a Virada de Rede antes de encerrar a obra.");
+        }
+        if (!AS_BUILT_HOMOLOGADO.equals(comarca.getAsBuiltStatus())
+                && !AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA.equals(comarca.getAsBuiltStatus())) {
+            throw new IllegalArgumentException("Homologue o As-Built antes de encerrar a obra.");
+        }
+        if (comarca.getOrdemServico() == null
+                || (comarca.getOrdemServico().getStatus() != StatusOS.CONCLUIDA
+                        && comarca.getOrdemServico().getStatus() != StatusOS.FATURADA)) {
+            throw new IllegalArgumentException("Conclua a Ordem de Serviço no Portal Técnico antes de encerrar a obra.");
+        }
+
+        List<OrdemRetirada> ordensRetirada = ordemRetiradaRepository
+                .findByComarcaIdOrderByDataGeracaoDesc(comarca.getId());
+        if (ordensRetirada.isEmpty()) {
+            throw new IllegalArgumentException("A obra não possui Ordem de Retirada vinculada.");
+        }
+        if (ordensRetirada.stream().anyMatch(ordem -> !"DEVOLVIDA".equals(ordem.getStatus()))) {
+            throw new IllegalArgumentException("Todas as Ordens de Retirada precisam estar devolvidas.");
+        }
+
+        List<DocumentoInterno> documentosFinais = documentoInternoRepository
+                .findByComarcaIdAndTipoAndStatusOrderByDataGeracaoDesc(
+                        comarca.getId(), DOCUMENTO_ENCERRAMENTO, DOCUMENTO_REGISTRADO);
+        if (documentosFinais.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Salve e conclua as três assinaturas do documento final antes de encerrar a obra.");
+        }
+
+        comarca.setSituacao(OBRA_CONCLUIDA);
+        comarca.setPercentualConcluido(BigDecimal.valueOf(100));
+        comarca.setDataConclusao(LocalDateTime.now());
+        comarca.setConcluidaPor(concluidaPor.trim());
+
+        Projeto projeto = comarca.getProjeto();
+        if (projeto != null) {
+            projeto.setStatus(ProjetoStatus.CONCLUIDO);
+            projetoRepository.save(projeto);
+        }
+
+        return montarEncerramento(comarcaRepository.save(comarca));
+    }
+
+    @Transactional
     public Map<String, Object> reabrirAsBuilt(Long id) {
         Comarca comarca = comarcaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+
+        if (OBRA_CONCLUIDA.equals(comarca.getSituacao())) {
+            throw new IllegalArgumentException("Uma obra concluída não pode ter o As-Built reaberto.");
+        }
 
         if (!AS_BUILT_HOMOLOGADO.equals(comarca.getAsBuiltStatus())
                 && !AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA.equals(comarca.getAsBuiltStatus())) {
@@ -442,6 +554,42 @@ public class ComarcaService {
         comarca.setSituacao("AS_BUILT_REABERTO_PARA_AJUSTE");
         Comarca comarcaSalva = comarcaRepository.save(comarca);
         return montarAuditoriaComarca(comarcaSalva);
+    }
+
+    private EncerramentoObraResultado montarEncerramento(Comarca comarca) {
+        List<OrdemRetirada> ordensRetirada = ordemRetiradaRepository
+                .findByComarcaIdOrderByDataGeracaoDesc(comarca.getId());
+        DocumentoInterno documentoFinal = documentoInternoRepository
+                .findByComarcaIdAndTipoAndStatusOrderByDataGeracaoDesc(
+                        comarca.getId(), DOCUMENTO_ENCERRAMENTO, DOCUMENTO_REGISTRADO)
+                .stream().findFirst().orElse(null);
+
+        return new EncerramentoObraResultado(
+                comarca.getId(),
+                comarca.getNomeComarca(),
+                comarca.getSituacao(),
+                comarca.getDataConclusao(),
+                comarca.getConcluidaPor(),
+                comarca.getOrdemServico() != null ? comarca.getOrdemServico().getNumeroOs() : null,
+                comarca.getOrdemServico() != null ? comarca.getOrdemServico().getStatus().name() : null,
+                comarca.getAsBuiltStatus(),
+                ordensRetirada.size(),
+                documentoFinal != null ? documentoFinal.getId() : null,
+                documentoFinal != null ? documentoFinal.getPdfPath() : null);
+    }
+
+    public record EncerramentoObraResultado(
+            Long comarcaId,
+            String nomeObra,
+            String situacao,
+            LocalDateTime concluidaEm,
+            String concluidaPor,
+            String numeroOs,
+            String statusOs,
+            String statusAsBuilt,
+            int ordensRetiradaDevolvidas,
+            Long documentoFinalId,
+            String documentoFinalPdfPath) {
     }
 
     @Transactional
@@ -913,6 +1061,42 @@ public class ComarcaService {
 
     private String salvarArquivoFotoVistoria(MultipartFile foto) {
         return salvarArquivoImagem(foto, DIRETORIO_FOTO_VISTORIA, "/uploads/comarcas/vistoria/");
+    }
+
+    private void validarVistoriaEditavel(Comarca comarca) {
+        int etapaAtual = comarca.getEtapaAtual() != null ? comarca.getEtapaAtual() : 1;
+        if (etapaAtual > 1 || OBRA_CONCLUIDA.equals(comarca.getSituacao())) {
+            throw new IllegalStateException(
+                    "A foto e a assinatura da vistoria só podem ser alteradas antes do avanço para Infraestrutura.");
+        }
+    }
+
+    private void validarViradaRedeEditavel(Comarca comarca) {
+        if (Boolean.TRUE.equals(comarca.getViradaRedeConcluida())
+                || OBRA_CONCLUIDA.equals(comarca.getSituacao())) {
+            throw new IllegalStateException(
+                    "A prova de funcionamento não pode ser alterada após a conclusão da Virada de Rede.");
+        }
+    }
+
+    private void removerArquivoUpload(String arquivoUrl, String diretorio, String urlBase) {
+        if (arquivoUrl == null || arquivoUrl.isBlank() || !arquivoUrl.startsWith(urlBase)) {
+            return;
+        }
+
+        Path pastaPermitida = Paths.get(System.getProperty("user.home"), diretorio)
+                .toAbsolutePath().normalize();
+        Path arquivo = pastaPermitida.resolve(Paths.get(arquivoUrl).getFileName().toString())
+                .toAbsolutePath().normalize();
+        if (!arquivo.startsWith(pastaPermitida)) {
+            throw new IllegalStateException("Caminho de evidência inválido.");
+        }
+
+        try {
+            Files.deleteIfExists(arquivo);
+        } catch (IOException e) {
+            throw new RuntimeException("Não foi possível remover a evidência do servidor.", e);
+        }
     }
 
     private String salvarArquivoImagem(MultipartFile foto, String diretorio, String urlBase) {

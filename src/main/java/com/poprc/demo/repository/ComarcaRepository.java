@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface ComarcaRepository extends JpaRepository<Comarca, Long> {
     Optional<Comarca> findByProjetoId(Long projetoId);
     Optional<Comarca> findByOrdemServicoNumeroOs(String numeroOs);
+    Optional<Comarca> findByOrdemServicoId(Long ordemServicoId);
 }

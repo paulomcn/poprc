@@ -16,6 +16,8 @@ import {
   ClipboardCheck,
   ThumbsUp,
   ThumbsDown,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
 import OrdensServicoCard from "../components/OrdensServicoCard";
@@ -70,6 +72,7 @@ export default function GestaoOrdensServico() {
   // Inputs de Filtros
   const [filterCliente, setFilterCliente] = useState("");
   const [filterNumeroOS, setFilterNumeroOS] = useState("");
+  const [incluirArquivados, setIncluirArquivados] = useState(false);
 
   const [selectedOrdem, setSelectedOrdem] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -116,7 +119,7 @@ export default function GestaoOrdensServico() {
     }, 400);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [filterNumeroOS, filterCliente]);
+  }, [filterNumeroOS, filterCliente, incluirArquivados]);
 
   const buscarOrdensFilttradas = async () => {
     setError(null);
@@ -126,6 +129,7 @@ export default function GestaoOrdensServico() {
         params: {
           numeroOs: filterNumeroOS.trim(),
           cliente: filterCliente.trim(),
+          incluirArquivados,
         },
       });
       setOrdensServico(response.data || []);
@@ -239,6 +243,24 @@ export default function GestaoOrdensServico() {
       alert(
         getApiErrorMessage(err, "Erro ao salvar ordem de serviço vinculada no banco."),
       );
+    }
+  };
+
+  const alterarArquivamento = async (ordem) => {
+    try {
+      if (ordem.arquivado) {
+        await api.patch(`/ordens-servico/${ordem.id}/restaurar`);
+      } else {
+        const motivo = window.prompt("Informe o motivo para arquivar esta OS:");
+        if (!motivo?.trim()) return;
+        await api.patch(`/ordens-servico/${ordem.id}/arquivar`, {
+          usuario: "Paulo Morais",
+          motivo: motivo.trim(),
+        });
+      }
+      buscarOrdensFilttradas();
+    } catch (err) {
+      alert(getApiErrorMessage(err, "Não foi possível alterar o arquivamento da OS."));
     }
   };
 
@@ -490,6 +512,14 @@ export default function GestaoOrdensServico() {
             >
               <Plus className="w-4 h-4" /> Nova OS
             </button>
+            <label className="flex items-center justify-center gap-2 text-xs font-bold text-gray-600">
+              <input
+                type="checkbox"
+                checked={incluirArquivados}
+                onChange={(event) => setIncluirArquivados(event.target.checked)}
+              />
+              Mostrar arquivadas
+            </label>
           </div>
 
           {projetosComResponsavel.length === 0 && (
@@ -541,9 +571,9 @@ export default function GestaoOrdensServico() {
                 ordensPorStatus[coluna.value].map((ordem) => (
                   <div
                     key={ordem.id}
-                    draggable
+                    draggable={!ordem.arquivado}
                     onDragStart={(e) => handleDragStart(e, ordem)}
-                    className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-grab active:cursor-grabbing transform transition-all duration-100 active:scale-95 group relative flex flex-col"
+                    className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transform transition-all duration-100 group relative flex flex-col ${ordem.arquivado ? "opacity-60" : "cursor-grab active:cursor-grabbing active:scale-95"}`}
                   >
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-gray-500">
                       <Move size={14} />
@@ -558,7 +588,7 @@ export default function GestaoOrdensServico() {
 
                     <div className="bg-gray-50 px-4 py-2 border-t border-gray-100 flex justify-between items-center text-xs">
                       <span className="text-gray-400 font-mono text-[10px]">
-                        OS #{ordem.id}
+                        OS #{ordem.id}{ordem.arquivado ? " · ARQUIVADA" : ""}
                       </span>
                       <button
                         onClick={(e) => {
@@ -569,6 +599,16 @@ export default function GestaoOrdensServico() {
                         className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition-colors"
                       >
                         <Eye size={12} /> <span>Ver Relatório</span>
+                      </button>
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          alterarArquivamento(ordem);
+                        }}
+                        title={ordem.arquivado ? "Restaurar OS" : "Arquivar OS"}
+                        className={ordem.arquivado ? "text-emerald-600" : "text-red-600"}
+                      >
+                        {ordem.arquivado ? <RotateCcw size={13} /> : <Archive size={13} />}
                       </button>
                     </div>
                   </div>

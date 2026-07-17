@@ -1,5 +1,7 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.dto.ArquivamentoRequest;
+import com.poprc.demo.dto.EquipeProjetoRequest;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.ProjetoStatus;
@@ -7,6 +9,8 @@ import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.service.ComarcaService;
+import com.poprc.demo.service.ArquivamentoService;
+import com.poprc.demo.service.ProjetoEquipeService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,13 +31,18 @@ public class ProjetoController {
     private final ContratoRepository contratoRepository;
     private final ComarcaService comarcaService;
     private final FuncionarioRepository funcionarioRepository;
+    private final ArquivamentoService arquivamentoService;
+    private final ProjetoEquipeService projetoEquipeService;
 
     public ProjetoController(ProjetoRepository projetoRepository, ContratoRepository contratoRepository,
-            ComarcaService comarcaService, FuncionarioRepository funcionarioRepository) {
+            ComarcaService comarcaService, FuncionarioRepository funcionarioRepository,
+            ArquivamentoService arquivamentoService, ProjetoEquipeService projetoEquipeService) {
         this.projetoRepository = projetoRepository;
         this.contratoRepository = contratoRepository;
         this.comarcaService = comarcaService;
         this.funcionarioRepository = funcionarioRepository;
+        this.arquivamentoService = arquivamentoService;
+        this.projetoEquipeService = projetoEquipeService;
     }
 
     @PostMapping
@@ -51,6 +60,10 @@ public class ProjetoController {
                 response.put("erro", "Contrato não encontrado");
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
+            if (Boolean.TRUE.equals(contrato.get().getArquivado())) {
+                response.put("erro", "Não é possível criar projeto em um contrato arquivado.");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
 
             if (projeto.getStatus() == null) {
                 projeto.setStatus(ProjetoStatus.EM_ANDAMENTO);
@@ -65,6 +78,16 @@ public class ProjetoController {
                         .orElseThrow(() -> new IllegalArgumentException("Funcionário responsável não encontrado.")));
             }
             Projeto projetoSalvo = projetoRepository.save(projeto);
+
+            if (projetoSalvo.getResponsavel() != null) {
+                EquipeProjetoRequest equipeInicial = new EquipeProjetoRequest();
+                EquipeProjetoRequest.MembroRequest membro = new EquipeProjetoRequest.MembroRequest();
+                membro.setFuncionarioId(projetoSalvo.getResponsavel().getId());
+                membro.setPapel("LIDER_EQUIPE");
+                membro.setResponsavelPrincipal(true);
+                equipeInicial.setMembros(List.of(membro));
+                projetoEquipeService.substituirEquipe(projetoSalvo.getId(), equipeInicial);
+            }
 
             projetoSalvo.setNomeComarcaVinculada(projeto.getNomeComarcaVinculada());
             comarcaService.criarOuVincularComarcaParaProjeto(projetoSalvo);
@@ -126,8 +149,37 @@ public class ProjetoController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Projeto>> listarTodos() {
-        return ResponseEntity.ok(projetoRepository.findAll());
+    public ResponseEntity<List<Projeto>> listarTodos(
+            @RequestParam(defaultValue = "false") boolean incluirArquivados) {
+        return ResponseEntity.ok(projetoRepository.findAll().stream()
+                .filter(item -> incluirArquivados || !Boolean.TRUE.equals(item.getArquivado()))
+                .toList());
+    }
+
+    @PatchMapping("/{id}/arquivar")
+    public ResponseEntity<Projeto> arquivar(@PathVariable Long id, @RequestBody ArquivamentoRequest request) {
+        return ResponseEntity.ok(arquivamentoService.arquivarProjeto(id, request.getUsuario(), request.getMotivo()));
+    }
+
+    @PatchMapping("/{id}/restaurar")
+    public ResponseEntity<Projeto> restaurar(@PathVariable Long id) {
+        return ResponseEntity.ok(arquivamentoService.restaurarProjeto(id));
+    }
+
+    @GetMapping("/{id}/equipe")
+    public ResponseEntity<?> listarEquipe(@PathVariable Long id) {
+        return ResponseEntity.ok(projetoEquipeService.listar(id));
+    }
+
+    @PutMapping("/{id}/equipe")
+    public ResponseEntity<?> substituirEquipe(
+            @PathVariable Long id, @RequestBody EquipeProjetoRequest request) {
+        return ResponseEntity.ok(projetoEquipeService.substituirEquipe(id, request));
+    }
+
+    @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
+    public ResponseEntity<Map<String, String>> handleArquivamentoInvalido(RuntimeException ex) {
+        return ResponseEntity.badRequest().body(Map.of("erro", ex.getMessage()));
     }
 
     /**

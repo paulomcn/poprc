@@ -10,4 +10,6 @@ public interface PrestacaoContasRepository extends JpaRepository<PrestacaoContas
     
     
     List<PrestacaoContas> findByViagemProjetoId(Long projetoId);
+
+    boolean existsByViagemId(Long viagemId);
 }

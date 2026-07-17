@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -45,6 +46,7 @@ public class DocumentoInternoController {
     private static final String STATUS_PENDENTE = "PENDENTE_ASSINATURA";
     private static final String STATUS_PARCIAL = "PARCIALMENTE_ASSINADO";
     private static final String STATUS_REGISTRADO = "REGISTRADO";
+    private static final String STATUS_INVALIDADO = "INVALIDADO";
 
     private final DocumentoInternoRepository documentoInternoRepository;
     private final ComarcaRepository comarcaRepository;
@@ -109,6 +111,49 @@ public class DocumentoInternoController {
         documento.setConteudoJson(request.getConteudoJson());
         documento.setRecebidoPor(normalizarRecebedor(request.getRecebidoPor()));
         return ResponseEntity.ok(documentoInternoRepository.save(documento));
+    }
+
+    @PostMapping("/{id}/invalidar")
+    @Transactional
+    public ResponseEntity<DocumentoInterno> invalidarECriarNovaVersao(
+            @PathVariable Long id,
+            @RequestBody InvalidacaoDocumentoRequest request,
+            @AuthenticationPrincipal OAuth2User principal,
+            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader) {
+        String usuarioAtual = usuarioAtual(principal, usuarioHeader);
+        DocumentoInterno documento = documentoInternoRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
+        if (!podeVisualizar(documento, usuarioAtual)) {
+            return ResponseEntity.status(403).build();
+        }
+        if (STATUS_INVALIDADO.equals(documento.getStatus())) {
+            throw new IllegalStateException("Este documento já foi invalidado.");
+        }
+        if (documento.getComarca() != null
+                && "CONCLUIDA".equals(documento.getComarca().getSituacao())) {
+            throw new IllegalStateException(
+                    "A obra está concluída. Reabra formalmente a obra antes de corrigir seus documentos.");
+        }
+        if (request.getMotivo() == null || request.getMotivo().isBlank()) {
+            throw new IllegalArgumentException("Informe o motivo da correção do documento.");
+        }
+
+        documento.setStatus(STATUS_INVALIDADO);
+        documento.setInvalidadoEm(LocalDateTime.now());
+        documento.setInvalidadoPor(usuarioAtual);
+        documento.setMotivoInvalidacao(request.getMotivo().trim());
+        documentoInternoRepository.save(documento);
+
+        DocumentoInterno novaVersao = new DocumentoInterno();
+        novaVersao.setTipo(documento.getTipo());
+        novaVersao.setStatus(STATUS_PENDENTE);
+        novaVersao.setComarca(documento.getComarca());
+        novaVersao.setConteudoJson(documento.getConteudoJson());
+        novaVersao.setCriadoPor(usuarioAtual);
+        novaVersao.setRecebidoPor(documento.getRecebidoPor());
+        novaVersao.setDataGeracao(LocalDateTime.now());
+        novaVersao.setDocumentoOrigem(documento);
+        return ResponseEntity.ok(documentoInternoRepository.save(novaVersao));
     }
 
     @PatchMapping("/{id}/assinar")
@@ -395,6 +440,11 @@ public class DocumentoInternoController {
     public static class AssinaturaPapelRequest {
         private String assinaturaBase64;
         private String nomeAssinante;
+    }
+
+    @Data
+    public static class InvalidacaoDocumentoRequest {
+        private String motivo;
     }
 
     public record AssinaturaLogResponse(

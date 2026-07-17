@@ -66,6 +66,12 @@ public class OrdemServicoService {
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado."));
         Projeto projeto = projetoRepository.findById(request.getProjetoId())
                 .orElseThrow(() -> new IllegalArgumentException("Projeto/Comarca alvo não encontrado."));
+        if (Boolean.TRUE.equals(contrato.getArquivado())) {
+            throw new IllegalStateException("Não é possível emitir OS para um contrato arquivado.");
+        }
+        if (Boolean.TRUE.equals(projeto.getArquivado())) {
+            throw new IllegalStateException("Não é possível emitir OS para um projeto arquivado.");
+        }
         if (projeto.getContrato() == null || !contrato.getId().equals(projeto.getContrato().getId())) {
             throw new IllegalArgumentException("O projeto selecionado não pertence ao contrato informado.");
         }
@@ -94,6 +100,7 @@ public class OrdemServicoService {
         Optional<OrdemServico> ordemOpt = ordemServicoRepository.findById(id);
         if (ordemOpt.isPresent()) {
             OrdemServico ordem = ordemOpt.get();
+            validarOrdemAtiva(ordem);
             ordem.setStatus(novoStatus);
             return ordemServicoRepository.save(ordem);
         }
@@ -104,10 +111,17 @@ public class OrdemServicoService {
         Optional<OrdemServico> ordemOpt = ordemServicoRepository.findById(id);
         if (ordemOpt.isPresent()) {
             OrdemServico ordem = ordemOpt.get();
+            validarOrdemAtiva(ordem);
             ordem.setChecklist(checklist);
             return ordemServicoRepository.save(ordem);
         }
         return null;
+    }
+
+    private void validarOrdemAtiva(OrdemServico ordem) {
+        if (Boolean.TRUE.equals(ordem.getArquivado())) {
+            throw new IllegalStateException("A Ordem de Serviço está arquivada e não pode ser alterada.");
+        }
     }
 
     @Transactional

@@ -51,6 +51,15 @@ public class OrdemServico {
     @Enumerated(EnumType.STRING)
     private StatusOS status;
 
+    private Boolean arquivado = false;
+
+    private LocalDateTime arquivadoEm;
+
+    private String arquivadoPor;
+
+    @Column(length = 1000)
+    private String motivoArquivamento;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contrato_id")
     private Contrato contrato;
