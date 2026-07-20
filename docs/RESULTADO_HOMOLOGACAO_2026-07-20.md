@@ -1,5 +1,7 @@
 # Resultado da Homologacao Operacional - 20/07/2026
 
+**Status:** CONCLUIDA. Este arquivo e a evidencia da execucao, nao um roteiro pendente.
+
 ## Escopo
 
 Homologacao executada em banco PostgreSQL temporario, criado exclusivamente para o teste, com a massa de desenvolvimento versionada no projeto.
@@ -35,3 +37,7 @@ A API agora decodifica a imagem com `ImageIO` antes de persistir a assinatura. U
 ## Criterio De Aprovacao
 
 O fluxo principal foi aprovado funcionalmente. A autenticacao das rotas `/api/**` permanece fora deste ciclo, conforme decisao anterior de deixa-la para a etapa final de seguranca.
+
+Em 20/07/2026, a mesma cobertura foi executada novamente pelo perfil `test` no
+banco descartavel `poprc_test`: 75 testes passaram, as 15 migracoes foram
+aplicadas desde um schema vazio e a base foi removida automaticamente ao final.

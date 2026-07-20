@@ -1,5 +1,7 @@
 # Homologacao do fluxo operacional
 
+**Status:** APROVADA em 20/07/2026 por execucao ponta a ponta e suite automatizada isolada.
+
 ## Validacao automatizada
 
 Antes da homologacao pela interface, execute:
