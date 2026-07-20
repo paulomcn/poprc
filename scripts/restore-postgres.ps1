@@ -31,17 +31,17 @@ if (-not $Force) {
 }
 
 Invoke-WithPgPassword $Password {
-    & $dropDb --host $HostName --port $Port --username $Username --if-exists --force $TargetDatabase
+    & $dropDb --host $HostName --port $Port --username $Username --no-password --if-exists --force $TargetDatabase
     if ($LASTEXITCODE -ne 0) {
         throw "Nao foi possivel remover o banco de destino."
     }
 
-    & $createDb --host $HostName --port $Port --username $Username $TargetDatabase
+    & $createDb --host $HostName --port $Port --username $Username --no-password $TargetDatabase
     if ($LASTEXITCODE -ne 0) {
         throw "Nao foi possivel criar o banco de destino."
     }
 
-    & $pgRestore --host $HostName --port $Port --username $Username `
+    & $pgRestore --host $HostName --port $Port --username $Username --no-password `
         --dbname $TargetDatabase --exit-on-error --no-owner --no-privileges $resolvedBackup
     if ($LASTEXITCODE -ne 0) {
         throw "pg_restore terminou com codigo $LASTEXITCODE."

@@ -2,9 +2,21 @@
 -- quando o perfil dev adiciona classpath:db/dev as locations do Flyway.
 
 INSERT INTO funcionarios (nome, funcao, cidade)
-SELECT 'Tecnico Desenvolvimento', 'Tecnico', 'Joao Pessoa'
+SELECT 'Supervisor Desenvolvimento', 'Supervisor Tecnico', 'Joao Pessoa'
 WHERE NOT EXISTS (
-    SELECT 1 FROM funcionarios WHERE nome = 'Tecnico Desenvolvimento'
+    SELECT 1 FROM funcionarios WHERE nome = 'Supervisor Desenvolvimento'
+);
+
+INSERT INTO funcionarios (nome, funcao, cidade)
+SELECT 'Tecnico Campo A', 'Tecnico', 'Joao Pessoa'
+WHERE NOT EXISTS (
+    SELECT 1 FROM funcionarios WHERE nome = 'Tecnico Campo A'
+);
+
+INSERT INTO funcionarios (nome, funcao, cidade)
+SELECT 'Tecnico Campo B', 'Tecnico', 'Joao Pessoa'
+WHERE NOT EXISTS (
+    SELECT 1 FROM funcionarios WHERE nome = 'Tecnico Campo B'
 );
 
 INSERT INTO funcionarios (nome, funcao, cidade)
@@ -29,7 +41,7 @@ SELECT
 FROM funcionarios gestor
 CROSS JOIN funcionarios tecnico
 WHERE gestor.nome = 'Gestor Desenvolvimento'
-  AND tecnico.nome = 'Tecnico Desenvolvimento'
+  AND tecnico.nome = 'Supervisor Desenvolvimento'
   AND NOT EXISTS (
       SELECT 1 FROM contratos WHERE contrato = 'DEV-CONTRATO-001'
   );
@@ -46,10 +58,41 @@ SELECT
 FROM contratos contrato
 CROSS JOIN funcionarios tecnico
 WHERE contrato.contrato = 'DEV-CONTRATO-001'
-  AND tecnico.nome = 'Tecnico Desenvolvimento'
+  AND tecnico.nome = 'Supervisor Desenvolvimento'
   AND NOT EXISTS (
       SELECT 1 FROM projetos WHERE contrato_id = contrato.id
   );
+
+UPDATE contratos contrato
+SET fiscal_tecnico_id = supervisor.id
+FROM funcionarios supervisor
+WHERE contrato.contrato = 'DEV-CONTRATO-001'
+  AND supervisor.nome = 'Supervisor Desenvolvimento';
+
+UPDATE projetos projeto
+SET responsavel_id = supervisor.id
+FROM contratos contrato, funcionarios supervisor
+WHERE projeto.contrato_id = contrato.id
+  AND contrato.contrato = 'DEV-CONTRATO-001'
+  AND supervisor.nome = 'Supervisor Desenvolvimento';
+
+INSERT INTO projetos_membros (projeto_id, funcionario_id, papel, responsavel_principal)
+SELECT projeto.id, funcionario.id, 'LIDER_EQUIPE', true
+FROM projetos projeto
+JOIN contratos contrato ON contrato.id = projeto.contrato_id
+JOIN funcionarios funcionario ON funcionario.nome = 'Supervisor Desenvolvimento'
+WHERE contrato.contrato = 'DEV-CONTRATO-001'
+ON CONFLICT (projeto_id, funcionario_id)
+DO UPDATE SET papel = EXCLUDED.papel, responsavel_principal = EXCLUDED.responsavel_principal;
+
+INSERT INTO projetos_membros (projeto_id, funcionario_id, papel, responsavel_principal)
+SELECT projeto.id, funcionario.id, 'TECNICO', false
+FROM projetos projeto
+JOIN contratos contrato ON contrato.id = projeto.contrato_id
+JOIN funcionarios funcionario ON funcionario.nome IN ('Tecnico Campo A', 'Tecnico Campo B')
+WHERE contrato.contrato = 'DEV-CONTRATO-001'
+ON CONFLICT (projeto_id, funcionario_id)
+DO UPDATE SET papel = EXCLUDED.papel, responsavel_principal = EXCLUDED.responsavel_principal;
 
 INSERT INTO comarcas (
     nome_comarca, endereco, contato_local, quantidade_pontos, situacao,

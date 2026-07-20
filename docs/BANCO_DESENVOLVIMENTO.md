@@ -9,11 +9,20 @@ de `src/main/resources/db/dev`. Inicie a aplicacao com:
 .\mvnw.cmd -Dspring-boot.run.profiles=dev spring-boot:run
 ```
 
+A massa cria o contrato `DEV-CONTRATO-001`, uma obra livre para emitir OS,
+um supervisor tecnico, dois tecnicos de campo, um deposito e materiais dos
+tipos consumo, ferramenta e bobina. A OS e a OR nao sao inseridas por SQL:
+elas devem ser criadas pela interface para homologar as regras reais.
+
 Para usar outra conexao, configure `DEV_DB_URL`, `DEV_DB_USERNAME` e
 `DEV_DB_PASSWORD`. O banco de desenvolvimento deve continuar terminando em
 `_dev` para ser aceito pelos scripts destrutivos. A propria aplicacao tambem
 interrompe a inicializacao antes do Flyway quando o perfil `dev` aponta para um
 banco sem esse sufixo.
+
+Os scripts nao abrem prompt interativo de senha. Configure `DEV_DB_PASSWORD`
+para o reset e `DB_PASSWORD` para backup/restauracao antes de executa-los; se a
+autenticacao nao estiver disponivel, a operacao falha imediatamente.
 
 ## Reset controlado
 
@@ -25,6 +34,11 @@ banco sem esse sufixo.
 O script exige a confirmacao textual `RESETAR poprc_dev`. Ele recusa qualquer
 banco sem o sufixo `_dev`. Ao iniciar a aplicacao, o Flyway recria o schema,
 aplica todas as migracoes e insere a massa de desenvolvimento.
+
+O reset encerra conexoes abertas no banco de desenvolvimento. Pare qualquer
+instancia da aplicacao que esteja usando `poprc_dev` antes de executa-lo.
+
+Depois da inicializacao, siga o roteiro em `docs/HOMOLOGACAO_FLUXO.md`.
 
 ## Backup
 

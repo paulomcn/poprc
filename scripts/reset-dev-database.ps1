@@ -23,12 +23,12 @@ $dropDb = Resolve-PostgresTool "dropdb"
 $createDb = Resolve-PostgresTool "createdb"
 
 Invoke-WithPgPassword $Password {
-    & $dropDb --host $HostName --port $Port --username $Username --if-exists --force $Database
+    & $dropDb --host $HostName --port $Port --username $Username --no-password --if-exists --force $Database
     if ($LASTEXITCODE -ne 0) {
         throw "Nao foi possivel remover o banco de desenvolvimento."
     }
 
-    & $createDb --host $HostName --port $Port --username $Username $Database
+    & $createDb --host $HostName --port $Port --username $Username --no-password $Database
     if ($LASTEXITCODE -ne 0) {
         throw "Nao foi possivel recriar o banco de desenvolvimento."
     }

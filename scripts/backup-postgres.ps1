@@ -20,7 +20,7 @@ $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $outputFile = Join-Path (Resolve-Path $OutputDirectory) "$Database-$timestamp.dump"
 
 Invoke-WithPgPassword $Password {
-    & $pgDump --host $HostName --port $Port --username $Username `
+    & $pgDump --host $HostName --port $Port --username $Username --no-password `
         --format custom --compress 9 --no-owner --no-privileges `
         --file $outputFile $Database
     if ($LASTEXITCODE -ne 0) {
