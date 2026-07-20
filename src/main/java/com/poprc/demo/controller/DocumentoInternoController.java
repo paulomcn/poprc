@@ -27,12 +27,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Base64;
 import java.util.Map;
+import javax.imageio.ImageIO;
 
 @RestController
 @RequestMapping("/api/documentos-internos")
@@ -362,6 +365,13 @@ public class DocumentoInternoController {
                     || bytes[2] != 0x4e
                     || bytes[3] != 0x47) {
                 throw new IllegalArgumentException("O conteúdo da assinatura não é um PNG válido.");
+            }
+            try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
+                if (ImageIO.read(input) == null) {
+                    throw new IllegalArgumentException("O conteúdo da assinatura não é um PNG válido.");
+                }
+            } catch (IOException ex) {
+                throw new IllegalArgumentException("O conteúdo da assinatura não é um PNG válido.", ex);
             }
         } catch (IllegalArgumentException ex) {
             throw ex;

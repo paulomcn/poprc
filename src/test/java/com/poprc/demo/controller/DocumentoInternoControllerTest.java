@@ -10,6 +10,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 
@@ -69,6 +73,17 @@ class DocumentoInternoControllerTest {
         DocumentoInternoController.AssinaturaPapelRequest request = new DocumentoInternoController.AssinaturaPapelRequest();
         request.setNomeAssinante("Tecnico Teste");
         request.setAssinaturaBase64("data:image/png;base64,bmFvLWUtaW1hZ2Vt");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, null, null));
+    }
+
+    @Test
+    void deveRejeitarCabecalhoPngComConteudoCorrompido() {
+        DocumentoInternoController.AssinaturaPapelRequest request =
+                new DocumentoInternoController.AssinaturaPapelRequest();
+        request.setNomeAssinante("Tecnico Teste");
+        request.setAssinaturaBase64("data:image/png;base64,iVBORw0KGgo=");
 
         assertThrows(IllegalArgumentException.class,
                 () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, null, null));
@@ -180,8 +195,19 @@ class DocumentoInternoControllerTest {
     private DocumentoInternoController.AssinaturaPapelRequest assinaturaPngValida() {
         DocumentoInternoController.AssinaturaPapelRequest request = new DocumentoInternoController.AssinaturaPapelRequest();
         request.setNomeAssinante("Tecnico Teste");
-        request.setAssinaturaBase64("data:image/png;base64,iVBORw0KGgo=");
+        request.setAssinaturaBase64(gerarAssinaturaPng());
         return request;
+    }
+
+    private String gerarAssinaturaPng() {
+        try {
+            BufferedImage imagem = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            ImageIO.write(imagem, "png", output);
+            return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray());
+        } catch (Exception ex) {
+            throw new IllegalStateException("Não foi possível preparar a assinatura do teste.", ex);
+        }
     }
 
     private DocumentoInternoController.DocumentoVistoriaRequest documentoRequest(Long comarcaId, String tipo) {
