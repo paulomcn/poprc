@@ -40,6 +40,32 @@ instancia da aplicacao que esteja usando `poprc_dev` antes de executa-lo.
 
 Depois da inicializacao, siga o roteiro em `docs/HOMOLOGACAO_FLUXO.md`.
 
+## Banco isolado de testes
+
+Execute a suite completa pelo script seguro:
+
+```powershell
+.\scripts\test.ps1
+```
+
+O script cria `poprc_test`, executa o Flyway desde um schema vazio, roda os
+testes e remove o banco no bloco de finalizacao, inclusive quando a suite
+falha. Ele pode reutilizar a senha de `application-local.properties`, mas
+tambem aceita `TEST_DB_PASSWORD` ou o parametro `-Password`.
+
+O perfil `test` e obrigatorio em todos os testes que inicializam o Spring. A
+aplicacao recusa a inicializacao se esse perfil apontar para um banco cujo nome
+nao termine em `_test`; por isso, uma execucao acidental nunca pode usar
+`poprc` ou `poprc_dev`.
+
+Para inspecionar o banco depois de uma falha, preserve-o deliberadamente:
+
+```powershell
+.\scripts\test.ps1 -KeepDatabase
+```
+
+Remova esse banco antes da proxima execucao ou deixe o proprio script recria-lo.
+
 ## Backup
 
 ```powershell

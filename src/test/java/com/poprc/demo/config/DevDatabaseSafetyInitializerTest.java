@@ -26,6 +26,20 @@ class DevDatabaseSafetyInitializerTest {
     }
 
     @Test
+    void aceitaPerfilTestSomenteComBancoTest() {
+        GenericApplicationContext context = context("test", "jdbc:postgresql://localhost:5432/poprc_test");
+
+        assertDoesNotThrow(() -> initializer.initialize(context));
+    }
+
+    @Test
+    void bloqueiaPerfilTestApontandoParaBancoPrincipal() {
+        GenericApplicationContext context = context("test", "jdbc:postgresql://localhost:5432/poprc");
+
+        assertThrows(IllegalStateException.class, () -> initializer.initialize(context));
+    }
+
+    @Test
     void naoInterfereEmOutrosPerfis() {
         GenericApplicationContext context = context("prod", "jdbc:postgresql://localhost:5432/poprc");
 

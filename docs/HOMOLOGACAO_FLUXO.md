@@ -1,5 +1,19 @@
 # Homologacao do fluxo operacional
 
+## Validacao automatizada
+
+Antes da homologacao pela interface, execute:
+
+```powershell
+.\scripts\test.ps1
+```
+
+A suite cobre o ciclo OS, OR, retirada, devolucao, auditoria e encerramento,
+alem das recusas de dupla assinatura, ferramenta nao devolvida, operacoes
+duplicadas, prazo invalido, material duplicado, concorrencia de estoque,
+bobinas e imutabilidade do log. O banco usado termina em `_test` e e descartado
+automaticamente.
+
 ## Preparacao
 
 1. Pare a aplicacao que estiver conectada ao banco `poprc_dev`.

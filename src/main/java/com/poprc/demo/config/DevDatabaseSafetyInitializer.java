@@ -12,16 +12,20 @@ public class DevDatabaseSafetyInitializer
     @Override
     public void initialize(ConfigurableApplicationContext applicationContext) {
         Environment environment = applicationContext.getEnvironment();
-        if (Arrays.stream(environment.getActiveProfiles()).noneMatch("dev"::equals)) {
+        boolean devProfile = Arrays.stream(environment.getActiveProfiles()).anyMatch("dev"::equals);
+        boolean testProfile = Arrays.stream(environment.getActiveProfiles()).anyMatch("test"::equals);
+        if (!devProfile && !testProfile) {
             return;
         }
 
         String datasourceUrl = environment.getProperty("spring.datasource.url", "");
         String databaseName = extractDatabaseName(datasourceUrl);
-        if (!databaseName.endsWith("_dev")) {
+        String requiredSuffix = testProfile ? "_test" : "_dev";
+        if (!databaseName.endsWith(requiredSuffix)) {
             throw new IllegalStateException(
-                    "Perfil dev recusado: o banco configurado precisa terminar em '_dev'. URL recebida: "
-                            + datasourceUrl);
+                    "Perfil " + (testProfile ? "test" : "dev")
+                            + " recusado: o banco configurado precisa terminar em '"
+                            + requiredSuffix + "'. URL recebida: " + datasourceUrl);
         }
     }
 
