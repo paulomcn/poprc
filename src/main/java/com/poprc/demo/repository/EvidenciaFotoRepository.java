@@ -9,6 +9,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface EvidenciaFotoRepository extends JpaRepository<EvidenciaFoto, Long> {
+    boolean existsByOrdemServicoId(Long ordemServicoId);
+
     @EntityGraph(attributePaths = { "funcionario", "ordemServico" })
     List<EvidenciaFoto> findByOrdemServicoIdOrderByDataUploadDesc(Long ordemServicoId);
 }

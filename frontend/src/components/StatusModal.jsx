@@ -14,7 +14,7 @@ const STATUS_OPTIONS = [
   { value: 'FATURADA', label: 'Faturada', color: 'text-gray-600 bg-gray-50' },
 ]
 
-export default function StatusModal({ ordem, onClose, onStatusAtualizado }) {
+export default function StatusModal({ ordem, statusPermitidos = [], onClose, onStatusAtualizado }) {
   const [novoStatus, setNovoStatus] = useState(ordem.status)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -40,7 +40,7 @@ export default function StatusModal({ ordem, onClose, onStatusAtualizado }) {
         onStatusAtualizado(response.data)
       }, 1000)
     } catch (err) {
-      setError('Erro ao atualizar status. Tente novamente.')
+      setError(err.response?.data?.erro || 'Erro ao atualizar status. Tente novamente.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -92,7 +92,9 @@ export default function StatusModal({ ordem, onClose, onStatusAtualizado }) {
               Novo Status
             </label>
             <div className="space-y-2">
-              {STATUS_OPTIONS.map((status) => (
+              {STATUS_OPTIONS.filter(
+                (status) => status.value === ordem.status || statusPermitidos.includes(status.value),
+              ).map((status) => (
                 <label
                   key={status.value}
                   className="flex items-center p-3 border-2 rounded-lg cursor-pointer transition hover:border-blue-500"

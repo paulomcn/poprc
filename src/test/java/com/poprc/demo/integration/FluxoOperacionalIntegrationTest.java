@@ -7,6 +7,7 @@ import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.DocumentoInterno;
+import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.model.MovimentacaoEstoque;
@@ -24,6 +25,7 @@ import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.MovimentacaoEstoqueRepository;
 import com.poprc.demo.repository.OrdemRetiradaRepository;
@@ -83,6 +85,8 @@ class FluxoOperacionalIntegrationTest {
     private OrdemRetiradaRepository ordemRetiradaRepository;
     @Autowired
     private DocumentoInternoRepository documentoInternoRepository;
+    @Autowired
+    private EvidenciaFotoRepository evidenciaFotoRepository;
     @Autowired
     private MovimentacaoEstoqueRepository movimentacaoEstoqueRepository;
     @Autowired
@@ -164,6 +168,29 @@ class FluxoOperacionalIntegrationTest {
         comarcaService.homologarAsBuilt(cenario.comarcaId());
         comarcaService.salvarViradaRede(
                 cenario.comarcaId(), "/uploads/teste/prova.png", "Ping e conectividade validados", true);
+        assertEquals(0, BigDecimal.valueOf(90).compareTo(
+                comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getPercentualConcluido()));
+
+        IllegalStateException saltoInvalido = assertThrows(IllegalStateException.class,
+                () -> ordemServicoService.atualizarStatus(os.getId(), StatusOS.CONCLUIDA));
+        assertTrue(saltoInvalido.getMessage().contains("Transição de status inválida"));
+
+        ordemServicoService.atualizarStatus(os.getId(), StatusOS.EM_EXECUCAO);
+        ordemServicoService.atualizarChecklist(os.getId(),
+                "{\"atividades\":[{\"id\":1,\"nome\":\"Execução validada\"}]}");
+        IllegalStateException semEvidencia = assertThrows(IllegalStateException.class,
+                () -> ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_VALIDACAO));
+        assertTrue(semEvidencia.getMessage().contains("evidência fotográfica"));
+
+        registrarEvidencia(os, cenario.projetoId());
+        ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_VALIDACAO);
+        IllegalStateException checklistEncerrado = assertThrows(IllegalStateException.class,
+                () -> ordemServicoService.atualizarChecklist(os.getId(), "alteração tardia"));
+        assertTrue(checklistEncerrado.getMessage().contains("checklist"));
+        ordemServicoService.atualizarStatus(os.getId(), StatusOS.EM_EXECUCAO);
+        ordemServicoService.atualizarChecklist(os.getId(),
+                "{\"atividades\":[{\"id\":1,\"nome\":\"Relatório corrigido\"}]}");
+        ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_VALIDACAO);
         ordemServicoService.atualizarStatus(os.getId(), StatusOS.CONCLUIDA);
         criarDocumentoFinalRegistrado(cenario.comarcaId());
 
@@ -178,6 +205,12 @@ class FluxoOperacionalIntegrationTest {
                 projetoRepository.findById(cenario.projetoId()).orElseThrow().getStatus());
         assertEquals("CONCLUIDA",
                 comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getSituacao());
+        assertEquals(0, BigDecimal.valueOf(100).compareTo(
+                comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getPercentualConcluido()));
+
+        ComarcaService.EncerramentoObraResultado resumoPersistido = comarcaService
+                .buscarEncerramento(cenario.comarcaId());
+        assertEquals(resultado, resumoPersistido);
     }
 
     @Test
@@ -193,7 +226,7 @@ class FluxoOperacionalIntegrationTest {
         comarcaService.homologarAsBuilt(cenario.comarcaId());
         comarcaService.salvarViradaRede(
                 cenario.comarcaId(), "/uploads/teste/prova.png", "Conectividade validada", true);
-        ordemServicoService.atualizarStatus(os.getId(), StatusOS.CONCLUIDA);
+        submeterEConcluirOs(os, cenario.projetoId());
 
         IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
                 () -> comarcaService.concluirObra(cenario.comarcaId(), "Gestor Teste"));
@@ -433,6 +466,26 @@ class FluxoOperacionalIntegrationTest {
         documento.setDataGeracao(LocalDateTime.now());
         documento.setPdfPath("/uploads/documentos/encerramento-teste.pdf");
         documentoInternoRepository.save(documento);
+    }
+
+    private void submeterEConcluirOs(OrdemServico ordemServico, Long projetoId) {
+        ordemServicoService.atualizarStatus(ordemServico.getId(), StatusOS.EM_EXECUCAO);
+        ordemServicoService.atualizarChecklist(ordemServico.getId(),
+                "{\"atividades\":[{\"id\":1,\"nome\":\"Execução validada\"}]}");
+        registrarEvidencia(ordemServico, projetoId);
+        ordemServicoService.atualizarStatus(ordemServico.getId(), StatusOS.AGUARDANDO_VALIDACAO);
+        ordemServicoService.atualizarStatus(ordemServico.getId(), StatusOS.CONCLUIDA);
+    }
+
+    private void registrarEvidencia(OrdemServico ordemServico, Long projetoId) {
+        EvidenciaFoto evidencia = new EvidenciaFoto();
+        evidencia.setCaminhoArquivo("/uploads/evidencias/teste-" + UUID.randomUUID() + ".png");
+        evidencia.setLatitude("-5.800000");
+        evidencia.setLongitude("-35.200000");
+        evidencia.setDataUpload(LocalDateTime.now());
+        evidencia.setOrdemServico(ordemServico);
+        evidencia.setFuncionario(projetoRepository.findById(projetoId).orElseThrow().getResponsavel());
+        evidenciaFotoRepository.save(evidencia);
     }
 
     private Material novoMaterial(String nome, String partNumber, String categoria, int quantidade) {

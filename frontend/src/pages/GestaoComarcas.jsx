@@ -141,6 +141,7 @@ export default function GestaoComarcas() {
   });
   const [viradaForms, setViradaForms] = useState({});
   const [encerrandoComarcaId, setEncerrandoComarcaId] = useState(null);
+  const [carregandoResumoId, setCarregandoResumoId] = useState(null);
   const [encerramentoResumo, setEncerramentoResumo] = useState(null);
 
   // 💥 Controles reativos de validação para a Etapa 1 (Vistoria)
@@ -1169,6 +1170,18 @@ export default function GestaoComarcas() {
     }
   };
 
+  const handleAbrirResumoEncerramento = async (comarca) => {
+    try {
+      setCarregandoResumoId(comarca.id);
+      const response = await api.get(`/comarcas/${comarca.id}/encerramento`);
+      setEncerramentoResumo(response.data);
+    } catch (err) {
+      alert(err.response?.data?.erro || "Não foi possível carregar o encerramento da obra.");
+    } finally {
+      setCarregandoResumoId(null);
+    }
+  };
+
   const handleRemoverMaterialPrevisto = async (material) => {
     if (!material?.id) return;
     const confirmar = window.confirm(
@@ -1451,6 +1464,8 @@ export default function GestaoComarcas() {
   };
 
   const getPercentualConcluido = (comarca) => {
+    if (comarca.situacao === "CONCLUIDA") return 100;
+
     const progressoVistoria =
       (temFotoVistoria(comarca) ? 50 : 0) +
       (temAssinaturaVistoria(comarca) ? 50 : 0);
@@ -1461,7 +1476,7 @@ export default function GestaoComarcas() {
 
     if (comarca.etapaAtual === 3) {
       return comarca.viradaRedeConcluida
-        ? 100
+        ? 90
         : Math.max(comarca.percentualConcluido ?? 0, 85);
     }
 
@@ -2130,7 +2145,16 @@ export default function GestaoComarcas() {
 
             {/* Ações dinâmicas com trava de avanço baseada na etapa */}
             <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex flex-col sm:flex-row gap-2">
-              {etapaAtual === 1 ? (
+              {obraConcluida ? (
+                <button
+                  type="button"
+                  onClick={() => handleAbrirResumoEncerramento(comarca)}
+                  disabled={carregandoResumoId === comarca.id}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
+                >
+                  {carregandoResumoId === comarca.id ? "Carregando encerramento..." : "Consultar encerramento"}
+                </button>
+              ) : etapaAtual === 1 ? (
                 <button
                   onClick={() => handleAvancarFase(comarca)}
                   className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
@@ -3126,7 +3150,11 @@ export default function GestaoComarcas() {
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
                 <dt className="text-xs font-bold uppercase text-slate-400">As-Built</dt>
-                <dd className="font-semibold">{encerramentoResumo.statusAsBuilt}</dd>
+                <dd className="font-semibold">
+                  {encerramentoResumo.statusAsBuilt === "HOMOLOGADO_COM_DIVERGENCIA"
+                    ? "Homologado com divergência"
+                    : "Homologado"}
+                </dd>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
                 <dt className="text-xs font-bold uppercase text-slate-400">Ordens devolvidas</dt>
@@ -3135,6 +3163,7 @@ export default function GestaoComarcas() {
               <div className="rounded-lg border border-slate-200 p-3">
                 <dt className="text-xs font-bold uppercase text-slate-400">Concluída por</dt>
                 <dd className="font-semibold">{encerramentoResumo.concluidaPor}</dd>
+                <dd className="mt-1 text-xs text-slate-500">{formatarDataHora(encerramentoResumo.concluidaEm)}</dd>
               </div>
             </dl>
             {encerramentoResumo.documentoFinalPdfPath && (

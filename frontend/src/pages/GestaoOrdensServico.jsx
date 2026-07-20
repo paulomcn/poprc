@@ -61,6 +61,17 @@ const STATUS_COLUMNS = [
   },
 ];
 
+const TRANSICOES_STATUS = {
+  ABERTA: ["EM_EXECUCAO"],
+  EM_EXECUCAO: ["AGUARDANDO_VALIDACAO"],
+  AGUARDANDO_VALIDACAO: ["EM_EXECUCAO", "CONCLUIDA"],
+  CONCLUIDA: ["FATURADA"],
+  FATURADA: [],
+};
+
+const podeTransicionarStatus = (statusAtual, novoStatus) =>
+  statusAtual === novoStatus || (TRANSICOES_STATUS[statusAtual] || []).includes(novoStatus);
+
 export default function GestaoOrdensServico() {
   const [ordensServico, setOrdensServico] = useState([]);
   const [projetos, setProjetos] = useState([]);
@@ -149,6 +160,12 @@ export default function GestaoOrdensServico() {
   const handleDrop = async (e, targetStatus) => {
     e.preventDefault();
     if (!draggingOrdem || draggingOrdem.status === targetStatus) return;
+
+    if (!podeTransicionarStatus(draggingOrdem.status, targetStatus)) {
+      alert(`A OS não pode passar diretamente de ${draggingOrdem.status} para ${targetStatus}.`);
+      setDraggingOrdem(null);
+      return;
+    }
 
     const statusOrigem = draggingOrdem.status;
     const ordemId = draggingOrdem.id;
@@ -571,7 +588,7 @@ export default function GestaoOrdensServico() {
                 ordensPorStatus[coluna.value].map((ordem) => (
                   <div
                     key={ordem.id}
-                    draggable={!ordem.arquivado}
+                    draggable={!ordem.arquivado && (TRANSICOES_STATUS[ordem.status] || []).length > 0}
                     onDragStart={(e) => handleDragStart(e, ordem)}
                     className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transform transition-all duration-100 group relative flex flex-col ${ordem.arquivado ? "opacity-60" : "cursor-grab active:cursor-grabbing active:scale-95"}`}
                   >
@@ -971,6 +988,7 @@ export default function GestaoOrdensServico() {
       {showStatusModal && selectedOrdem && (
         <StatusModal
           ordem={selectedOrdem}
+          statusPermitidos={TRANSICOES_STATUS[selectedOrdem.status] || []}
           onClose={fecharModalStatus}
           onStatusAtualizado={handleStatusUpdated}
         />

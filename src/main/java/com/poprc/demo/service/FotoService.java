@@ -3,6 +3,7 @@ package com.poprc.demo.service;
 import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
@@ -47,6 +48,7 @@ public class FotoService {
 
         OrdemServico os = osRepository.findById(osId)
                 .orElseThrow(() -> new IllegalArgumentException("Ordem de Serviço não encontrada."));
+        validarOrdemEditavel(os);
 
         Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_EVIDENCIAS)
                 .toAbsolutePath()
@@ -90,6 +92,55 @@ public class FotoService {
             throw new IllegalArgumentException("Ordem de Serviço não encontrada.");
         }
         return fotoRepository.findByOrdemServicoIdOrderByDataUploadDesc(ordemServicoId);
+    }
+
+    @Transactional
+    public void removerEvidencia(Long evidenciaId, Long funcionarioId) {
+        EvidenciaFoto evidencia = fotoRepository.findById(evidenciaId)
+                .orElseThrow(() -> new IllegalArgumentException("Evidência fotográfica não encontrada."));
+
+        if (funcionarioId == null || evidencia.getFuncionario() == null
+                || !funcionarioId.equals(evidencia.getFuncionario().getId())) {
+            throw new IllegalStateException("Apenas o técnico que enviou a evidência pode removê-la.");
+        }
+
+        validarOrdemEditavel(evidencia.getOrdemServico());
+        removerArquivo(evidencia.getCaminhoArquivo());
+        fotoRepository.delete(evidencia);
+    }
+
+    private void validarOrdemEditavel(OrdemServico ordemServico) {
+        if (ordemServico == null) {
+            throw new IllegalArgumentException("Ordem de Serviço não encontrada.");
+        }
+        if (StatusOS.AGUARDANDO_VALIDACAO.equals(ordemServico.getStatus())
+                || StatusOS.CONCLUIDA.equals(ordemServico.getStatus())
+                || StatusOS.FATURADA.equals(ordemServico.getStatus())) {
+            throw new IllegalStateException(
+                    "As evidências não podem ser alteradas após o envio da OS para validação.");
+        }
+    }
+
+    private void removerArquivo(String caminhoArquivo) {
+        if (caminhoArquivo == null || !caminhoArquivo.startsWith("/uploads/evidencias/")) {
+            return;
+        }
+
+        Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_EVIDENCIAS)
+                .toAbsolutePath()
+                .normalize();
+        Path arquivo = pastaDestino.resolve(Paths.get(caminhoArquivo).getFileName().toString())
+                .toAbsolutePath()
+                .normalize();
+        if (!arquivo.startsWith(pastaDestino)) {
+            throw new IllegalStateException("Caminho de evidência inválido.");
+        }
+
+        try {
+            Files.deleteIfExists(arquivo);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Não foi possível remover a evidência do servidor.", ex);
+        }
     }
 
     private void validarArquivo(MultipartFile arquivo) {

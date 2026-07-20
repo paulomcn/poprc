@@ -183,6 +183,12 @@ public class ComarcaController {
         return ResponseEntity.ok(comarcaService.concluirObra(id, request.getConcluidaPor()));
     }
 
+    @GetMapping("/{id}/encerramento")
+    public ResponseEntity<ComarcaService.EncerramentoObraResultado> buscarEncerramento(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(comarcaService.buscarEncerramento(id));
+    }
+
     @PatchMapping("/{id}/as-built/reabrir")
     public ResponseEntity<Map<String, Object>> reabrirAsBuilt(@PathVariable Long id) {
         return ResponseEntity.ok(comarcaService.reabrirAsBuilt(id));

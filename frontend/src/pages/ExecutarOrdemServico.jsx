@@ -13,7 +13,10 @@ import {
   Save,
   Clock,
   ListChecks,
-  Users
+  Users,
+  Trash2,
+  X,
+  ExternalLink
 } from 'lucide-react'
 import api from '../services/api'
 import { buildApiFileUrl } from '../services/runtimeConfig'
@@ -54,6 +57,7 @@ function formatDate(value) {
 
 function getTemporalAlerts(os) {
   if (!os) return []
+  if (['CONCLUIDA', 'FATURADA'].includes(os.status)) return []
 
   const now = new Date()
   const inicio = os.dataHoraInicio ? new Date(os.dataHoraInicio) : null
@@ -121,6 +125,8 @@ export default function ExecutarOrdemServico() {
   const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploadingFoto, setUploadingFoto] = useState(false)
+  const [evidenciaRemovendoId, setEvidenciaRemovendoId] = useState(null)
+  const [evidenciaAberta, setEvidenciaAberta] = useState(null)
   const [savingChecklist, setSavingChecklist] = useState(false)
   const [feedbackMsg, setFeedbackMsg] = useState({ tipo: '', texto: '' })
   const [erroCarregamento, setErroCarregamento] = useState('')
@@ -298,6 +304,31 @@ export default function ExecutarOrdemServico() {
     )
   }
 
+  const handleRemoverEvidencia = async (evidencia) => {
+    if (!tecnico || !evidencia) return
+    const confirmou = window.confirm('Remover esta evidência fotográfica? Esta ação apagará o arquivo enviado.')
+    if (!confirmou) return
+
+    try {
+      setEvidenciaRemovendoId(evidencia.id)
+      await api.delete(`/campo/evidencias/${evidencia.id}`, {
+        params: { funcionarioId: tecnico.id }
+      })
+      setEvidencias((atuais) => atuais.filter((item) => item.id !== evidencia.id))
+      setEvidenciasComErro((atuais) => {
+        const proximos = { ...atuais }
+        delete proximos[evidencia.id]
+        return proximos
+      })
+      setEvidenciaAberta((atual) => atual?.id === evidencia.id ? null : atual)
+      mostrarFeedback('sucesso', 'Evidência removida do relatório fotográfico.')
+    } catch (err) {
+      mostrarFeedback('erro', getApiErrorMessage(err, 'Não foi possível remover a evidência.'))
+    } finally {
+      setEvidenciaRemovendoId(null)
+    }
+  }
+
   const mostrarFeedback = (tipo, texto) => {
     setFeedbackMsg({ tipo, texto })
     setTimeout(() => setFeedbackMsg({ tipo: '', texto: '' }), 5000)
@@ -337,6 +368,9 @@ export default function ExecutarOrdemServico() {
   const cliente = os.cliente || os.contrato?.cliente || os.projeto?.nome || 'Ordem de Serviço'
   const endereco = os.endereco || os.projeto?.endereco || 'Endereço não informado'
   const contato = os.contato || 'Contato não informado'
+  const ordemFinalizada = ['CONCLUIDA', 'FATURADA'].includes(os.status)
+  const ordemSomenteLeitura = ['AGUARDANDO_VALIDACAO', 'CONCLUIDA', 'FATURADA'].includes(os.status)
+  const evidenciasEditaveis = !ordemSomenteLeitura
 
   return (
     <div className="bg-slate-950 min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8 font-sans antialiased">
@@ -416,7 +450,7 @@ export default function ExecutarOrdemServico() {
                 </h3>
                 <button
                   onClick={handleSalvarChecklist}
-                  disabled={savingChecklist}
+                  disabled={savingChecklist || ordemSomenteLeitura}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs rounded-xl transition"
                 >
                   {savingChecklist ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -451,6 +485,7 @@ export default function ExecutarOrdemServico() {
                           <input
                             type="checkbox"
                             checked={checked}
+                            disabled={ordemSomenteLeitura}
                             onChange={() => handleToggleAtividade(atividade.id)}
                             className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
                           />
@@ -462,6 +497,13 @@ export default function ExecutarOrdemServico() {
                     })}
                   </section>
                 ))}
+                {ordemSomenteLeitura && (
+                  <p className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-center text-[11px] font-semibold text-emerald-300">
+                    {os.status === 'AGUARDANDO_VALIDACAO'
+                      ? 'Checklist enviado para validação e disponível somente para consulta.'
+                      : 'Checklist encerrado e disponível somente para consulta.'}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -519,7 +561,7 @@ export default function ExecutarOrdemServico() {
               {evidencias.length > 0 && (
                 <div className="grid grid-cols-2 gap-2">
                   {evidencias.map((evidencia) => (
-                    <div key={evidencia.id} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+                    <div key={evidencia.id} className="relative overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
                       {evidenciasComErro[evidencia.id] ? (
                         <div className="flex aspect-square flex-col items-center justify-center gap-2 p-2 text-center text-[10px] text-rose-300">
                           <AlertCircle className="h-5 w-5" />
@@ -534,10 +576,9 @@ export default function ExecutarOrdemServico() {
                           </a>
                         </div>
                       ) : (
-                        <a
-                          href={buildApiFileUrl(evidencia.caminhoArquivo)}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => setEvidenciaAberta(evidencia)}
                           className="group block"
                           title={`Registrada por ${evidencia.funcionarioNome || 'técnico'} em ${formatDate(evidencia.dataUpload)}`}
                         >
@@ -547,15 +588,31 @@ export default function ExecutarOrdemServico() {
                             onError={() => setEvidenciasComErro((atuais) => ({ ...atuais, [evidencia.id]: true }))}
                             className="aspect-square w-full object-cover transition group-hover:opacity-80"
                           />
-                        </a>
+                        </button>
                       )}
-                      <span className="block truncate px-2 py-1.5 text-[9px] text-slate-500">
-                        {formatDate(evidencia.dataUpload)}
-                      </span>
+                      <div className="flex items-center justify-between gap-1 px-2 py-1.5">
+                        <span className="min-w-0 truncate text-[9px] text-slate-500">
+                          {formatDate(evidencia.dataUpload)}
+                        </span>
+                        {evidenciasEditaveis && String(evidencia.funcionarioId) === String(tecnico?.id) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoverEvidencia(evidencia)}
+                            disabled={evidenciaRemovendoId === evidencia.id}
+                            className="shrink-0 rounded p-1 text-slate-500 hover:bg-rose-950 hover:text-rose-300 disabled:opacity-50"
+                            title="Remover evidência"
+                          >
+                            {evidenciaRemovendoId === evidencia.id
+                              ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              : <Trash2 className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
+              {evidenciasEditaveis ? (
               <div className="bg-slate-950/40 p-4 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-3 text-center">
                 {uploadingFoto ? (
                   <div className="flex flex-col items-center gap-2 text-xs text-slate-400 py-4">
@@ -581,6 +638,11 @@ export default function ExecutarOrdemServico() {
                   </>
                 )}
               </div>
+              ) : (
+                <p className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-3 py-3 text-center text-[11px] font-semibold text-emerald-300">
+                  Relatório encerrado. As evidências permanecem disponíveis somente para consulta.
+                </p>
+              )}
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2 shadow-md">
@@ -595,14 +657,21 @@ export default function ExecutarOrdemServico() {
 
               {os.status === 'EM_EXECUCAO' && (
                 <button
-                  onClick={() => handleMudarStatus('CONCLUIDA')}
+                  onClick={() => handleMudarStatus('AGUARDANDO_VALIDACAO')}
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/10"
                 >
-                  Concluir Atendimento
+                  Enviar para Validação
                 </button>
               )}
 
-              {os.status === 'CONCLUIDA' && (
+              {os.status === 'AGUARDANDO_VALIDACAO' && (
+                <div className="w-full text-center py-2.5 text-xs font-bold text-amber-300 flex items-center justify-center gap-1.5 bg-amber-950/20 rounded-xl border border-amber-900/30">
+                  <Clock className="w-4 h-4" />
+                  Relatório aguardando validação administrativa
+                </div>
+              )}
+
+              {ordemFinalizada && (
                 <div className="w-full text-center py-2.5 text-xs font-bold text-emerald-400 flex items-center justify-center gap-1.5 bg-emerald-950/20 rounded-xl border border-emerald-900/30">
                   <CheckCircle2 className="w-4 h-4" />
                   OS Finalizada com Sucesso!
@@ -612,6 +681,36 @@ export default function ExecutarOrdemServico() {
           </div>
         </div>
       </div>
+
+      {evidenciaAberta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label="Evidência fotográfica ampliada">
+          <div className="w-full max-w-3xl overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-800 p-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-white">{evidenciaAberta.funcionarioNome || 'Técnico não informado'}</p>
+                <p className="mt-1 text-xs text-slate-400">{formatDate(evidenciaAberta.dataUpload)}</p>
+                <p className="mt-1 text-[10px] text-slate-500">GPS: {evidenciaAberta.latitude}, {evidenciaAberta.longitude}</p>
+              </div>
+              <button type="button" onClick={() => setEvidenciaAberta(null)} className="rounded p-2 text-slate-400 hover:bg-slate-800 hover:text-white" title="Fechar visualização">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex max-h-[70vh] items-center justify-center bg-black p-3">
+              <img src={buildApiFileUrl(evidenciaAberta.caminhoArquivo)} alt={`Evidência ampliada da OS ${os.numeroOs}`} className="max-h-[66vh] max-w-full object-contain" />
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 p-3">
+              <a href={buildApiFileUrl(evidenciaAberta.caminhoArquivo)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-800">
+                <ExternalLink className="h-4 w-4" /> Abrir original
+              </a>
+              {evidenciasEditaveis && String(evidenciaAberta.funcionarioId) === String(tecnico?.id) && (
+                <button type="button" onClick={() => handleRemoverEvidencia(evidenciaAberta)} disabled={evidenciaRemovendoId === evidenciaAberta.id} className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-xs font-bold text-white hover:bg-rose-600 disabled:opacity-50">
+                  <Trash2 className="h-4 w-4" /> Remover evidência
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

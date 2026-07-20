@@ -218,7 +218,7 @@ public class ComarcaService {
         }
 
         comarca.setEtapaAtual(3);
-        comarca.setPercentualConcluido(BigDecimal.valueOf(Boolean.TRUE.equals(comarca.getViradaRedeConcluida()) ? 100 : 85));
+        comarca.setPercentualConcluido(BigDecimal.valueOf(Boolean.TRUE.equals(comarca.getViradaRedeConcluida()) ? 90 : 85));
         comarca.setSituacao("VIRADA_DE_REDE");
         return comarcaRepository.save(comarca);
     }
@@ -243,7 +243,7 @@ public class ComarcaService {
         comarca.setViradaRedeConcluida(Boolean.TRUE.equals(concluida));
         if (Boolean.TRUE.equals(concluida)) {
             comarca.setEtapaAtual(3);
-            comarca.setPercentualConcluido(BigDecimal.valueOf(100));
+            comarca.setPercentualConcluido(BigDecimal.valueOf(90));
             comarca.setSituacao("VIRADA_DE_REDE_CONCLUIDA");
         } else if (comarca.getEtapaAtual() != null && comarca.getEtapaAtual() >= 3) {
             comarca.setPercentualConcluido(BigDecimal.valueOf(85));
@@ -534,6 +534,16 @@ public class ComarcaService {
         }
 
         return montarEncerramento(comarcaRepository.save(comarca));
+    }
+
+    @Transactional(readOnly = true)
+    public EncerramentoObraResultado buscarEncerramento(Long id) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Obra não encontrada."));
+        if (!OBRA_CONCLUIDA.equals(comarca.getSituacao()) || comarca.getDataConclusao() == null) {
+            throw new IllegalStateException("A obra ainda não possui encerramento registrado.");
+        }
+        return montarEncerramento(comarca);
     }
 
     @Transactional

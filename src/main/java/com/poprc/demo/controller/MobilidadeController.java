@@ -70,6 +70,14 @@ public class MobilidadeController {
         return ResponseEntity.ok(evidencias);
     }
 
+    @DeleteMapping("/evidencias/{evidenciaId}")
+    public ResponseEntity<Void> removerEvidencia(
+            @PathVariable Long evidenciaId,
+            @RequestParam("funcionarioId") Long funcionarioId) {
+        fotoService.removerEvidencia(evidenciaId, funcionarioId);
+        return ResponseEntity.noContent().build();
+    }
+
     @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
     public ResponseEntity<Map<String, String>> tratarErroOperacional(RuntimeException ex) {
         return ResponseEntity.badRequest().body(Map.of("erro", ex.getMessage()));
