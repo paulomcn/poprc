@@ -41,3 +41,23 @@ O fluxo principal foi aprovado funcionalmente. A autenticacao das rotas `/api/**
 Em 20/07/2026, a mesma cobertura foi executada novamente pelo perfil `test` no
 banco descartavel `poprc_test`: 75 testes passaram, as 15 migracoes foram
 aplicadas desde um schema vazio e a base foi removida automaticamente ao final.
+
+## Homologacao de interface
+
+As telas Dashboard Executivo, Gestao de Obras, Ordens de Servico, Area do
+Tecnico e Auditoria de Retirada/Devolucao foram verificadas em desktop (1280 x
+720) e celular (390 x 844), com dados reais da API local.
+
+Resultados:
+
+- Dashboard carregou indicadores, filtros, alertas e acessos rapidos sem erros.
+- Sidebar mobile abriu e fechou completamente, sem manter overlay ativo.
+- Area do Tecnico exibiu equipe, alertas, prazos e OS atribuidas sem overflow.
+- Ordens de Servico carregou as colunas depois do debounce e manteve os cards
+  acessiveis no celular.
+- Gestao de Obras teve o grupo de filtros ajustado para nao cortar o contador
+  nem criar rolagem horizontal global no celular.
+- Auditoria teve o seletor de OS ajustado para respeitar a largura disponivel;
+  tabelas extensas mantem somente a rolagem horizontal local esperada.
+- As duas correcoes responsivas foram verificadas novamente em desktop sem
+  regressao de largura ou layout.

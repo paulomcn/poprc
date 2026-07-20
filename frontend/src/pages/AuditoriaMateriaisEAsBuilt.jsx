@@ -323,13 +323,13 @@ export default function AuditoriaMateriaisEAsBuilt() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300">
-              <Briefcase size={16} className="text-indigo-400" />
+          <div className="flex min-w-0 w-full items-center gap-3 sm:w-auto">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300 sm:flex-none">
+              <Briefcase size={16} className="shrink-0 text-indigo-400" />
               <select
                 value={selectedComarcaId}
                 onChange={(e) => setSelectedComarcaId(e.target.value)}
-                className="bg-transparent border-none outline-none text-white text-xs font-bold cursor-pointer"
+                className="min-w-0 w-full cursor-pointer border-none bg-transparent text-xs font-bold text-white outline-none"
               >
                 {comarcas.map((comarca) => (
                   <option
@@ -345,7 +345,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
             </div>
             <button
               onClick={() => carregarAuditoria(selectedComarcaId)}
-              className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-800 transition"
+              className="shrink-0 rounded-xl border border-slate-800 bg-slate-900 p-2.5 transition hover:bg-slate-800"
             >
               <RefreshCw className="w-4 h-4 text-slate-400" />
             </button>

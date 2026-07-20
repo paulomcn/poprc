@@ -1538,8 +1538,8 @@ export default function GestaoComarcas() {
             infraestrutura regional.
           </p>
         </div>
-        <div className="flex items-end gap-3">
-          <label className="flex items-center gap-2 pb-2 text-xs font-bold text-slate-600">
+        <div className="grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-[auto_minmax(12rem,1fr)_auto] sm:items-end">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600 sm:pb-2">
             <input
               type="checkbox"
               checked={incluirArquivados}
@@ -1547,14 +1547,14 @@ export default function GestaoComarcas() {
             />
             Mostrar arquivadas
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-[10px] font-black uppercase text-slate-500">
               Filtrar por etapa
             </span>
             <select
               value={filtroEtapa}
               onChange={(event) => setFiltroEtapa(event.target.value)}
-              className="min-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 sm:min-w-48"
             >
               <option value="TODAS">Todas as obras</option>
               <option value="VISTORIA">Vistoria</option>
@@ -1563,7 +1563,7 @@ export default function GestaoComarcas() {
               <option value="CONCLUIDA">Concluídas</option>
             </select>
           </label>
-          <span className="pb-2 text-xs font-bold text-slate-500">
+          <span className="text-xs font-bold text-slate-500 sm:pb-2">
             {comarcasFiltradas.length} resultado(s)
           </span>
         </div>
