@@ -38,6 +38,7 @@ export default function ConfiguracaoNotificacoes() {
   const [atividadeEditandoId, setAtividadeEditandoId] = useState(null);
   const [loadingTest, setLoadingTest] = useState(false);
   const [notificacoes, setNotificacoes] = useState([]);
+  const [filtroNotificacoes, setFiltroNotificacoes] = useState("ATIVAS");
   const [canais, setCanais] = useState({
     emailHabilitado: false,
     emailRemetente: "",
@@ -184,10 +185,11 @@ export default function ConfiguracaoNotificacoes() {
       const encontradas = response.data.alertasEncontrados || 0;
       const enviados = response.data.emailsEnviados || 0;
       const falhos = response.data.emailsFalhos || 0;
+      const resolvidas = response.data.notificacoesResolvidas || 0;
       const email = response.data.emailHabilitado
         ? `${enviados} e-mail(s) enviado(s)${falhos ? ` e ${falhos} com falha` : ""}`
         : "canal de e-mail desabilitado";
-      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s) notificação(ões) e ${email}.`);
+      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s), ${resolvidas} resolvida(s) e ${email}.`);
       await loadNotificacoes();
     } catch (err) {
       showError("Falha ao acionar o motor de alertas.");
@@ -204,6 +206,11 @@ export default function ConfiguracaoNotificacoes() {
       showError("Falha ao marcar a notificação como lida.");
     }
   };
+
+  const notificacoesAtivas = notificacoes.filter((notificacao) => notificacao.ativa !== false);
+  const notificacoesFiltradas = filtroNotificacoes === "ATIVAS"
+    ? notificacoesAtivas
+    : notificacoes;
 
   return (
     <div className="space-y-8">
@@ -369,17 +376,37 @@ export default function ConfiguracaoNotificacoes() {
             </h2>
             <p className="text-sm text-slate-500 mt-1">Registros persistidos pela varredura de prazos, estoque e contratos.</p>
           </div>
-          <button type="button" onClick={loadNotificacoes} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-            Atualizar
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <button
+                type="button"
+                onClick={() => setFiltroNotificacoes("ATIVAS")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filtroNotificacoes === "ATIVAS" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
+              >
+                Ativas ({notificacoesAtivas.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroNotificacoes("TODAS")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filtroNotificacoes === "TODAS" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
+              >
+                Histórico ({notificacoes.length})
+              </button>
+            </div>
+            <button type="button" onClick={loadNotificacoes} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+              Atualizar
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2">
-          {notificacoes.length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">Nenhuma notificação registrada.</p>
+          {notificacoesFiltradas.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">
+              {filtroNotificacoes === "ATIVAS" ? "Nenhum alerta ativo." : "Nenhuma notificação registrada."}
+            </p>
           )}
-          {notificacoes.map((notificacao) => (
-            <div key={notificacao.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 ${notificacao.lidaEm ? "border-slate-200 bg-slate-50" : "border-amber-200 bg-amber-50"}`}>
+          {notificacoesFiltradas.map((notificacao) => (
+            <div key={notificacao.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 ${notificacao.ativa === false ? "border-slate-200 bg-white" : notificacao.lidaEm ? "border-slate-200 bg-slate-50" : "border-amber-200 bg-amber-50"}`}>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${notificacao.severidade === "CRITICA" ? "bg-rose-100 text-rose-700" : notificacao.severidade === "ALERTA" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
@@ -387,12 +414,21 @@ export default function ConfiguracaoNotificacoes() {
                   </span>
                   {notificacao.numeroOs && <span className="text-xs font-bold text-slate-600">{notificacao.numeroOs}</span>}
                   {notificacao.destinatarioNome && <span className="text-xs text-slate-500">Para: {notificacao.destinatarioNome}</span>}
+                  <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${notificacao.ativa === false ? "bg-slate-100 text-slate-500" : "bg-emerald-100 text-emerald-700"}`}>
+                    {notificacao.ativa === false ? "Resolvido" : "Ativo"}
+                  </span>
                 </div>
                 <p className="mt-2 font-bold text-slate-800">{notificacao.titulo}</p>
                 <p className="mt-1 text-sm text-slate-600">{notificacao.mensagem}</p>
                 <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
                   <Clock size={13} /> {new Date(notificacao.criadaEm).toLocaleString("pt-BR")}
                 </p>
+                {notificacao.resolvidaEm && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Resolvido em {new Date(notificacao.resolvidaEm).toLocaleString("pt-BR")}
+                    {notificacao.motivoResolucao ? `: ${notificacao.motivoResolucao}` : ""}
+                  </p>
+                )}
               </div>
               {!notificacao.lidaEm && (
                 <button type="button" onClick={() => handleMarcarComoLida(notificacao.id)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50">

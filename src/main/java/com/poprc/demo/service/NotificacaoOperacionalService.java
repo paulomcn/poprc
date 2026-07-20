@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -26,12 +28,15 @@ public class NotificacaoOperacionalService {
             String mensagem,
             OrdemServico ordemServico,
             Funcionario destinatario) {
-        if (repository.existsByChave(chave)) {
+        if (repository.findFirstByChaveBaseAndResolvidaEmIsNull(chave).isPresent()) {
             return false;
         }
 
         NotificacaoOperacional notificacao = new NotificacaoOperacional();
-        notificacao.setChave(chave);
+        notificacao.setChaveBase(chave);
+        notificacao.setChave(repository.existsByChave(chave)
+                ? chave + ":OCORRENCIA:" + UUID.randomUUID()
+                : chave);
         notificacao.setTipo(tipo);
         notificacao.setSeveridade(severidade);
         notificacao.setTitulo(titulo);
@@ -41,6 +46,22 @@ public class NotificacaoOperacionalService {
         notificacao.setDestinatario(destinatario);
         repository.save(notificacao);
         return true;
+    }
+
+    @Transactional
+    public int resolverAusentesDoTipo(String tipo, Set<String> chavesAtivas, String motivo) {
+        Set<String> chavesNormalizadas = chavesAtivas == null ? Set.of() : Set.copyOf(chavesAtivas);
+        List<NotificacaoOperacional> resolvidas = repository.findAllByTipoAndResolvidaEmIsNull(tipo).stream()
+                .filter(notificacao -> !chavesNormalizadas.contains(notificacao.getChaveBase()))
+                .peek(notificacao -> {
+                    notificacao.setResolvidaEm(LocalDateTime.now());
+                    notificacao.setMotivoResolucao(motivo);
+                })
+                .toList();
+        if (!resolvidas.isEmpty()) {
+            repository.saveAll(resolvidas);
+        }
+        return resolvidas.size();
     }
 
     @Transactional(readOnly = true)

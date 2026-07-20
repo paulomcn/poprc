@@ -22,6 +22,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 @EnableScheduling
@@ -46,10 +48,13 @@ public class AgendadorAlertasService {
         int antecedenciaContratoDias = inteiroPositivo(config.getAntecedenciaContratoDias(), 30);
         int encontrados = 0;
         int novos = 0;
+        int resolvidos = 0;
         int emailsEnviados = 0;
         int emailsFalhos = 0;
 
         if (config.isAlertaOsAtrasada()) {
+            Set<String> osAtrasadasAtivas = new HashSet<>();
+            Set<String> osProximasDoPrazoAtivas = new HashSet<>();
             for (OrdemServico os : osRepository.findAll()) {
                 if (os.getDeadline() == null || finalizada(os.getStatus())) {
                     continue;
@@ -57,9 +62,11 @@ public class AgendadorAlertasService {
 
                 Funcionario responsavel = os.getProjeto() == null ? null : os.getProjeto().getResponsavel();
                 if (os.getDeadline().isBefore(agora)) {
+                    String chave = "OS_ATRASADA:" + os.getId() + ":" + os.getDeadline();
+                    osAtrasadasAtivas.add(chave);
                     encontrados++;
                     boolean criada = notificacaoService.registrarSeAusente(
-                            "OS_ATRASADA:" + os.getId() + ":" + os.getDeadline(),
+                            chave,
                             "OS_ATRASADA",
                             "CRITICA",
                             "OS " + os.getNumeroOs() + " atrasada",
@@ -74,9 +81,11 @@ public class AgendadorAlertasService {
                     if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
                     if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
                 } else if (!os.getDeadline().isAfter(agora.plusHours(antecedenciaOsHoras))) {
+                    String chave = "OS_PRAZO_24H:" + os.getId() + ":" + os.getDeadline();
+                    osProximasDoPrazoAtivas.add(chave);
                     encontrados++;
                     boolean criada = notificacaoService.registrarSeAusente(
-                            "OS_PRAZO_24H:" + os.getId() + ":" + os.getDeadline(),
+                            chave,
                             "OS_PRAZO_24H",
                             "ALERTA",
                             "OS " + os.getNumeroOs() + " próxima do prazo",
@@ -93,9 +102,15 @@ public class AgendadorAlertasService {
                     if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
                 }
             }
+            resolvidos += notificacaoService.resolverAusentesDoTipo(
+                    "OS_ATRASADA", osAtrasadasAtivas, "A OS foi regularizada, finalizada ou teve o prazo atualizado.");
+            resolvidos += notificacaoService.resolverAusentesDoTipo(
+                    "OS_PRAZO_24H", osProximasDoPrazoAtivas,
+                    "A OS saiu da janela de aviso, foi finalizada ou passou para a condição de atraso.");
         }
 
         if (config.isAlertaEstoqueCritico()) {
+            Set<String> estoquesCriticosAtivos = new HashSet<>();
             for (SaldoMaterialLocal saldoLocal : saldoMaterialLocalRepository
                     .findAllByOrderByMaterialNomeAscLocalEstoqueNomeAsc()) {
                 Material material = saldoLocal.getMaterial();
@@ -120,9 +135,11 @@ public class AgendadorAlertasService {
                 String unidade = controlaMetragem(material)
                         ? "m"
                         : material.getUnidadeMedida() == null ? "UNIDADE" : material.getUnidadeMedida().name();
+                String chave = "ESTOQUE_CRITICO:" + material.getId() + ":" + saldoLocal.getLocalEstoque().getId();
+                estoquesCriticosAtivos.add(chave);
                 encontrados++;
                 boolean criada = notificacaoService.registrarSeAusente(
-                        "ESTOQUE_CRITICO:" + material.getId() + ":" + saldoLocal.getLocalEstoque().getId(),
+                        chave,
                         "ESTOQUE_CRITICO",
                         "ALERTA",
                         "Estoque crítico: " + material.getNome() + " em " + local,
@@ -138,9 +155,13 @@ public class AgendadorAlertasService {
                 if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
                 if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
             }
+            resolvidos += notificacaoService.resolverAusentesDoTipo(
+                    "ESTOQUE_CRITICO", estoquesCriticosAtivos,
+                    "O saldo livre voltou a ficar acima do estoque mínimo configurado.");
         }
 
         if (config.isAlertaContratoVencendo()) {
+            Set<String> contratosVencendoAtivos = new HashSet<>();
             for (Contrato contrato : contratoRepository.findAll()) {
                 if (contrato.getVigenciaFim() == null) {
                     continue;
@@ -149,9 +170,11 @@ public class AgendadorAlertasService {
                 if (diasParaVencer < 0 || diasParaVencer > antecedenciaContratoDias) {
                     continue;
                 }
+                String chave = "CONTRATO_VENCENDO:" + contrato.getId() + ":" + contrato.getVigenciaFim();
+                contratosVencendoAtivos.add(chave);
                 encontrados++;
                 boolean criada = notificacaoService.registrarSeAusente(
-                        "CONTRATO_VENCENDO:" + contrato.getId() + ":" + contrato.getVigenciaFim(),
+                        chave,
                         "CONTRATO_VENCENDO",
                         "INFORMATIVA",
                         "Contrato próximo do vencimento",
@@ -167,10 +190,13 @@ public class AgendadorAlertasService {
                 if (statusEmail == EmailService.StatusEnvio.ENVIADO) emailsEnviados++;
                 if (statusEmail == EmailService.StatusEnvio.FALHA) emailsFalhos++;
             }
+            resolvidos += notificacaoService.resolverAusentesDoTipo(
+                    "CONTRATO_VENCENDO", contratosVencendoAtivos,
+                    "O contrato saiu da janela de vencimento ou teve sua vigência atualizada.");
         }
 
         return new VarreduraResultado(
-                encontrados, novos, encontrados - novos, agora, "INTERNO_E_EMAIL",
+                encontrados, novos, encontrados - novos, resolvidos, agora, "INTERNO_E_EMAIL",
                 emailsEnviados, emailsFalhos, emailService.isHabilitado());
     }
 
@@ -228,6 +254,7 @@ public class AgendadorAlertasService {
             int alertasEncontrados,
             int notificacoesCriadas,
             int notificacoesJaExistentes,
+            int notificacoesResolvidas,
             LocalDateTime executadaEm,
             String canal,
             int emailsEnviados,
