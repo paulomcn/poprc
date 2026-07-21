@@ -63,6 +63,7 @@ public class ComarcaService {
     private final OrdemRetiradaRepository ordemRetiradaRepository;
     private final DocumentoInternoRepository documentoInternoRepository;
     private final ProjetoRepository projetoRepository;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
 
     public Optional<Comarca> obterPorId(Long id) {
         return comarcaRepository.findById(id);
@@ -214,7 +215,12 @@ public class ComarcaService {
             comarca.setEtapaAtual(2);
             comarca.setPercentualConcluido(BigDecimal.valueOf(70));
             comarca.setSituacao("INFRAESTRUTURA_LIBERADA");
-            return comarcaRepository.save(comarca);
+            Comarca salva = comarcaRepository.save(comarca);
+            if (salva.getOrdemServico() != null) {
+                fluxoOrdemServicoService.registrarVistoriaLiberada(
+                        salva.getOrdemServico().getId(), "Gestão de Obras");
+            }
+            return salva;
         }
 
         comarca.setEtapaAtual(3);
@@ -478,6 +484,10 @@ public class ComarcaService {
         comarca.setAsBuiltStatus(conciliado ? AS_BUILT_HOMOLOGADO : AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA);
         comarca.setSituacao(conciliado ? "AS_BUILT_HOMOLOGADO" : "AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA");
         Comarca comarcaSalva = comarcaRepository.save(comarca);
+        if (comarcaSalva.getOrdemServico() != null) {
+            fluxoOrdemServicoService.registrarAsBuiltHomologado(
+                    comarcaSalva.getOrdemServico().getId(), "Auditoria de Retirada/Devolução");
+        }
         return montarAuditoriaComarca(comarcaSalva);
     }
 
@@ -500,9 +510,11 @@ public class ComarcaService {
             throw new IllegalArgumentException("Homologue o As-Built antes de encerrar a obra.");
         }
         if (comarca.getOrdemServico() == null
-                || (comarca.getOrdemServico().getStatus() != StatusOS.CONCLUIDA
+                || (comarca.getOrdemServico().getStatus() != StatusOS.AGUARDANDO_ENCERRAMENTO
+                        && comarca.getOrdemServico().getStatus() != StatusOS.CONCLUIDA
                         && comarca.getOrdemServico().getStatus() != StatusOS.FATURADA)) {
-            throw new IllegalArgumentException("Conclua a Ordem de Serviço no Portal Técnico antes de encerrar a obra.");
+            throw new IllegalArgumentException(
+                    "Conclua a validação técnica, a devolução e a auditoria antes de encerrar a obra.");
         }
 
         List<OrdemRetirada> ordensRetirada = ordemRetiradaRepository
@@ -533,7 +545,10 @@ public class ComarcaService {
             projetoRepository.save(projeto);
         }
 
-        return montarEncerramento(comarcaRepository.save(comarca));
+        Comarca salva = comarcaRepository.save(comarca);
+        fluxoOrdemServicoService.registrarEncerramento(
+                salva.getOrdemServico().getId(), concluidaPor.trim());
+        return montarEncerramento(salva);
     }
 
     @Transactional(readOnly = true)

@@ -1,15 +1,20 @@
-import React, { useState } from 'react'
-import { X, Loader, AlertCircle, CheckCircle } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { X, Loader, AlertCircle, CheckCircle, History } from 'lucide-react'
 import api from '../services/api'
 
 const STATUS_OPTIONS = [
   { value: 'ABERTA', label: 'Aberta', color: 'text-blue-600 bg-blue-50' },
+  { value: 'AGUARDANDO_VISTORIA', label: 'Aguardando vistoria', color: 'text-blue-600 bg-blue-50' },
+  { value: 'AGUARDANDO_RETIRADA', label: 'Aguardando retirada', color: 'text-cyan-600 bg-cyan-50' },
   { value: 'EM_EXECUCAO', label: 'Em Execução', color: 'text-yellow-600 bg-yellow-50' },
   {
     value: 'AGUARDANDO_VALIDACAO',
     label: 'Aguardando Validação',
     color: 'text-purple-600 bg-purple-50',
   },
+  { value: 'AGUARDANDO_DEVOLUCAO', label: 'Aguardando devolução', color: 'text-orange-600 bg-orange-50' },
+  { value: 'AGUARDANDO_AUDITORIA', label: 'Aguardando auditoria', color: 'text-violet-600 bg-violet-50' },
+  { value: 'AGUARDANDO_ENCERRAMENTO', label: 'Aguardando encerramento', color: 'text-teal-600 bg-teal-50' },
   { value: 'CONCLUIDA', label: 'Concluída', color: 'text-green-600 bg-green-50' },
   { value: 'FATURADA', label: 'Faturada', color: 'text-gray-600 bg-gray-50' },
 ]
@@ -19,6 +24,19 @@ export default function StatusModal({ ordem, statusPermitidos = [], onClose, onS
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [sucesso, setSucesso] = useState(false)
+  const [historico, setHistorico] = useState([])
+
+  useEffect(() => {
+    let ativo = true
+    api.get(`/ordens-servico/${ordem.id}/historico-status`)
+      .then((response) => {
+        if (ativo) setHistorico(response.data || [])
+      })
+      .catch(() => {
+        if (ativo) setHistorico([])
+      })
+    return () => { ativo = false }
+  }, [ordem.id])
 
   const handleAtualizarStatus = async () => {
     if (novoStatus === ordem.status) {
@@ -118,6 +136,26 @@ export default function StatusModal({ ordem, statusPermitidos = [], onClose, onS
                     {status.label}
                   </span>
                 </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 pt-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <History className="h-4 w-4" /> Histórico operacional
+            </div>
+            <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+              {historico.length === 0 ? (
+                <p className="text-xs text-gray-400">Nenhuma transição registrada.</p>
+              ) : historico.slice().reverse().map((item) => (
+                <div key={item.id} className="border-l-2 border-blue-200 pl-3 text-xs">
+                  <p className="font-semibold text-gray-700">
+                    {String(item.statusNovo).replaceAll('_', ' ')}
+                  </p>
+                  <p className="text-gray-500">
+                    {item.responsavel} · {new Date(item.registradoEm).toLocaleString('pt-BR')}
+                  </p>
+                </div>
               ))}
             </div>
           </div>

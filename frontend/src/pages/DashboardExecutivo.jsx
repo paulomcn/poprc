@@ -18,6 +18,7 @@ import {
 import api from "../services/api";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
+import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 
 const indicadorClasses = {
   neutro: "border-slate-200 bg-white text-slate-700",
@@ -228,6 +229,8 @@ export default function DashboardExecutivo() {
       </section>
 
       {error && <Alert type="error" message={error} />}
+
+      <FilaPendenciasOperacionais titulo="Pendências por área responsável" limite={8} />
 
       {(data?.totalComarcasEmAtraso || 0) > 0 && (
         <section className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">

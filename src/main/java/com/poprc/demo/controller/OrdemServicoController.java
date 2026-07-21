@@ -4,9 +4,11 @@ import com.poprc.demo.dto.CriarOrdemServicoRequest;
 import com.poprc.demo.dto.ArquivamentoRequest;
 import com.poprc.demo.exception.SaldoInsuficienteException;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.HistoricoStatusOS;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.service.OrdemServicoService;
 import com.poprc.demo.service.ArquivamentoService;
+import com.poprc.demo.service.FluxoOrdemServicoService;
 import com.poprc.demo.repository.OrdemServicoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +27,7 @@ public class OrdemServicoController {
     private final OrdemServicoService ordemServicoService;
     private final OrdemServicoRepository ordemServicoRepository;
     private final ArquivamentoService arquivamentoService;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
 
     /**
      * 🛠️ POST: Criar nova Ordem de Serviço amarrada ao contrato
@@ -46,7 +49,8 @@ public class OrdemServicoController {
     @PutMapping("/{id}/status")
     public ResponseEntity<OrdemServico> atualizarStatus(@PathVariable Long id,
             @RequestBody StatusUpdateRequest request) {
-        OrdemServico ordem = ordemServicoService.atualizarStatus(id, request.getStatus());
+        OrdemServico ordem = ordemServicoService.atualizarStatus(
+                id, request.getStatus(), request.getResponsavel());
         if (ordem != null) {
             return ResponseEntity.ok(ordem);
         }
@@ -94,8 +98,14 @@ public class OrdemServicoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/{id}/historico-status")
+    public ResponseEntity<List<HistoricoStatusOS>> listarHistoricoStatus(@PathVariable Long id) {
+        return ResponseEntity.ok(fluxoOrdemServicoService.listarHistorico(id));
+    }
+
     public static class StatusUpdateRequest {
         private StatusOS status;
+        private String responsavel;
 
         public StatusOS getStatus() {
             return status;
@@ -103,6 +113,14 @@ public class OrdemServicoController {
 
         public void setStatus(StatusOS status) {
             this.status = status;
+        }
+
+        public String getResponsavel() {
+            return responsavel;
+        }
+
+        public void setResponsavel(String responsavel) {
+            this.responsavel = responsavel;
         }
     }
 

@@ -17,6 +17,7 @@ import {
   TimerReset
 } from 'lucide-react'
 import api from '../services/api'
+import FilaPendenciasOperacionais from '../components/FilaPendenciasOperacionais'
 
 const TECNICO_STORAGE_KEY = 'rc-tecnico-operacao-id'
 
@@ -264,6 +265,16 @@ export default function PortalTecnicoDashboard() {
             <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
             <span>{sucesso}</span>
           </div>
+        )}
+
+        {tecnico && (
+          <FilaPendenciasOperacionais
+            area="TECNICO"
+            funcionarioId={tecnico.id}
+            titulo="Execuções atribuídas a você"
+            limite={6}
+            dark
+          />
         )}
 
         {tecnico && notificacoes.length > 0 && (

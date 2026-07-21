@@ -54,6 +54,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     private final UnidadeEstoqueRastreavelRepository unidadeRastreavelRepository;
     private final OrdemRetiradaAlocacaoRepository alocacaoRepository;
     private final SaldoLocalService saldoLocalService;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
 
     @Transactional
     public OrdemRetirada criarParaOrdemServico(OrdemServico ordemServico, Comarca comarca, String geradoPor) {
@@ -140,6 +141,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         validarTexto(request.getLevadoPor(), "Informe quem levou os itens.");
         validarTexto(request.getAssinaturaConferenteBase64(), "Assinatura de quem conferiu é obrigatória.");
         validarTexto(request.getAssinaturaRetiranteBase64(), "Assinatura de quem levou é obrigatória.");
+        fluxoOrdemServicoService.validarRetiradaPermitida(ordemRetirada.getOrdemServico().getId());
 
         Map<Long, List<ExecutarOrdemRetiradaRequest.AlocacaoRequest>> alocacoesPorItem = request.getAlocacoes() == null
                 ? Map.of()
@@ -207,7 +209,10 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         ordemRetirada.setLevadoPor(request.getLevadoPor().trim());
         ordemRetirada.setAssinaturaConferenteBase64(request.getAssinaturaConferenteBase64());
         ordemRetirada.setAssinaturaRetiranteBase64(request.getAssinaturaRetiranteBase64());
-        return ordemRetiradaRepository.save(ordemRetirada);
+        OrdemRetirada salva = ordemRetiradaRepository.save(ordemRetirada);
+        fluxoOrdemServicoService.registrarRetirada(
+                salva.getOrdemServico().getId(), request.getLevadoPor());
+        return salva;
     }
 
     @Transactional
@@ -280,7 +285,10 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         ordemRetirada.setDevolvidoPor(request.getDevolvidoPor().trim());
         ordemRetirada.setRecebidoPor(request.getRecebidoPor().trim());
         ordemRetirada.setAssinaturaRecebimentoBase64(request.getAssinaturaRecebimentoBase64());
-        return ordemRetiradaRepository.save(ordemRetirada);
+        OrdemRetirada salva = ordemRetiradaRepository.save(ordemRetirada);
+        fluxoOrdemServicoService.registrarDevolucao(
+                salva.getOrdemServico().getId(), request.getRecebidoPor());
+        return salva;
     }
 
     private OrdemRetirada buscar(Long id) {

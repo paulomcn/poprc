@@ -22,31 +22,38 @@ import {
 import api, { getApiErrorMessage } from "../services/api";
 import OrdensServicoCard from "../components/OrdensServicoCard";
 import StatusModal from "../components/StatusModal";
+import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 
 const STATUS_COLUMNS = [
   {
-    value: "ABERTA",
-    label: "Aberta",
+    value: "PLANEJAMENTO",
+    statuses: ["ABERTA", "AGUARDANDO_VISTORIA", "AGUARDANDO_RETIRADA"],
+    label: "Preparação",
     color: "bg-blue-50",
     borderColor: "border-blue-200",
     dropColor: "hover:bg-blue-100/50",
   },
   {
     value: "EM_EXECUCAO",
+    statuses: ["EM_EXECUCAO"],
+    targetStatus: "EM_EXECUCAO",
     label: "Em Execução",
     color: "bg-yellow-50",
     borderColor: "border-yellow-200",
     dropColor: "hover:bg-yellow-100/50",
   },
   {
-    value: "AGUARDANDO_VALIDACAO",
-    label: "Aguardando Validação",
+    value: "PENDENCIAS",
+    statuses: ["AGUARDANDO_VALIDACAO", "AGUARDANDO_DEVOLUCAO", "AGUARDANDO_AUDITORIA", "AGUARDANDO_ENCERRAMENTO"],
+    targetStatus: "AGUARDANDO_VALIDACAO",
+    label: "Validação e fechamento",
     color: "bg-purple-50",
     borderColor: "border-purple-200",
     dropColor: "hover:bg-purple-100/50",
   },
   {
     value: "CONCLUIDA",
+    statuses: ["CONCLUIDA"],
     label: "Concluída",
     color: "bg-green-50",
     borderColor: "border-green-200",
@@ -54,6 +61,8 @@ const STATUS_COLUMNS = [
   },
   {
     value: "FATURADA",
+    statuses: ["FATURADA"],
+    targetStatus: "FATURADA",
     label: "Faturada",
     color: "bg-gray-50",
     borderColor: "border-gray-200",
@@ -63,8 +72,13 @@ const STATUS_COLUMNS = [
 
 const TRANSICOES_STATUS = {
   ABERTA: ["EM_EXECUCAO"],
+  AGUARDANDO_VISTORIA: [],
+  AGUARDANDO_RETIRADA: [],
   EM_EXECUCAO: ["AGUARDANDO_VALIDACAO"],
-  AGUARDANDO_VALIDACAO: ["EM_EXECUCAO", "CONCLUIDA"],
+  AGUARDANDO_VALIDACAO: ["EM_EXECUCAO", "AGUARDANDO_DEVOLUCAO"],
+  AGUARDANDO_DEVOLUCAO: [],
+  AGUARDANDO_AUDITORIA: [],
+  AGUARDANDO_ENCERRAMENTO: [],
   CONCLUIDA: ["FATURADA"],
   FATURADA: [],
 };
@@ -159,7 +173,7 @@ export default function GestaoOrdensServico() {
 
   const handleDrop = async (e, targetStatus) => {
     e.preventDefault();
-    if (!draggingOrdem || draggingOrdem.status === targetStatus) return;
+    if (!draggingOrdem || !targetStatus || draggingOrdem.status === targetStatus) return;
 
     if (!podeTransicionarStatus(draggingOrdem.status, targetStatus)) {
       alert(`A OS não pode passar diretamente de ${draggingOrdem.status} para ${targetStatus}.`);
@@ -417,7 +431,7 @@ export default function GestaoOrdensServico() {
     STATUS_COLUMNS.forEach((col) => {
       // Agrupa usando a massa de dados que veio já limpa e filtrada do backend! ⚡
       agrupado[col.value] = ordensServico.filter(
-        (ordem) => (ordem.status || "ABERTA") === col.value,
+        (ordem) => col.statuses.includes(ordem.status || "ABERTA"),
       );
     });
     return agrupado;
@@ -561,6 +575,10 @@ export default function GestaoOrdensServico() {
         )}
       </div>
 
+      <div className="mb-6">
+        <FilaPendenciasOperacionais area="ADMINISTRACAO" titulo="Validações administrativas pendentes" limite={6} />
+      </div>
+
       {/* Kanban Board */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {STATUS_COLUMNS.map((coluna) => (
@@ -581,7 +599,7 @@ export default function GestaoOrdensServico() {
 
             <div
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, coluna.value)}
+              onDrop={(e) => handleDrop(e, coluna.targetStatus)}
               className={`space-y-3 min-h-[550px] bg-gray-100/40 p-2 rounded-xl border border-dashed border-gray-200 transition-colors duration-200 ${coluna.dropColor}`}
             >
               {ordensPorStatus[coluna.value]?.length > 0 ? (
@@ -724,7 +742,7 @@ export default function GestaoOrdensServico() {
                     onClick={() =>
                       transicionarStatusDireto(
                         ordemChecklistFoco.id,
-                        "CONCLUIDA",
+                        "AGUARDANDO_DEVOLUCAO",
                       )
                     }
                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md"

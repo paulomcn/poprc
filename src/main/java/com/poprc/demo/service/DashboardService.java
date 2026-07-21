@@ -108,11 +108,16 @@ public class DashboardService {
                 .count();
 
         long ordensAbertas = ordensFiltradas.stream()
-                .filter(os -> os.getStatus() == StatusOS.ABERTA)
+                .filter(os -> os.getStatus() == StatusOS.ABERTA
+                        || os.getStatus() == StatusOS.AGUARDANDO_VISTORIA
+                        || os.getStatus() == StatusOS.AGUARDANDO_RETIRADA)
                 .count();
         long ordensEmExecucao = ordensFiltradas.stream()
                 .filter(os -> os.getStatus() == StatusOS.EM_EXECUCAO
-                        || os.getStatus() == StatusOS.AGUARDANDO_VALIDACAO)
+                        || os.getStatus() == StatusOS.AGUARDANDO_VALIDACAO
+                        || os.getStatus() == StatusOS.AGUARDANDO_DEVOLUCAO
+                        || os.getStatus() == StatusOS.AGUARDANDO_AUDITORIA
+                        || os.getStatus() == StatusOS.AGUARDANDO_ENCERRAMENTO)
                 .count();
         long ordensConcluidas = ordensFiltradas.stream()
                 .filter(this::ordemConcluida)

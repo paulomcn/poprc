@@ -23,6 +23,7 @@ import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca";
+import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import { API_BASE_URL, buildApiFileUrl } from "../services/runtimeConfig";
 import rcLogo from "../assets/rclogo.jpg";
 
@@ -1567,6 +1568,10 @@ export default function GestaoComarcas() {
             {comarcasFiltradas.length} resultado(s)
           </span>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <FilaPendenciasOperacionais area="GESTAO_OBRAS" titulo="Pendências da Gestão de Obras" limite={5} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -18,6 +18,7 @@ import api, { getApiErrorMessage } from "../services/api";
 import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
+import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 
 const CATEGORIAS_MATERIAL = [
   { value: "MATERIAL_CONSUMO", label: "Materiais de Consumo" },
@@ -1191,6 +1192,8 @@ export default function PainelEstoque() {
 
   return (
     <div className="space-y-8">
+      <FilaPendenciasOperacionais area="ESTOQUE" titulo="Retiradas, devoluções e faltas pendentes" limite={8} />
+
       {/* Header */}
       <div>
         <div className="flex justify-between items-start mb-6">

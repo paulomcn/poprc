@@ -12,6 +12,7 @@ import {
   Download,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
+import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 
 export default function AuditoriaMateriaisEAsBuilt() {
   const [comarcas, setComarcas] = useState([]);
@@ -351,6 +352,8 @@ export default function AuditoriaMateriaisEAsBuilt() {
             </button>
           </div>
         </header>
+
+        <FilaPendenciasOperacionais area="AUDITORIA" titulo="Auditorias aguardando homologação" limite={6} dark />
 
         {error && (
           <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 p-4 rounded-xl text-sm">

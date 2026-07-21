@@ -114,6 +114,9 @@ public class FotoService {
             throw new IllegalArgumentException("Ordem de Serviço não encontrada.");
         }
         if (StatusOS.AGUARDANDO_VALIDACAO.equals(ordemServico.getStatus())
+                || StatusOS.AGUARDANDO_DEVOLUCAO.equals(ordemServico.getStatus())
+                || StatusOS.AGUARDANDO_AUDITORIA.equals(ordemServico.getStatus())
+                || StatusOS.AGUARDANDO_ENCERRAMENTO.equals(ordemServico.getStatus())
                 || StatusOS.CONCLUIDA.equals(ordemServico.getStatus())
                 || StatusOS.FATURADA.equals(ordemServico.getStatus())) {
             throw new IllegalStateException(

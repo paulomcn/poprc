@@ -12,7 +12,6 @@ import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ContratoRepository;
-import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.MaterialItemRepository;
 import com.poprc.demo.repository.MaterialProjetoRepository;
 import com.poprc.demo.repository.MaterialRepository;
@@ -37,7 +36,6 @@ import java.util.stream.Collectors;
 public class OrdemServicoService {
 
     private final OrdemServicoRepository ordemServicoRepository;
-    private final EvidenciaFotoRepository evidenciaFotoRepository;
     private final ComarcaRepository comarcaRepository;
     private final ContratoRepository contratoRepository;
     private final ProjetoRepository projetoRepository;
@@ -46,6 +44,7 @@ public class OrdemServicoService {
     private final MaterialItemRepository materialItemRepository;
     private final ComarcaService comarcaService;
     private final OrdemRetiradaPort ordemRetiradaPort;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
 
     @Transactional
     public OrdemServico criar(CriarOrdemServicoRequest request) {
@@ -95,19 +94,20 @@ public class OrdemServicoService {
 
         OrdemServico ordemSalva = ordemServicoRepository.save(ordemServico);
         vincularComarcaEPrepararAuditoria(ordemSalva, request.getMateriais());
-        return ordemSalva;
+        return fluxoOrdemServicoService.iniciar(ordemSalva, "Sistema");
     }
 
+    @Transactional
     public OrdemServico atualizarStatus(Long id, StatusOS novoStatus) {
-        Optional<OrdemServico> ordemOpt = ordemServicoRepository.findById(id);
-        if (ordemOpt.isPresent()) {
-            OrdemServico ordem = ordemOpt.get();
-            validarOrdemAtiva(ordem);
-            validarTransicaoStatus(ordem, novoStatus);
-            ordem.setStatus(novoStatus);
-            return ordemServicoRepository.save(ordem);
+        return atualizarStatus(id, novoStatus, "Operação manual");
+    }
+
+    @Transactional
+    public OrdemServico atualizarStatus(Long id, StatusOS novoStatus, String responsavel) {
+        if (!ordemServicoRepository.existsById(id)) {
+            return null;
         }
-        return null;
+        return fluxoOrdemServicoService.transicionarPorUsuario(id, novoStatus, responsavel);
     }
 
     public OrdemServico atualizarChecklist(Long id, String checklist) {
@@ -115,9 +115,7 @@ public class OrdemServicoService {
         if (ordemOpt.isPresent()) {
             OrdemServico ordem = ordemOpt.get();
             validarOrdemAtiva(ordem);
-            if (StatusOS.AGUARDANDO_VALIDACAO.equals(ordem.getStatus())
-                    || StatusOS.CONCLUIDA.equals(ordem.getStatus())
-                    || StatusOS.FATURADA.equals(ordem.getStatus())) {
+            if (checklistBloqueado(ordem.getStatus())) {
                 throw new IllegalStateException(
                         "O checklist não pode ser alterado após o envio da OS para validação.");
             }
@@ -133,50 +131,13 @@ public class OrdemServicoService {
         }
     }
 
-    private void validarTransicaoStatus(OrdemServico ordem, StatusOS novoStatus) {
-        if (novoStatus == null) {
-            throw new IllegalArgumentException("O novo status da OS é obrigatório.");
-        }
-
-        StatusOS statusAtual = ordem.getStatus() != null ? ordem.getStatus() : StatusOS.ABERTA;
-        if (statusAtual == novoStatus) {
-            return;
-        }
-
-        boolean transicaoValida = switch (statusAtual) {
-            case ABERTA -> novoStatus == StatusOS.EM_EXECUCAO;
-            case EM_EXECUCAO -> novoStatus == StatusOS.AGUARDANDO_VALIDACAO;
-            case AGUARDANDO_VALIDACAO -> novoStatus == StatusOS.EM_EXECUCAO
-                    || novoStatus == StatusOS.CONCLUIDA;
-            case CONCLUIDA -> novoStatus == StatusOS.FATURADA;
-            case FATURADA -> false;
-        };
-        if (!transicaoValida) {
-            throw new IllegalStateException(
-                    "Transição de status inválida: " + statusAtual + " → " + novoStatus + ".");
-        }
-
-        if (novoStatus == StatusOS.AGUARDANDO_VALIDACAO) {
-            if (ordem.getChecklist() == null || ordem.getChecklist().isBlank()
-                    || ordem.getChecklist().matches("(?s).*\"atividades\"\\s*:\\s*\\[\\s*].*")) {
-                throw new IllegalStateException(
-                        "Registre ao menos uma atividade no checklist antes de enviar a OS para validação.");
-            }
-            if (!evidenciaFotoRepository.existsByOrdemServicoId(ordem.getId())) {
-                throw new IllegalStateException(
-                        "Envie ao menos uma evidência fotográfica antes de enviar a OS para validação.");
-            }
-        }
-
-        if (novoStatus == StatusOS.FATURADA) {
-            Comarca comarca = comarcaRepository.findByOrdemServicoId(ordem.getId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "A OS precisa estar vinculada a uma obra antes do faturamento."));
-            if (!"CONCLUIDA".equals(comarca.getSituacao())) {
-                throw new IllegalStateException(
-                        "Encerre formalmente a obra antes de marcar a OS como faturada.");
-            }
-        }
+    private boolean checklistBloqueado(StatusOS status) {
+        return status == StatusOS.AGUARDANDO_VALIDACAO
+                || status == StatusOS.AGUARDANDO_DEVOLUCAO
+                || status == StatusOS.AGUARDANDO_AUDITORIA
+                || status == StatusOS.AGUARDANDO_ENCERRAMENTO
+                || status == StatusOS.CONCLUIDA
+                || status == StatusOS.FATURADA;
     }
 
     @Transactional

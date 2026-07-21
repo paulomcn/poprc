@@ -33,8 +33,10 @@ import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.UnidadeEstoqueRastreavelRepository;
 import com.poprc.demo.service.ComarcaService;
 import com.poprc.demo.service.EstoqueService;
+import com.poprc.demo.service.FluxoOrdemServicoService;
 import com.poprc.demo.service.OrdemRetiradaService;
 import com.poprc.demo.service.OrdemServicoService;
+import com.poprc.demo.service.PendenciaOperacionalService;
 import com.poprc.demo.service.UnidadeEstoqueRastreavelService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,10 @@ class FluxoOperacionalIntegrationTest {
     @Autowired
     private EstoqueService estoqueService;
     @Autowired
+    private FluxoOrdemServicoService fluxoOrdemServicoService;
+    @Autowired
+    private PendenciaOperacionalService pendenciaOperacionalService;
+    @Autowired
     private UnidadeEstoqueRastreavelService unidadeEstoqueRastreavelService;
     @Autowired
     private FuncionarioRepository funcionarioRepository;
@@ -102,6 +108,8 @@ class FluxoOperacionalIntegrationTest {
         OrdemServico os = criarOrdemServico(cenario, BigDecimal.TEN, BigDecimal.ONE);
 
         assertEquals(cenario.numeroContrato() + " - OS 01", os.getNumeroOs());
+        assertEquals(StatusOS.AGUARDANDO_RETIRADA,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_RETIRADA).getStatus());
         OrdemRetirada or = unicaOrDaOs(os);
         assertEquals(os.getNumeroOs() + " - OR 01", or.getNumeroOr());
         assertEquals("GERADA", or.getStatus());
@@ -114,6 +122,11 @@ class FluxoOperacionalIntegrationTest {
         or = ordemRetiradaService.executarRetirada(or.getId(), retiradaAssinada());
 
         assertEquals("RETIRADA", or.getStatus());
+        Long responsavelId = projetoRepository.findById(cenario.projetoId())
+                .orElseThrow().getResponsavel().getId();
+        assertTrue(pendenciaOperacionalService.listar("TECNICO", responsavelId).stream()
+                .anyMatch(item -> os.getId().equals(item.ordemServicoId())
+                        && "REGISTRAR_EXECUCAO".equals(item.tipo())));
         assertNotNull(or.getDataRetirada());
         assertEquals("Conferente Teste", or.getConferidoPor());
         assertEquals("Técnico Teste", or.getLevadoPor());
@@ -147,6 +160,7 @@ class FluxoOperacionalIntegrationTest {
 
         MaterialItem consumo = itemDaOr(or, cenario.consumoId());
         MaterialItem ferramenta = itemDaOr(or, cenario.ferramentaId());
+        submeterEConcluirOs(os, cenario.projetoId());
         comarcaService.atualizarQuantidadeAuditada(consumo.getId(), BigDecimal.valueOf(7));
         comarcaService.atualizarQuantidadeAuditada(ferramenta.getId(), BigDecimal.ONE);
         Map<String, Object> auditoria = comarcaService.homologarAsBuilt(cenario.comarcaId());
@@ -162,12 +176,6 @@ class FluxoOperacionalIntegrationTest {
         OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(4), null);
         OrdemRetirada ordemRetirada = ordemRetiradaService.executarRetirada(
                 unicaOrDaOs(os).getId(), retiradaAssinada());
-        ordemRetirada = ordemRetiradaService.devolver(
-                ordemRetirada.getId(), devolucao(ordemRetirada, BigDecimal.ONE, null));
-
-        MaterialItem consumo = itemDaOr(ordemRetirada, cenario.consumoId());
-        comarcaService.atualizarQuantidadeAuditada(consumo.getId(), BigDecimal.valueOf(3));
-        comarcaService.homologarAsBuilt(cenario.comarcaId());
         comarcaService.salvarViradaRede(
                 cenario.comarcaId(), "/uploads/teste/prova.png", "Ping e conectividade validados", true);
         assertEquals(0, BigDecimal.valueOf(90).compareTo(
@@ -177,7 +185,6 @@ class FluxoOperacionalIntegrationTest {
                 () -> ordemServicoService.atualizarStatus(os.getId(), StatusOS.CONCLUIDA));
         assertTrue(saltoInvalido.getMessage().contains("Transição de status inválida"));
 
-        ordemServicoService.atualizarStatus(os.getId(), StatusOS.EM_EXECUCAO);
         ordemServicoService.atualizarChecklist(os.getId(),
                 "{\"atividades\":[{\"id\":1,\"nome\":\"Execução validada\"}]}");
         IllegalStateException semEvidencia = assertThrows(IllegalStateException.class,
@@ -194,6 +201,19 @@ class FluxoOperacionalIntegrationTest {
                 "{\"atividades\":[{\"id\":1,\"nome\":\"Relatório corrigido\"}]}");
         ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_VALIDACAO);
         ordemServicoService.atualizarStatus(os.getId(), StatusOS.CONCLUIDA);
+
+        assertEquals(StatusOS.AGUARDANDO_DEVOLUCAO,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_DEVOLUCAO).getStatus());
+        ordemRetirada = ordemRetiradaService.devolver(
+                ordemRetirada.getId(), devolucao(ordemRetirada, BigDecimal.ONE, null));
+        assertEquals(StatusOS.AGUARDANDO_AUDITORIA,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_AUDITORIA).getStatus());
+
+        MaterialItem consumo = itemDaOr(ordemRetirada, cenario.consumoId());
+        comarcaService.atualizarQuantidadeAuditada(consumo.getId(), BigDecimal.valueOf(3));
+        comarcaService.homologarAsBuilt(cenario.comarcaId());
+        assertEquals(StatusOS.AGUARDANDO_ENCERRAMENTO,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_ENCERRAMENTO).getStatus());
         criarDocumentoFinalRegistrado(cenario.comarcaId());
 
         ComarcaService.EncerramentoObraResultado resultado = comarcaService
@@ -209,6 +229,10 @@ class FluxoOperacionalIntegrationTest {
                 comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getSituacao());
         assertEquals(0, BigDecimal.valueOf(100).compareTo(
                 comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getPercentualConcluido()));
+        assertEquals(StatusOS.CONCLUIDA,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.CONCLUIDA).getStatus());
+        assertTrue(fluxoOrdemServicoService.listarHistorico(os.getId()).stream()
+                .anyMatch(item -> "OBRA_ENCERRADA".equals(item.getEvento())));
 
         ComarcaService.EncerramentoObraResultado resumoPersistido = comarcaService
                 .buscarEncerramento(cenario.comarcaId());
@@ -223,12 +247,12 @@ class FluxoOperacionalIntegrationTest {
                 unicaOrDaOs(os).getId(), retiradaAssinada());
         ordemRetirada = ordemRetiradaService.devolver(
                 ordemRetirada.getId(), devolucao(ordemRetirada, BigDecimal.ZERO, null));
+        submeterEConcluirOs(os, cenario.projetoId());
         MaterialItem consumo = itemDaOr(ordemRetirada, cenario.consumoId());
         comarcaService.atualizarQuantidadeAuditada(consumo.getId(), BigDecimal.valueOf(2));
         comarcaService.homologarAsBuilt(cenario.comarcaId());
         comarcaService.salvarViradaRede(
                 cenario.comarcaId(), "/uploads/teste/prova.png", "Conectividade validada", true);
-        submeterEConcluirOs(os, cenario.projetoId());
 
         IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
                 () -> comarcaService.concluirObra(cenario.comarcaId(), "Gestor Teste"));
@@ -257,6 +281,24 @@ class FluxoOperacionalIntegrationTest {
         assertEquals(4, material.getQuantidadeReservada());
         assertFalse(movimentacaoEstoqueRepository.findByComarcaIdOrderByDataMovimentacaoDesc(cenario.comarcaId())
                 .stream().anyMatch(movimento -> TipoMovimentacao.RETIRADA_OR.equals(movimento.getTipo())));
+    }
+
+    @Test
+    void bloqueiaRetiradaAntesDaConclusaoDaVistoria() {
+        Cenario cenario = prepararCenario(false);
+        OrdemServico os = ordemServicoService.criar(novaRequisicaoOs(cenario));
+        OrdemRetirada or = unicaOrDaOs(os);
+        int saldoAntes = materialRepository.findById(cenario.consumoId())
+                .orElseThrow().getQuantidadeDisponivel();
+
+        IllegalStateException erro = assertThrows(IllegalStateException.class,
+                () -> ordemRetiradaService.executarRetirada(or.getId(), retiradaAssinada()));
+
+        assertTrue(erro.getMessage().contains("Conclua a vistoria"));
+        assertEquals(StatusOS.AGUARDANDO_VISTORIA,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.AGUARDANDO_VISTORIA).getStatus());
+        assertEquals(saldoAntes, materialRepository.findById(cenario.consumoId())
+                .orElseThrow().getQuantidadeDisponivel());
     }
 
     @Test
@@ -382,6 +424,7 @@ class FluxoOperacionalIntegrationTest {
         CriarOrdemServicoRequest request = novaRequisicaoOs(cenario);
         request.setMateriais(List.of(materialPrevisto(bobina.getId(), BigDecimal.valueOf(30))));
         OrdemServico os = ordemServicoService.criar(request);
+        liberarVistoria(cenario.comarcaId());
         OrdemRetirada ordemRetirada = unicaOrDaOs(os);
         OrdemRetiradaItem item = ordemRetirada.getItens().getFirst();
 
@@ -514,7 +557,17 @@ class FluxoOperacionalIntegrationTest {
         } else {
             request.setMateriais(List.of(consumo));
         }
-        return ordemServicoService.criar(request);
+        OrdemServico ordem = ordemServicoService.criar(request);
+        liberarVistoria(cenario.comarcaId());
+        return ordem;
+    }
+
+    private void liberarVistoria(Long comarcaId) {
+        Comarca comarca = comarcaRepository.findById(comarcaId).orElseThrow();
+        comarca.setFotoVistoriaUrl("/uploads/teste/vistoria.png");
+        comarca.setAssinaturaBase64(ASSINATURA);
+        comarcaRepository.save(comarca);
+        comarcaService.avancarParaInfraestrutura(comarcaId);
     }
 
     private CriarOrdemServicoRequest novaRequisicaoOs(Cenario cenario) {

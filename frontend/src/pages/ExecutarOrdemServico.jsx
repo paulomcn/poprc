@@ -369,7 +369,14 @@ export default function ExecutarOrdemServico() {
   const endereco = os.endereco || os.projeto?.endereco || 'Endereço não informado'
   const contato = os.contato || 'Contato não informado'
   const ordemFinalizada = ['CONCLUIDA', 'FATURADA'].includes(os.status)
-  const ordemSomenteLeitura = ['AGUARDANDO_VALIDACAO', 'CONCLUIDA', 'FATURADA'].includes(os.status)
+  const ordemSomenteLeitura = [
+    'AGUARDANDO_VALIDACAO',
+    'AGUARDANDO_DEVOLUCAO',
+    'AGUARDANDO_AUDITORIA',
+    'AGUARDANDO_ENCERRAMENTO',
+    'CONCLUIDA',
+    'FATURADA'
+  ].includes(os.status)
   const evidenciasEditaveis = !ordemSomenteLeitura
 
   return (
@@ -404,7 +411,7 @@ export default function ExecutarOrdemServico() {
             os.status === 'EM_EXECUCAO' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
             'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
           }`}>
-            {(os.status || 'ABERTA').replace('_', ' ')}
+            {(os.status || 'ABERTA').replaceAll('_', ' ')}
           </span>
         </div>
 
