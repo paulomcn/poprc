@@ -26,6 +26,7 @@ import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import { API_BASE_URL, buildApiFileUrl } from "../services/runtimeConfig";
 import rcLogo from "../assets/rclogo.jpg";
+import { useAuth } from "../contexts/AuthContext";
 
 const DOCUMENTO_INICIAL = "VISTORIA_INICIAL_OS";
 const DOCUMENTO_FINAL = "ENCERRAMENTO_OS";
@@ -55,8 +56,6 @@ const ASSINATURAS_DOCUMENTO = [
 
 const getCategoriaMaterialLabel = (categoria) =>
   categoria === "FERRAMENTA" ? "Ferramenta" : "Material de Consumo";
-
-const USUARIO_ATUAL = "Paulo Morais";
 
 const OBJETO_SERVICO_OPCOES = [
   "Instalação de cabeamento estruturado",
@@ -93,6 +92,8 @@ const ESTADO_FINAL_OPCOES = [
 ];
 
 export default function GestaoComarcas() {
+  const { usuario } = useAuth();
+  const USUARIO_ATUAL = usuario?.email || usuario?.nome || "Sistema";
   const [comarcas, setComarcas] = useState([]);
   const [filtroEtapa, setFiltroEtapa] = useState("TODAS");
   const [incluirArquivados, setIncluirArquivados] = useState(false);
@@ -1528,18 +1529,13 @@ export default function GestaoComarcas() {
   if (error) return <Alert type="error" message={error} />;
 
   return (
-    <div>
-      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">
-            Gestão de Obras
-          </h1>
-          <p className="text-slate-600 mt-2">
-            Monitore o progresso, vistorias obrigatórias e liberação de
-            infraestrutura regional.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">Gestão de Obras</h1>
+          <p className="mt-1 text-sm text-slate-500">Vistoria, infraestrutura, virada de rede e encerramento por OS.</p>
         </div>
-        <div className="grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-[auto_minmax(12rem,1fr)_auto] sm:items-end">
+        <div className="grid w-full grid-cols-1 gap-3 rounded border border-slate-200 bg-white p-3 sm:w-auto sm:grid-cols-[auto_minmax(12rem,1fr)_auto] sm:items-end">
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600 sm:pb-2">
             <input
               type="checkbox"
@@ -1555,7 +1551,7 @@ export default function GestaoComarcas() {
             <select
               value={filtroEtapa}
               onChange={(event) => setFiltroEtapa(event.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 sm:min-w-48"
+              className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 sm:min-w-48"
             >
               <option value="TODAS">Todas as obras</option>
               <option value="VISTORIA">Vistoria</option>
@@ -1570,11 +1566,11 @@ export default function GestaoComarcas() {
         </div>
       </div>
 
-      <div className="mb-6">
+      <div>
         <FilaPendenciasOperacionais area="GESTAO_OBRAS" titulo="Pendências da Gestão de Obras" limite={5} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         {comarcasFiltradas.map((comarca) => {
           const materiaisPrevistos = Array.isArray(comarca.materiais)
             ? comarca.materiais
@@ -1606,7 +1602,7 @@ export default function GestaoComarcas() {
           return (
           <div
             key={comarca.id}
-            className="relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200 overflow-hidden flex flex-col justify-between"
+            className="relative flex flex-col justify-between overflow-hidden rounded border border-slate-200 bg-white shadow-sm"
           >
             {comarca.arquivado && (
               <button
@@ -1618,7 +1614,7 @@ export default function GestaoComarcas() {
               </button>
             )}
             <div
-              className={`p-6 flex-1 space-y-4 ${comarca.arquivado ? "pointer-events-none opacity-50" : ""} ${comarca.pendencias ? "bg-red-50 border-l-4 border-l-red-500" : "bg-white"}`}
+              className={`flex-1 space-y-4 p-5 ${comarca.arquivado ? "pointer-events-none opacity-50" : ""} ${comarca.pendencias ? "border-l-4 border-l-red-500 bg-red-50" : "bg-white"}`}
             >
               {/* Topo do Card: Identificador Único da OS + Stepper Visual de Linha do Tempo */}
               <div className="flex items-start justify-between">

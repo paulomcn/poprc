@@ -22,7 +22,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/ordens-retirada")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class OrdemRetiradaController {
 

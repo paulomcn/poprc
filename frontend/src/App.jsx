@@ -1,136 +1,62 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import Dashboard from "./pages/Dashboard"; // Dashboard antigo
-import Contratos from "./pages/Contratos";
-import Projetos from "./pages/Projetos";
-import Funcionarios from "./pages/Funcionarios";
-import GestaoOrdensServico from "./pages/GestaoOrdensServico";
-import GestaoComarcas from "./pages/GestaoComarcas";
-import PainelEstoque from "./pages/PainelEstoque";
-import PortalTecnicoDashboard from "./pages/PortalTecnicoDashboard";
-import ExecutarOrdemServico from "./pages/ExecutarOrdemServico";
-
-// NOVOS IMPORTS DA ETAPA 4
-import PainelFinanceiro from "./pages/PainelFinanceiro";
-import GestaoFaturamento from "./pages/GestaoFaturamento";
-import PainelViagensEReembolso from "./pages/PainelViagensEReembolso";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthProvider } from "./contexts/AuthContext";
 import AuditoriaMateriaisEAsBuilt from "./pages/AuditoriaMateriaisEAsBuilt";
-
-import DashboardExecutivo from "./pages/DashboardExecutivo";
 import ConfiguracaoNotificacoes from "./pages/ConfiguracaoNotificacoes";
+import Contratos from "./pages/Contratos";
+import DashboardExecutivo from "./pages/DashboardExecutivo";
+import ExecutarOrdemServico from "./pages/ExecutarOrdemServico";
+import Funcionarios from "./pages/Funcionarios";
+import GestaoComarcas from "./pages/GestaoComarcas";
+import GestaoFaturamento from "./pages/GestaoFaturamento";
+import GestaoOrdensServico from "./pages/GestaoOrdensServico";
+import Login from "./pages/Login";
+import PainelEstoque from "./pages/PainelEstoque";
+import PainelFinanceiro from "./pages/PainelFinanceiro";
+import PainelViagensEReembolso from "./pages/PainelViagensEReembolso";
+import PortalTecnicoDashboard from "./pages/PortalTecnicoDashboard";
+import Projetos from "./pages/Projetos";
+import MeuPerfil from "./pages/MeuPerfil";
+
+const ADMIN = ["ADMIN"];
+const GESTAO = ["ADMIN", "SUPERVISOR_TECNICO"];
+const CAMPO = ["ADMIN", "SUPERVISOR_TECNICO", "TECNICO"];
+const OBRAS = [...CAMPO, "AUDITOR"];
+const ESTOQUE = ["ADMIN", "ESTOQUE"];
+const AUDITORIA = ["ADMIN", "AUDITOR"];
+
+function Pagina({ children, roles, layout = true }) {
+  const conteudo = layout ? <Layout>{children}</Layout> : children;
+  return <ProtectedRoute roles={roles}>{conteudo}</ProtectedRoute>;
+}
 
 function App() {
-  const userName = "Paulo Morais"; // TODO: Get from session/JWT
-
   return (
-    <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-      <Routes>
-        {/*   TROCADO: Agora a página inicial REAL do sistema é o Dashboard Executivo */}
-        <Route
-          path="/"
-          element={
-            <Layout userName={userName}>
-              <DashboardExecutivo />
-            </Layout>
-          }
-        />
-        <Route
-          path="/contratos"
-          element={
-            <Layout userName={userName}>
-              <Contratos />
-            </Layout>
-          }
-        />
-        <Route
-          path="/projetos"
-          element={
-            <Layout userName={userName}>
-              <Projetos />
-            </Layout>
-          }
-        />
-        <Route
-          path="/funcionarios"
-          element={
-            <Layout userName={userName}>
-              <Funcionarios />
-            </Layout>
-          }
-        />
-        <Route
-          path="/ordens-servico"
-          element={
-            <Layout userName={userName}>
-              <GestaoOrdensServico />
-            </Layout>
-          }
-        />
-        <Route
-          path="/obras"
-          element={
-            <Layout userName={userName}>
-              <GestaoComarcas />
-            </Layout>
-          }
-        />
-        <Route path="/comarcas" element={<Navigate to="/obras" replace />} />
-        <Route
-          path="/estoque"
-          element={
-            <Layout userName={userName}>
-              <PainelEstoque />
-            </Layout>
-          }
-        />
-
-        {/* NOVAS ROTAS DA ETAPA 4 (DENTRO DO LAYOUT GERENCIAL) */}
-        <Route
-          path="/financeiro/lucratividade"
-          element={
-            <Layout userName={userName}>
-              <PainelFinanceiro />
-            </Layout>
-          }
-        />
-        <Route
-          path="/financeiro/faturamento"
-          element={
-            <Layout userName={userName}>
-              <GestaoFaturamento />
-            </Layout>
-          }
-        />
-        <Route
-          path="/logistica/viagens"
-          element={
-            <Layout userName={userName}>
-              <PainelViagensEReembolso />
-            </Layout>
-          }
-        />
-        <Route
-          path="/auditoria/tecnica"
-          element={
-            <Layout userName={userName}>
-              <AuditoriaMateriaisEAsBuilt />
-            </Layout>
-          }
-        />
-        <Route
-          path="/configuracao-notificacoes"
-          element={
-            <Layout userName={userName}>
-              <ConfiguracaoNotificacoes />
-            </Layout>
-          }
-        />
-
-        {/* ROTAS DO PORTAL DO TÉCNICO (FORA DO LAYOUT PADRÃO) */}
-        <Route path="/tecnico" element={<PortalTecnicoDashboard />} />
-        <Route path="/tecnico/os/:id" element={<ExecutarOrdemServico />} />
-      </Routes>
-    </Router>
+    <AuthProvider>
+      <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/perfil" element={<Pagina><MeuPerfil /></Pagina>} />
+          <Route path="/" element={<Pagina roles={GESTAO}><DashboardExecutivo /></Pagina>} />
+          <Route path="/contratos" element={<Pagina roles={GESTAO}><Contratos /></Pagina>} />
+          <Route path="/projetos" element={<Pagina roles={GESTAO}><Projetos /></Pagina>} />
+          <Route path="/funcionarios" element={<Pagina roles={ADMIN}><Funcionarios /></Pagina>} />
+          <Route path="/ordens-servico" element={<Pagina roles={CAMPO}><GestaoOrdensServico /></Pagina>} />
+          <Route path="/obras" element={<Pagina roles={OBRAS}><GestaoComarcas /></Pagina>} />
+          <Route path="/comarcas" element={<Navigate to="/obras" replace />} />
+          <Route path="/estoque" element={<Pagina roles={ESTOQUE}><PainelEstoque /></Pagina>} />
+          <Route path="/financeiro/lucratividade" element={<Pagina roles={ADMIN}><PainelFinanceiro /></Pagina>} />
+          <Route path="/financeiro/faturamento" element={<Pagina roles={ADMIN}><GestaoFaturamento /></Pagina>} />
+          <Route path="/logistica/viagens" element={<Pagina roles={ADMIN}><PainelViagensEReembolso /></Pagina>} />
+          <Route path="/auditoria/tecnica" element={<Pagina roles={AUDITORIA}><AuditoriaMateriaisEAsBuilt /></Pagina>} />
+          <Route path="/configuracao-notificacoes" element={<Pagina roles={GESTAO}><ConfiguracaoNotificacoes /></Pagina>} />
+          <Route path="/tecnico" element={<Pagina roles={CAMPO} layout={false}><PortalTecnicoDashboard /></Pagina>} />
+          <Route path="/tecnico/os/:id" element={<Pagina roles={CAMPO} layout={false}><ExecutarOrdemServico /></Pagina>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

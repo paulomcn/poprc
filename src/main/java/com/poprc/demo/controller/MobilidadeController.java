@@ -5,10 +5,12 @@ import com.poprc.demo.model.RegistroPonto;
 import com.poprc.demo.model.TipoPonto; // Mudou aqui
 import com.poprc.demo.service.FotoService;
 import com.poprc.demo.service.PontoService;
+import com.poprc.demo.security.UsuarioAutenticado;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,7 +27,10 @@ public class MobilidadeController {
     private final FotoService fotoService;
 
     @PostMapping("/ponto")
-    public ResponseEntity<RegistroPonto> registrarPonto(@RequestBody PontoRequestDTO request) {
+    public ResponseEntity<RegistroPonto> registrarPonto(
+            @RequestBody PontoRequestDTO request,
+            Authentication authentication) {
+        validarOperacaoPropria(authentication, request.getFuncionarioId());
         RegistroPonto novoPonto = pontoService.salvarPonto(
                 request.getFuncionarioId(),
                 request.getTipo(),
@@ -36,7 +41,10 @@ public class MobilidadeController {
     }
 
     @GetMapping("/ponto/funcionario/{funcionarioId}/ultimo")
-    public ResponseEntity<RegistroPonto> obterUltimoPonto(@PathVariable Long funcionarioId) {
+    public ResponseEntity<RegistroPonto> obterUltimoPonto(
+            @PathVariable Long funcionarioId,
+            Authentication authentication) {
+        validarConsultaFuncionario(authentication, funcionarioId);
         return pontoService.obterUltimoPonto(funcionarioId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.noContent().build());
@@ -48,7 +56,10 @@ public class MobilidadeController {
             @RequestParam("ordemServicoId") Long ordemServicoId,
             @RequestParam("funcionarioId") Long funcionarioId,
             @RequestParam("latitude") String latitude,
-            @RequestParam("longitude") String longitude) {
+            @RequestParam("longitude") String longitude,
+            Authentication authentication) {
+
+        validarOperacaoPropria(authentication, funcionarioId);
 
         EvidenciaFoto novaEvidencia = fotoService.salvarEvidencia(
                 file,
@@ -73,7 +84,9 @@ public class MobilidadeController {
     @DeleteMapping("/evidencias/{evidenciaId}")
     public ResponseEntity<Void> removerEvidencia(
             @PathVariable Long evidenciaId,
-            @RequestParam("funcionarioId") Long funcionarioId) {
+            @RequestParam("funcionarioId") Long funcionarioId,
+            Authentication authentication) {
+        validarOperacaoPropria(authentication, funcionarioId);
         fotoService.removerEvidencia(evidenciaId, funcionarioId);
         return ResponseEntity.noContent().build();
     }
@@ -81,6 +94,29 @@ public class MobilidadeController {
     @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
     public ResponseEntity<Map<String, String>> tratarErroOperacional(RuntimeException ex) {
         return ResponseEntity.badRequest().body(Map.of("erro", ex.getMessage()));
+    }
+
+    private void validarOperacaoPropria(Authentication authentication, Long funcionarioId) {
+        UsuarioAutenticado usuario = usuario(authentication);
+        if (!"ADMIN".equals(usuario.getPerfil()) && !usuario.getFuncionarioId().equals(funcionarioId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "O usuário só pode registrar operações em seu próprio nome.");
+        }
+    }
+
+    private void validarConsultaFuncionario(Authentication authentication, Long funcionarioId) {
+        UsuarioAutenticado usuario = usuario(authentication);
+        if ("TECNICO".equals(usuario.getPerfil()) && !usuario.getFuncionarioId().equals(funcionarioId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "O técnico só pode consultar sua própria jornada.");
+        }
+    }
+
+    private UsuarioAutenticado usuario(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UsuarioAutenticado usuario)) {
+            throw new org.springframework.security.access.AccessDeniedException("Sessão de funcionário inválida.");
+        }
+        return usuario;
     }
 
     @Data

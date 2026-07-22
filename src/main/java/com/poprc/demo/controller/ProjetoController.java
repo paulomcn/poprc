@@ -24,7 +24,6 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/projetos")
-@CrossOrigin(origins = "*")
 public class ProjetoController {
 
     private final ProjetoRepository projetoRepository;

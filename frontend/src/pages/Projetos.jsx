@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { Plus, Eye, Edit, Save, X, Briefcase, User, Archive, RotateCcw, Trash2 } from "lucide-react";
 import api from "../services/api";
 import Alert from "../components/Alert";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Projetos() {
+  const { usuario } = useAuth();
   const [projetos, setProjetos] = useState([]);
   const [contratos, setContratos] = useState([]); // Armazena contratos para o Select
   const [funcionarios, setFuncionarios] = useState([]);
@@ -59,7 +61,7 @@ export default function Projetos() {
         const motivo = window.prompt("Informe o motivo para arquivar este projeto:");
         if (!motivo?.trim()) return;
         await api.patch(`/projetos/${projeto.id}/arquivar`, {
-          usuario: "Paulo Morais",
+          usuario: usuario?.email || usuario?.nome,
           motivo: motivo.trim(),
         });
       }
@@ -161,105 +163,46 @@ export default function Projetos() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
-            <Briefcase size={32} /> Projetos
-          </h1>
-          <p className="text-slate-600 mt-1">
-            Vincule e gerencie a linha do tempo dos projetos dos contratos
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">Projetos</h1>
+          <p className="mt-1 text-sm text-slate-500">Contratos, responsáveis, equipes e prazos de execução.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
             <input type="checkbox" checked={incluirArquivados} onChange={(e) => setIncluirArquivados(e.target.checked)} />
             Mostrar arquivados
           </label>
           <button
             onClick={() => handleOpenModal(null, false)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-semibold flex items-center gap-2 shadow-sm transition-colors"
+            className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
           >
-            <Plus size={20} /> Novo Projeto
+            <Plus size={18} /> Novo projeto
           </button>
         </div>
       </div>
 
       {errorMessage && <Alert type="error" message={errorMessage} />}
 
-      {/* Grid de Cards de Projetos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {projetos.map((p) => (
-          <div
-            key={p.id}
-            className={`bg-white p-6 rounded-xl shadow-md border border-slate-200 flex flex-col justify-between space-y-4 ${p.arquivado ? "opacity-60" : ""}`}
-          >
-            <div>
-              <div className="flex justify-between items-start">
-                <h3 className="text-lg font-bold text-slate-800">
-                  Projeto #{p.id}
-                </h3>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${p.status === "CONCLUIDO" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}
-                >
-                  {p.arquivado ? "ARQUIVADO" : p.status?.replace("_", " ")}
-                </span>
-              </div>
-              <div className="mt-3 space-y-1.5 text-sm text-slate-600">
-                <p>
-                  <strong>Contrato:</strong> {p.contrato?.contrato || "---"}
-                </p>
-                <p>
-                  <strong>Início:</strong> {p.dataInicio || "---"}
-                </p>
-                <p>
-                  <strong>Fim:</strong> {p.dataFim || "---"}
-                </p>
-                <p>
-                  <strong>As-Built:</strong> {p.asBuiltStatus || "PENDENTE"}
-                </p>
-                <p className="flex items-center gap-1.5">
-                  <User size={14} className="text-slate-400" />
-                  <strong>Responsável:</strong> {p.responsavel?.nome || "Não atribuído"}
-                </p>
-                <div className="pt-1">
-                  <strong>Equipe:</strong>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {(p.equipe || []).map((membro) => (
-                      <span key={membro.id} className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                        {membro.funcionario?.nome} · {membro.papel?.replaceAll("_", " ")}
-                      </span>
-                    ))}
-                    {!p.equipe?.length && <span className="text-xs text-slate-400">Somente responsável legado</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                onClick={() => handleOpenModal(p, false)}
-                className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg flex items-center gap-1 text-xs font-semibold"
-              >
-                <Eye size={16} /> Detalhes
-              </button>
-              <button
-                onClick={() => handleOpenModal(p, true)}
-                disabled={p.arquivado}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-1 text-xs font-semibold"
-              >
-                <Edit size={16} /> Editar
-              </button>
-              <button
-                onClick={() => alterarArquivamento(p)}
-                title={p.arquivado ? "Restaurar projeto" : "Arquivar projeto"}
-                className={`p-2 rounded-lg flex items-center gap-1 text-xs font-semibold ${p.arquivado ? "text-emerald-600 hover:bg-emerald-50" : "text-red-600 hover:bg-red-50"}`}
-              >
-                {p.arquivado ? <RotateCcw size={16} /> : <Archive size={16} />}
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+        <table className="w-full min-w-[980px] text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-bold uppercase text-slate-500"><tr><th className="px-4 py-3">Projeto</th><th className="px-4 py-3">Contrato</th><th className="px-4 py-3">Período</th><th className="px-4 py-3">Responsável e equipe</th><th className="px-4 py-3">As-Built</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ações</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {projetos.map((p) => (
+              <tr key={p.id} className={p.arquivado ? "bg-slate-50 opacity-60" : "hover:bg-slate-50"}>
+                <td className="px-4 py-3"><p className="font-bold text-slate-900">Projeto #{p.id}</p><p className="text-xs text-slate-500">{p.comarca?.nomeComarca || p.nome || "Sem nome complementar"}</p></td>
+                <td className="px-4 py-3 font-medium text-slate-700">{p.contrato?.contrato || "Não vinculado"}</td>
+                <td className="px-4 py-3 text-slate-600"><p>{p.dataInicio || "Sem início"}</p><p className="text-xs text-slate-400">até {p.dataFim || "sem término"}</p></td>
+                <td className="px-4 py-3"><p className="font-medium text-slate-700">{p.responsavel?.nome || "Não atribuído"}</p><p className="text-xs text-slate-500">{p.equipe?.length || 0} membro(s) na equipe</p></td>
+                <td className="px-4 py-3 text-xs font-bold text-slate-600">{p.asBuiltStatus || "PENDENTE"}</td>
+                <td className="px-4 py-3"><span className={`rounded px-2 py-1 text-xs font-bold ${p.arquivado ? "bg-slate-200 text-slate-600" : p.status === "CONCLUIDO" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{p.arquivado ? "ARQUIVADO" : p.status?.replaceAll("_", " ") || "ATIVO"}</span></td>
+                <td className="px-4 py-3"><div className="flex justify-end gap-1"><button title="Visualizar detalhes" onClick={() => handleOpenModal(p, false)} className="rounded border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><Eye size={16} /></button><button title="Editar projeto" onClick={() => handleOpenModal(p, true)} disabled={p.arquivado} className="rounded border border-slate-200 p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-30"><Edit size={16} /></button><button onClick={() => alterarArquivamento(p)} title={p.arquivado ? "Restaurar projeto" : "Arquivar projeto"} className={`rounded border border-slate-200 p-2 ${p.arquivado ? "text-emerald-700 hover:bg-emerald-50" : "text-red-700 hover:bg-red-50"}`}>{p.arquivado ? <RotateCcw size={16} /> : <Archive size={16} />}</button></div></td>
+              </tr>
+            ))}
+            {projetos.length === 0 && <tr><td colSpan="7" className="px-4 py-12 text-center text-slate-400">Nenhum projeto cadastrado.</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       {/* MODAL UNIFICADO: DETALHES / NOVO / EDITAR */}

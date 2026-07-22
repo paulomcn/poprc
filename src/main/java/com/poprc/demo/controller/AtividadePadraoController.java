@@ -20,7 +20,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/atividades-padrao")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class AtividadePadraoController {
 

@@ -23,6 +23,7 @@ import api, { getApiErrorMessage } from "../services/api";
 import OrdensServicoCard from "../components/OrdensServicoCard";
 import StatusModal from "../components/StatusModal";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
+import { useAuth } from "../contexts/AuthContext";
 
 const STATUS_COLUMNS = [
   {
@@ -87,6 +88,7 @@ const podeTransicionarStatus = (statusAtual, novoStatus) =>
   statusAtual === novoStatus || (TRANSICOES_STATUS[statusAtual] || []).includes(novoStatus);
 
 export default function GestaoOrdensServico() {
+  const { usuario } = useAuth();
   const [ordensServico, setOrdensServico] = useState([]);
   const [projetos, setProjetos] = useState([]);
   const [comarcas, setComarcas] = useState([]);
@@ -285,7 +287,7 @@ export default function GestaoOrdensServico() {
         const motivo = window.prompt("Informe o motivo para arquivar esta OS:");
         if (!motivo?.trim()) return;
         await api.patch(`/ordens-servico/${ordem.id}/arquivar`, {
-          usuario: "Paulo Morais",
+          usuario: usuario?.email || usuario?.nome,
           motivo: motivo.trim(),
         });
       }
@@ -497,16 +499,17 @@ export default function GestaoOrdensServico() {
   };
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-gray-900 mb-6 tracking-tight">
-          Gestão de Ordens de Serviço
-        </h1>
+      <div>
+        <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div><h1 className="text-2xl font-bold text-slate-900">Ordens de Serviço</h1><p className="mt-1 text-sm text-slate-500">Planejamento, emissão e acompanhamento do ciclo operacional.</p></div>
+          <button onClick={abrirModalCriacao} disabled={projetosComResponsavel.length === 0} className="flex items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"><Plus className="h-4 w-4" /> Nova OS</button>
+        </div>
 
         {/* Filtros e Ações */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6 border border-gray-100">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="mb-5 rounded border border-slate-200 bg-white p-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
               <input
@@ -514,7 +517,7 @@ export default function GestaoOrdensServico() {
                 placeholder="Filtrar por nº OS..."
                 value={filterNumeroOS}
                 onChange={(e) => setFilterNumeroOS(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full rounded border border-slate-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500"
               />
             </div>
 
@@ -525,25 +528,18 @@ export default function GestaoOrdensServico() {
                 placeholder="Filtrar por cliente..."
                 value={filterCliente}
                 onChange={(e) => setFilterCliente(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full rounded border border-slate-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500"
               />
             </div>
 
             <button
               onClick={handleRepararVinculos}
-              className="bg-white text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-100 transition flex items-center justify-center gap-2 text-sm border border-gray-200 shadow-sm"
+              className="flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
               <RefreshCw className="w-4 h-4" /> Sincronizar
             </button>
 
-            <button
-              onClick={abrirModalCriacao}
-              disabled={projetosComResponsavel.length === 0}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 text-sm shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Nova OS
-            </button>
-            <label className="flex items-center justify-center gap-2 text-xs font-bold text-gray-600">
+            <label className="flex items-center justify-center gap-2 rounded border border-slate-200 px-3 text-xs font-bold text-slate-600">
               <input
                 type="checkbox"
                 checked={incluirArquivados}
@@ -575,22 +571,22 @@ export default function GestaoOrdensServico() {
         )}
       </div>
 
-      <div className="mb-6">
+      <div>
         <FilaPendenciasOperacionais area="ADMINISTRACAO" titulo="Validações administrativas pendentes" limite={6} />
       </div>
 
       {/* Kanban Board */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="flex gap-4 overflow-x-auto pb-3">
         {STATUS_COLUMNS.map((coluna) => (
-          <div key={coluna.value} className="space-y-4">
+          <div key={coluna.value} className="w-full min-w-[280px] flex-1 space-y-2 lg:w-[300px] lg:flex-none">
             <div
-              className={`${coluna.color} border-2 ${coluna.borderColor} rounded-xl p-4 shadow-sm`}
+              className={`${coluna.color} border ${coluna.borderColor} rounded p-3`}
             >
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-bold text-gray-800 text-sm tracking-wide">
                   {coluna.label}
                 </h2>
-                <span className="bg-gray-200/80 text-gray-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                <span className="rounded bg-white/70 px-2 py-0.5 text-xs font-bold text-slate-700">
                   {ordensPorStatus[coluna.value]?.length || 0}
                 </span>
               </div>
@@ -600,7 +596,7 @@ export default function GestaoOrdensServico() {
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => handleDrop(e, coluna.targetStatus)}
-              className={`space-y-3 min-h-[550px] bg-gray-100/40 p-2 rounded-xl border border-dashed border-gray-200 transition-colors duration-200 ${coluna.dropColor}`}
+              className={`min-h-[520px] space-y-2 rounded border border-dashed border-slate-300 bg-slate-100/50 p-2 transition-colors ${coluna.dropColor}`}
             >
               {ordensPorStatus[coluna.value]?.length > 0 ? (
                 ordensPorStatus[coluna.value].map((ordem) => (
@@ -608,7 +604,7 @@ export default function GestaoOrdensServico() {
                     key={ordem.id}
                     draggable={!ordem.arquivado && (TRANSICOES_STATUS[ordem.status] || []).length > 0}
                     onDragStart={(e) => handleDragStart(e, ordem)}
-                    className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transform transition-all duration-100 group relative flex flex-col ${ordem.arquivado ? "opacity-60" : "cursor-grab active:cursor-grabbing active:scale-95"}`}
+                    className={`group relative flex flex-col overflow-hidden rounded border border-slate-200 bg-white shadow-sm transition ${ordem.arquivado ? "opacity-60" : "cursor-grab active:cursor-grabbing"}`}
                   >
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-gray-500">
                       <Move size={14} />

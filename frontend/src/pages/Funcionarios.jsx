@@ -1,319 +1,88 @@
-import { useState, useEffect } from "react";
-import { Plus, Users } from "lucide-react";
-import api from "../services/api";
-import Modal from "../components/Modal";
-import LoadingSpinner from "../components/LoadingSpinner";
+import { useEffect, useState } from "react";
+import { KeyRound, Pencil, Plus, Search, Users } from "lucide-react";
 import Alert from "../components/Alert";
+import LoadingSpinner from "../components/LoadingSpinner";
+import Modal from "../components/Modal";
+import api, { getApiErrorMessage } from "../services/api";
+
+const perfis = [
+  ["ADMIN", "Administrador"], ["SUPERVISOR_TECNICO", "Supervisor técnico"],
+  ["TECNICO", "Técnico"], ["ESTOQUE", "Estoque"], ["AUDITOR", "Auditor"],
+];
+const funcoes = ["Administrador", "Supervisor técnico", "Líder de equipe", "Técnico de campo", "Técnico de redes", "Almoxarife", "Auditor", "Financeiro"];
+const vazio = { nome: "", funcao: "Técnico de campo", cidade: "", cpf: "", telefone: "", email: "", perfilAcesso: "TECNICO", ativo: true, senha: "", certificacoes: "", documentPaths: "" };
 
 export default function Funcionarios() {
   const [funcionarios, setFuncionarios] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [busca, setBusca] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [form, setForm] = useState(vazio);
+  const [salvando, setSalvando] = useState(false);
 
-  //   ESTADOS NOVOS PARA CONTROLAR A EDIÇÃO
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentId, setCurrentId] = useState(null);
-
-  // Ajustado para string para facilitar o split na hora de salvar
-  const [formData, setFormData] = useState({
-    nome: "",
-    funcao: "",
-    cidade: "",
-    certificacoes: "",
-    documentPaths: "",
-  });
-
-  useEffect(() => {
-    fetchFuncionarios();
-  }, []);
-
-  const fetchFuncionarios = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get("/funcionarios");
-      setFuncionarios(response.data);
-      setError(null);
-    } catch (err) {
-      setError("Erro ao carregar funcionários");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  const carregar = async () => {
+    setLoading(true);
+    try { setFuncionarios((await api.get("/funcionarios")).data); setError(""); }
+    catch (err) { setError(getApiErrorMessage(err, "Erro ao carregar funcionários.")); }
+    finally { setLoading(false); }
   };
+  useEffect(() => { carregar(); }, []);
 
-  //   FUNÇÃO NOVA: Abre o modal limpo para CRIAR
-  const handleNew = () => {
-    setIsEditing(false);
-    setCurrentId(null);
-    setFormData({
-      nome: "",
-      funcao: "",
-      cidade: "",
-      certificacoes: "",
-      documentPaths: "",
-    });
+  const abrirNovo = () => { setEditando(null); setForm(vazio); setShowModal(true); };
+  const abrirEdicao = (item) => {
+    setEditando(item);
+    setForm({ nome: item.nome || "", funcao: item.funcao || "Técnico de campo", cidade: item.cidade || "", cpf: "", telefone: item.telefone || "", email: item.email || "", perfilAcesso: item.perfilAcesso || "TECNICO", ativo: item.ativo !== false, senha: "", certificacoes: item.certificacoes?.join(", ") || "", documentPaths: item.documentPaths?.join(", ") || "" });
     setShowModal(true);
   };
-
-  //   FUNÇÃO NOVA: Abre o modal preenchido para EDITAR
-  const handleEdit = (funcionario) => {
-    setIsEditing(true);
-    setCurrentId(funcionario.id);
-    setFormData({
-      nome: funcionario.nome || "",
-      funcao: funcionario.funcao || "",
-      cidade: funcionario.cidade || "",
-      // Junta as arrays em string separada por vírgula para exibir no input
-      certificacoes: funcionario.certificacoes
-        ? funcionario.certificacoes.join(", ")
-        : "",
-      documentPaths: funcionario.documentPaths
-        ? funcionario.documentPaths.join(", ")
-        : "",
-    });
-    setShowModal(true);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const lista = (texto) => texto ? texto.split(",").map((item) => item.trim()).filter(Boolean) : [];
+  const salvar = async (event) => {
+    event.preventDefault(); setSalvando(true); setError(""); setSuccess("");
+    const payload = { ...form, cpf: form.cpf || null, email: form.email || null, senha: form.senha || null, certificacoes: lista(form.certificacoes), documentPaths: lista(form.documentPaths) };
     try {
-      const payload = {
-        nome: formData.nome,
-        funcao: formData.funcao,
-        cidade: formData.cidade,
-        // Converte as strings de volta para array antes de mandar pro Java
-        certificacoes: formData.certificacoes
-          ? String(formData.certificacoes)
-              .split(",")
-              .map((c) => c.trim())
-              .filter(Boolean)
-          : [],
-        documentPaths: formData.documentPaths
-          ? String(formData.documentPaths)
-              .split(",")
-              .map((p) => p.trim())
-              .filter(Boolean)
-          : [],
-      };
-
-      //   MÁGICA ACONTECENDO AQUI: Se for edição, faz PUT. Se for novo, faz POST.
-      if (isEditing) {
-        await api.put(`/funcionarios/${currentId}`, payload);
-      } else {
-        await api.post("/funcionarios", payload);
-      }
-
-      setShowModal(false);
-      fetchFuncionarios();
-    } catch (err) {
-      setError("Erro ao salvar funcionário");
-      console.error(err);
-    }
+      const response = editando
+        ? await api.put(`/funcionarios/${editando.id}`, payload)
+        : await api.post("/funcionarios", payload);
+      const confirmado = response.data?.funcionario;
+      if (form.cpf && !confirmado?.cpfMascarado) throw new Error("O servidor não confirmou a gravação do CPF.");
+      if (form.senha && !confirmado?.senhaConfigurada) throw new Error("O servidor não confirmou a gravação da senha.");
+      setShowModal(false); await carregar();
+      setSuccess(editando ? "Funcionário atualizado e confirmado no banco." : "Funcionário cadastrado e confirmado no banco.");
+    } catch (err) { setError(getApiErrorMessage(err, err.message || "Erro ao salvar funcionário.")); }
+    finally { setSalvando(false); }
   };
+  const redefinir = async (item) => {
+    const senha = window.prompt(`Defina uma senha temporária para ${item.nome}:`);
+    if (!senha) return;
+    try { const response = await api.post(`/funcionarios/${item.id}/redefinir-senha`, { senhaTemporaria: senha }); if (!response.data?.funcionario?.senhaConfigurada) throw new Error("O servidor não confirmou a gravação da senha."); await carregar(); setSuccess(`Senha temporária de ${item.nome} gravada com sucesso.`); }
+    catch (err) { setError(getApiErrorMessage(err, "Não foi possível redefinir a senha.")); }
+  };
+  const filtrados = funcionarios.filter((item) => [item.nome, item.funcao, item.cidade, item.cpfMascarado, item.telefone].some((valor) => String(valor || "").toLowerCase().includes(busca.toLowerCase())));
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Funcionários</h1>
-          <p className="text-slate-600 mt-2">
-            Gerenciamento de colaboradores e RH
-          </p>
-        </div>
-        <button
-          onClick={handleNew}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          Novo Funcionário
-        </button>
-      </div>
-
-      {error && (
-        <Alert type="error" message={error} onClose={() => setError(null)} />
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-900">Equipes e acessos</h1><p className="mt-1 text-sm text-slate-500">Colaboradores, funções operacionais e permissões do sistema.</p></div><button onClick={abrirNovo} className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white"><Plus size={18} /> Novo funcionário</button></div>
+      {error && <Alert type="error" message={error} onClose={() => setError("")} />}
+      {success && <Alert type="success" message={success} onClose={() => setSuccess("")} />}
+      <div className="flex items-center gap-2 rounded border border-slate-200 bg-white px-3 py-2"><Search size={17} className="text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full border-0 text-sm outline-none" placeholder="Filtrar por nome, função, CPF, telefone ou cidade" /></div>
+      {loading ? <LoadingSpinner /> : filtrados.length === 0 ? <div className="rounded border border-slate-200 bg-white p-8 text-center"><Users className="mx-auto text-slate-400" /><p className="mt-3 text-sm text-slate-500">Nenhum funcionário encontrado.</p></div> : (
+        <div className="overflow-x-auto rounded border border-slate-200 bg-white"><table className="w-full min-w-[900px] text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500"><tr>{["Funcionário", "Contato", "Função", "Perfil", "Login", "Status", "Ações"].map((item) => <th key={item} className="px-4 py-3">{item}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtrados.map((item) => <tr key={item.id} className="hover:bg-slate-50"><td className="px-4 py-3"><p className="font-semibold text-slate-900">{item.nome}</p><p className="text-xs text-slate-500">{item.cidade || "Cidade não informada"}</p></td><td className="px-4 py-3 text-slate-600"><p>{item.cpfMascarado || "CPF não informado"}</p><p className="text-xs">{item.telefone || item.email || "Sem contato"}</p></td><td className="px-4 py-3 text-slate-700">{item.funcao}</td><td className="px-4 py-3 text-slate-700">{perfis.find(([valor]) => valor === item.perfilAcesso)?.[1] || item.perfilAcesso}</td><td className="px-4 py-3"><span className={`rounded px-2 py-1 text-xs font-semibold ${item.senhaConfigurada ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{item.senhaConfigurada ? "Senha configurada" : "Sem senha"}</span></td><td className="px-4 py-3"><span className={`rounded px-2 py-1 text-xs font-semibold ${item.ativo === false ? "bg-slate-100 text-slate-600" : "bg-blue-50 text-blue-700"}`}>{item.ativo === false ? "Inativo" : "Ativo"}</span></td><td className="px-4 py-3"><div className="flex gap-1"><button title="Editar" onClick={() => abrirEdicao(item)} className="rounded border border-slate-200 p-2 text-blue-700 hover:bg-blue-50"><Pencil size={16} /></button><button title="Redefinir senha" onClick={() => redefinir(item)} disabled={!item.cpfMascarado} className="rounded border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 disabled:opacity-30"><KeyRound size={16} /></button></div></td></tr>)}</tbody></table></div>
       )}
-
-      {loading ? (
-        <LoadingSpinner />
-      ) : funcionarios.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center">
-          <Users size={48} className="mx-auto text-slate-400 mb-4" />
-          <p className="text-slate-600">Nenhum funcionário cadastrado</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Nome
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Função
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Cidade
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Certificações
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Ações
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {funcionarios.map((funcionario) => (
-                <tr
-                  key={funcionario.id}
-                  className="hover:bg-slate-50 transition-colors"
-                >
-                  <td className="px-6 py-4 text-sm text-slate-800 font-medium">
-                    {funcionario.nome}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">
-                    {funcionario.funcao}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">
-                    {funcionario.cidade}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">
-                    {funcionario.certificacoes &&
-                    funcionario.certificacoes.length > 0
-                      ? funcionario.certificacoes.join(", ")
-                      : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    {/*   AGORA O BOTÃO DE EDITAR CHAMA A FUNÇÃO */}
-                    <button
-                      onClick={() => handleEdit(funcionario)}
-                      className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/*   O TÍTULO DO MODAL MUDA DINAMICAMENTE */}
-      <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title={isEditing ? "Editar Funcionário" : "Novo Funcionário"}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Nome *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.nome}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, nome: e.target.value }))
-              }
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Nome completo"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Função *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.funcao}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, funcao: e.target.value }))
-              }
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: Engenheiro de Redes"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Cidade *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.cidade}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, cidade: e.target.value }))
-              }
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Cidade"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Certificações
-            </label>
-            <input
-              type="text"
-              value={formData.certificacoes}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  certificacoes: e.target.value,
-                }))
-              }
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Separadas por vírgula (ex: CCNA, MCSA)"
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              Separe as certificações com vírgula
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Caminhos de Documentação
-            </label>
-            <input
-              type="text"
-              value={formData.documentPaths}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  documentPaths: e.target.value,
-                }))
-              }
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Separados por vírgula (ex: /docs/cv, /docs/cert)"
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              Caminhos dos arquivos de documentação
-            </p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Salvar
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowModal(false)}
-              className="flex-1 px-4 py-2 bg-slate-200 text-slate-800 rounded-lg hover:bg-slate-300 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editando ? "Editar funcionário" : "Novo funcionário"}>
+        <form onSubmit={salvar} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2"><Campo label="Nome *"><input required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="campo" /></Campo><Campo label="Cidade *"><input required value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} className="campo" /></Campo></div>
+          <div className="grid gap-4 sm:grid-cols-2"><Campo label="Função operacional *"><input required list="funcoes-equipe" value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value })} className="campo" /><datalist id="funcoes-equipe">{funcoes.map((item) => <option key={item} value={item} />)}</datalist></Campo><Campo label="Perfil de acesso *"><select value={form.perfilAcesso} onChange={(e) => setForm({ ...form, perfilAcesso: e.target.value })} className="campo bg-white">{perfis.map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}</select></Campo></div>
+          <div className="grid gap-4 sm:grid-cols-2"><Campo label={editando?.cpfMascarado ? `CPF (atual: ${editando.cpfMascarado})` : "CPF *"}><input required={!editando} value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} inputMode="numeric" placeholder={editando ? "Deixe vazio para manter" : "000.000.000-00"} className="campo" /></Campo><Campo label="Telefone"><input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="(00) 00000-0000" className="campo" /></Campo></div>
+          <Campo label="E-mail Zoho (opcional)"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="campo" /><p className="mt-1 text-xs text-slate-500">Necessário somente para entrar pela Zoho.</p></Campo>
+          <Campo label={editando ? "Nova senha temporária (opcional)" : "Senha temporária *"}><input type="password" required={!editando} minLength={8} value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} className="campo" /><p className="mt-1 text-xs text-slate-500">O funcionário deverá trocá-la no primeiro acesso. Use letras e números.</p></Campo>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Acesso ativo</label>
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4"><button type="button" onClick={() => setShowModal(false)} className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold">Cancelar</button><button disabled={salvando} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Salvar"}</button></div>
         </form>
       </Modal>
     </div>
   );
 }
+
+function Campo({ label, children }) { return <label className="block text-sm font-semibold text-slate-700">{label}<div className="mt-1">{children}</div></label>; }

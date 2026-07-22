@@ -12,14 +12,13 @@ import {
   Loader2,
   MapPin,
   RefreshCw,
-  User,
   Users,
   TimerReset
 } from 'lucide-react'
 import api from '../services/api'
 import FilaPendenciasOperacionais from '../components/FilaPendenciasOperacionais'
-
-const TECNICO_STORAGE_KEY = 'rc-tecnico-operacao-id'
+import { useAuth } from '../contexts/AuthContext'
+import UserMenu from '../components/UserMenu'
 
 const formatarData = (valor) => {
   if (!valor) return 'Data não informada'
@@ -35,8 +34,8 @@ const formatarPapel = (papel) =>
 
 export default function PortalTecnicoDashboard() {
   const navigate = useNavigate()
-  const [funcionarios, setFuncionarios] = useState([])
-  const [tecnicoId, setTecnicoId] = useState('')
+  const { usuario } = useAuth()
+  const tecnicoId = String(usuario?.funcionarioId || '')
   const [ordens, setOrdens] = useState([])
   const [comarcas, setComarcas] = useState([])
   const [statusPonto, setStatusPonto] = useState('FORA_TURNO')
@@ -50,7 +49,11 @@ export default function PortalTecnicoDashboard() {
   const [filtroStatus, setFiltroStatus] = useState('ATIVAS')
   const [filtroPrazo, setFiltroPrazo] = useState('TODOS')
 
-  const tecnico = funcionarios.find((funcionario) => String(funcionario.id) === String(tecnicoId)) || null
+  const tecnico = usuario ? {
+    id: usuario.funcionarioId,
+    nome: usuario.nome,
+    funcao: usuario.perfil === 'SUPERVISOR_TECNICO' ? 'Supervisor técnico' : 'Técnico',
+  } : null
 
   const comarcaPorProjeto = useMemo(
     () => new Map(comarcas.filter((comarca) => comarca.projeto?.id).map((comarca) => [comarca.projeto.id, comarca])),
@@ -113,23 +116,13 @@ export default function PortalTecnicoDashboard() {
     try {
       setLoading(true)
       setErro('')
-      const [funcionariosResponse, ordensResponse, comarcasResponse] = await Promise.all([
-        api.get('/funcionarios'),
+      const [ordensResponse, comarcasResponse] = await Promise.all([
         api.get('/ordens-servico'),
         api.get('/comarcas')
       ])
-      const funcionariosCarregados = funcionariosResponse.data || []
-      setFuncionarios(funcionariosCarregados)
       setOrdens(ordensResponse.data || [])
       setComarcas(comarcasResponse.data || [])
-
-      const salvo = localStorage.getItem(TECNICO_STORAGE_KEY)
-      const tecnicoSalvoExiste = funcionariosCarregados.some((item) => String(item.id) === salvo)
-      if (tecnicoSalvoExiste) setTecnicoId(salvo)
-      else if (funcionariosCarregados.length === 1) setTecnicoId(String(funcionariosCarregados[0].id))
-      else setTecnicoId('')
     } catch (err) {
-      setFuncionarios([])
       setOrdens([])
       setComarcas([])
       setErro(getMensagemErro(err, 'Não foi possível carregar o Portal Técnico.'))
@@ -150,7 +143,6 @@ export default function PortalTecnicoDashboard() {
       return
     }
 
-    localStorage.setItem(TECNICO_STORAGE_KEY, tecnicoId)
     Promise.all([
       api.get(`/campo/ponto/funcionario/${tecnicoId}/ultimo`),
       api.get(`/alertas/notificacoes?funcionarioId=${tecnicoId}`)
@@ -167,12 +159,6 @@ export default function PortalTecnicoDashboard() {
         setErro(getMensagemErro(err, 'Não foi possível consultar a jornada e os alertas do técnico.'))
       })
   }, [tecnicoId])
-
-  const selecionarTecnico = (event) => {
-    setTecnicoId(event.target.value)
-    setErro('')
-    setSucesso('')
-  }
 
   const registrarPontoComLocalizacao = (position) => {
     const latitude = position.coords.latitude.toFixed(6)
@@ -228,30 +214,11 @@ export default function PortalTecnicoDashboard() {
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-indigo-400">Portal de Operações</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
-              {tecnico ? tecnico.nome : 'Selecione o técnico'}
+              {tecnico?.nome || 'Usuário não identificado'}
             </h1>
             <p className="mt-0.5 text-xs text-slate-400">{tecnico?.funcao || 'Operação de campo'}</p>
           </div>
-          <label className="w-full sm:w-80">
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">
-              Técnico em operação
-            </span>
-            <div className="relative">
-              <User className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-              <select
-                value={tecnicoId}
-                onChange={selecionarTecnico}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="">Selecione...</option>
-                {funcionarios.map((funcionario) => (
-                  <option key={funcionario.id} value={funcionario.id}>
-                    {funcionario.nome} - {funcionario.funcao || 'Técnico'}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </label>
+          <div className="rounded bg-white"><UserMenu compacto /></div>
         </header>
 
         {erro && (
@@ -472,7 +439,7 @@ export default function PortalTecnicoDashboard() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => navigate(`/tecnico/os/${os.id}?funcionarioId=${tecnico.id}`)}
+                        onClick={() => navigate(`/tecnico/os/${os.id}`)}
                         className="flex items-center gap-1 rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500"
                       >
                         Acessar OS <ChevronRight className="h-3.5 w-3.5" />

@@ -39,7 +39,6 @@ import javax.imageio.ImageIO;
 
 @RestController
 @RequestMapping("/api/documentos-internos")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class DocumentoInternoController {
 

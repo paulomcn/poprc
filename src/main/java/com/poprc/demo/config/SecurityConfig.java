@@ -1,109 +1,224 @@
 package com.poprc.demo.config;
 
-import org.springframework.context.annotation.Bean;
+import com.poprc.demo.model.Funcionario;
+import com.poprc.demo.repository.FuncionarioRepository;
+import com.poprc.demo.security.UsuarioAutenticado;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.InvalidCsrfTokenException;
+import org.springframework.security.web.csrf.MissingCsrfTokenException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-
 @Configuration
-@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+    private static final String ZOHO_PROFILE_URL = "https://profile.zoho.com/api/v1/user/self/profile";
+    private final FuncionarioRepository funcionarioRepository;
+    private final boolean securityEnabled;
+    private final String frontendUrl;
+    private final List<String> allowedOriginPatterns;
+
+    public SecurityConfig(
+            FuncionarioRepository funcionarioRepository,
+            @Value("${app.security.enabled:true}") boolean securityEnabled,
+            @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl,
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:[*],http://127.0.0.1:[*],http://192.168.*:[*],http://10.*:[*]}")
+            List<String> allowedOriginPatterns) {
+        this.funcionarioRepository = funcionarioRepository;
+        this.securityEnabled = securityEnabled;
+        this.frontendUrl = frontendUrl;
+        this.allowedOriginPatterns = allowedOriginPatterns;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. ATIVANDO O CORS NA FILTRAÇÃO DO SPRING SECURITY
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> {
+                    if (securityEnabled) {
+                        csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                                .ignoringRequestMatchers("/api/auth/dev-login", "/api/auth/login");
+                    } else {
+                        csrf.disable();
+                    }
+                })
+                .authorizeHttpRequests(authorize -> {
+                    authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+                    authorize.requestMatchers("/error", "/actuator/health", "/oauth2/**", "/login/**",
+                            "/api/auth/csrf", "/api/auth/dev-login", "/api/auth/dev-usuarios").permitAll();
+                    authorize.requestMatchers("/api/auth/config", "/api/auth/login").permitAll();
 
-                // 2. DESATIVANDO O CSRF PARA COLEGAS EXTERNOS (COMO O REST CLIENT) CONSEGUIREM
-                // DAR POST
-                .csrf(csrf -> csrf.disable())
+                    if (!securityEnabled) {
+                        authorize.anyRequest().permitAll();
+                        return;
+                    }
 
-                // 3. REGRAS DE PERMISSÃO
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/**", "/error", "/uploads/**").permitAll()
-                        .anyRequest().authenticated())
-                // Configuração OAuth2 Login com Zoho + Nosso Hack do UserInfo
+                    authorize.requestMatchers("/api/auth/me", "/uploads/**").authenticated();
+                    authorize.requestMatchers(HttpMethod.GET, "/api/funcionarios/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
+                    authorize.requestMatchers("/api/funcionarios/**").hasRole("ADMIN");
+                    authorize.requestMatchers(HttpMethod.GET, "/api/alertas/notificacoes")
+                            .authenticated();
+                    authorize.requestMatchers("/api/dashboard/**", "/api/alertas/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO");
+                    authorize.requestMatchers("/api/faturamentos/**", "/api/financeiro/**", "/api/relatorios/**")
+                            .hasRole("ADMIN");
+                    authorize.requestMatchers(HttpMethod.GET, "/api/**").authenticated();
+                    authorize.requestMatchers("/api/contratos/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO");
+                    authorize.requestMatchers("/api/projetos/**", "/api/ordens-servico/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
+                    authorize.requestMatchers("/api/atividades-padrao/**").hasRole("ADMIN");
+                    authorize.requestMatchers("/api/estoque/**", "/api/ordens-retirada/**")
+                            .hasAnyRole("ADMIN", "ESTOQUE");
+                    authorize.requestMatchers("/api/as-built/**")
+                            .hasAnyRole("ADMIN", "AUDITOR");
+                    authorize.requestMatchers("/api/comarcas/*/as-built/**", "/api/comarcas/materiais/*/auditoria",
+                            "/api/projetos/*/as-built/**")
+                            .hasAnyRole("ADMIN", "AUDITOR");
+                    authorize.requestMatchers("/api/comarcas/**", "/api/campo/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
+                    authorize.requestMatchers("/api/documentos-internos/**").authenticated();
+                    authorize.anyRequest().authenticated();
+                })
                 .oauth2Login(oauth2 -> oauth2
-                        .defaultSuccessUrl("/", true)
-                        .failureUrl("/login?error")
-                        .userInfoEndpoint(userInfo -> userInfo
-                                .userService(zohoUserService())))
-                // Logout
+                        .successHandler((request, response, authentication) -> {
+                            request.getSession().setAttribute(
+                                    com.poprc.demo.security.SessaoAutenticacaoService.METODO_AUTENTICACAO, "ZOHO");
+                            request.getSession().setAttribute(
+                                    com.poprc.demo.security.SessaoAutenticacaoService.REAUTENTICADO_EM,
+                                    java.time.Instant.now());
+                            response.sendRedirect(frontendUrl);
+                        })
+                        .failureHandler((request, response, exception) -> {
+                            String codigo = exception instanceof OAuth2AuthenticationException oauthException
+                                    && "usuario_nao_autorizado".equals(oauthException.getError().getErrorCode())
+                                    ? "conta_nao_vinculada"
+                                    : "oauth";
+                            log.warn("Falha no login Zoho ({}): {}", codigo, exception.getMessage());
+                            response.sendRedirect(frontendUrl + "/login?error=" + codigo);
+                        })
+                        .userInfoEndpoint(userInfo -> userInfo.userService(zohoUserService())))
                 .logout(logout -> logout
-                        .logoutUrl("/logout")
-                        .logoutSuccessUrl("/login?logout")
-                        .permitAll())
-                // Session management
+                        .logoutUrl("/api/auth/logout")
+                        .logoutSuccessHandler((request, response, authentication) -> response.setStatus(204))
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .deleteCookies("JSESSIONID"))
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, exception) -> {
+                            response.setStatus(401);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.getWriter().write("{\"erro\":\"Autenticação necessária\"}");
+                        })
+                        .accessDeniedHandler((request, response, exception) -> {
+                            response.setStatus(403);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            boolean csrfInvalido = exception instanceof MissingCsrfTokenException
+                                    || exception instanceof InvalidCsrfTokenException;
+                            String mensagem = csrfInvalido
+                                    ? "Sessão de segurança expirada. Recarregue a página e tente novamente."
+                                    : "Acesso não permitido para este perfil";
+                            response.getWriter().write("{\"erro\":\"" + mensagem + "\"}");
+                        }))
                 .sessionManagement(session -> session
                         .sessionFixation(sessionFixation -> sessionFixation.migrateSession()));
-
         return http.build();
     }
 
-    // O BEAN QUE CONFIGURA O QUE O CORS VAI LIBERAR
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-
-        // Permite qualquer origem usando padrões (essencial para testar no celular
-        // usando o IP da rede local)
-        configuration.setAllowedOriginPatterns(List.of("*"));
-
-        // Libera os métodos HTTP que o seu front vai usar
+        configuration.setAllowedOriginPatterns(allowedOriginPatterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-
-        // Libera todos os headers (Content-Type, Authorization, etc.)
-        configuration.setAllowedHeaders(List.of("*"));
-
-        // Permite o envio de cookies e headers de autenticação
+        configuration.setAllowedHeaders(List.of(
+                "Content-Type", "Authorization", "X-Requested-With", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
-
+        configuration.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 
-    // O método que bota a Zoho no bolso
     private OAuth2UserService<OAuth2UserRequest, OAuth2User> zohoUserService() {
-        DefaultOAuth2UserService delegate = new DefaultOAuth2UserService();
         return request -> {
+            Map<String, Object> dados;
             try {
-                OAuth2User user = delegate.loadUser(request);
-                Map<String, Object> attributes = user.getAttributes();
-
-                if (attributes.containsKey("users")) {
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> users = (List<Map<String, Object>>) attributes.get("users");
-                    if (users != null && !users.isEmpty()) {
-                        Map<String, Object> zohoUser = users.get(0);
-                        return new DefaultOAuth2User(
-                                Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")),
-                                zohoUser,
-                                "id");
-                    }
-                }
-                return user;
-            } catch (Exception e) {
-                return new DefaultOAuth2User(
-                        Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")),
-                        Map.of("id", "zoho_authenticated_user"),
-                        "id");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> resposta = RestClient.create()
+                        .get()
+                        .uri(ZOHO_PROFILE_URL)
+                        .header("Authorization", "Zoho-oauthtoken " + request.getAccessToken().getTokenValue())
+                        .retrieve()
+                        .body(Map.class);
+                dados = resposta == null ? Map.of() : resposta;
+            } catch (Exception exception) {
+                log.warn("A API de perfil da Zoho recusou a consulta: {}", exception.getMessage());
+                throw falhaOAuth("Não foi possível consultar o perfil autenticado na Zoho.");
             }
+
+            String email = localizarPrimeiroTexto(
+                    dados, "email", "Email", "email_id", "Email_ID", "emailAddress");
+            if (email == null) {
+                throw falhaOAuth("A Zoho não retornou o e-mail do usuário.");
+            }
+            Funcionario funcionario = funcionarioRepository.findByEmailIgnoreCase(email.trim())
+                    .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                    .orElseThrow(() -> falhaOAuth("Usuário sem vínculo ativo no sistema."));
+            return UsuarioAutenticado.de(funcionario);
         };
+    }
+
+    private String localizarPrimeiroTexto(Object valorAtual, String... chaves) {
+        if (valorAtual instanceof Map<?, ?> mapa) {
+            for (String chave : chaves) {
+                Object valor = mapa.get(chave);
+                if (valor != null && !valor.toString().isBlank()) {
+                    return valor.toString().trim().toLowerCase(Locale.ROOT);
+                }
+            }
+            for (Object valor : mapa.values()) {
+                String encontrado = localizarPrimeiroTexto(valor, chaves);
+                if (encontrado != null) return encontrado;
+            }
+        } else if (valorAtual instanceof List<?> lista) {
+            for (Object valor : lista) {
+                String encontrado = localizarPrimeiroTexto(valor, chaves);
+                if (encontrado != null) return encontrado;
+            }
+        }
+        return null;
+    }
+
+    private OAuth2AuthenticationException falhaOAuth(String mensagem) {
+        return new OAuth2AuthenticationException(new OAuth2Error("usuario_nao_autorizado"), mensagem);
     }
 }

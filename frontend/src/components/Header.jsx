@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Menu, User } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
+import UserMenu from "./UserMenu";
 
 const contextoRotas = [
   { teste: (path) => path === "/", area: "Visão geral", pagina: "Dashboard Executivo" },
@@ -16,7 +17,7 @@ const contextoRotas = [
   { teste: (path) => path.startsWith("/configuracao"), area: "Sistema", pagina: "Notificações" },
 ];
 
-export default function Header({ userName = "Usuário", onMenuClick }) {
+export default function Header({ usuario, onMenuClick }) {
   const { pathname } = useLocation();
   const contexto = contextoRotas.find((item) => item.teste(pathname)) || {
     area: "RC Operations Hub",
@@ -42,23 +43,17 @@ export default function Header({ userName = "Usuário", onMenuClick }) {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        <Link
-          to="/configuracao-notificacoes"
-          aria-label="Abrir notificações"
-          title="Notificações"
-          className="rounded border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-blue-700"
-        >
-          <Bell size={18} />
-        </Link>
-        <div className="flex min-h-10 items-center gap-2 border-l border-slate-200 pl-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-600">
-            <User size={17} />
-          </span>
-          <div className="hidden min-w-0 sm:block">
-            <p className="max-w-36 truncate text-sm font-semibold text-slate-800">{userName}</p>
-            <p className="text-[10px] font-bold uppercase text-slate-400">Usuário do sistema</p>
-          </div>
-        </div>
+        {["ADMIN", "SUPERVISOR_TECNICO"].includes(usuario?.perfil) && (
+          <Link
+            to="/configuracao-notificacoes"
+            aria-label="Abrir notificações"
+            title="Notificações"
+            className="rounded border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-blue-700"
+          >
+            <Bell size={18} />
+          </Link>
+        )}
+        <UserMenu />
       </div>
     </header>
   );

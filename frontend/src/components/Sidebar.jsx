@@ -1,5 +1,5 @@
-import { NavLink } from "react-router-dom";
-import { API_ORIGIN } from "../services/runtimeConfig";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import rcLogo from "../assets/rclogo.jpg";
 import {
   Bell,
@@ -22,40 +22,47 @@ import {
 const secoesMenu = [
   {
     titulo: "Visão geral",
-    itens: [{ path: "/", icon: LayoutDashboard, label: "Dashboard Executivo", end: true }],
+    itens: [{ path: "/", icon: LayoutDashboard, label: "Dashboard Executivo", end: true, roles: ["ADMIN", "SUPERVISOR_TECNICO"] }],
   },
   {
     titulo: "Operação",
     itens: [
-      { path: "/contratos", icon: FileText, label: "Contratos" },
-      { path: "/projetos", icon: Briefcase, label: "Projetos" },
-      { path: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço" },
-      { path: "/obras", icon: Building2, label: "Gestão de Obras" },
-      { path: "/funcionarios", icon: Users, label: "Equipes" },
+      { path: "/contratos", icon: FileText, label: "Contratos", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
+      { path: "/projetos", icon: Briefcase, label: "Projetos", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
+      { path: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço", roles: ["ADMIN", "SUPERVISOR_TECNICO", "TECNICO"] },
+      { path: "/obras", icon: Building2, label: "Gestão de Obras", roles: ["ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR"] },
+      { path: "/funcionarios", icon: Users, label: "Equipes", roles: ["ADMIN"] },
     ],
   },
   {
     titulo: "Materiais e auditoria",
     itens: [
-      { path: "/estoque", icon: Package, label: "Estoque" },
-      { path: "/auditoria/tecnica", icon: Layers, label: "Retirada e Devolução" },
+      { path: "/estoque", icon: Package, label: "Estoque", roles: ["ADMIN", "ESTOQUE"] },
+      { path: "/auditoria/tecnica", icon: Layers, label: "Retirada e Devolução", roles: ["ADMIN", "AUDITOR"] },
     ],
   },
   {
     titulo: "Gestão",
     itens: [
-      { path: "/financeiro/lucratividade", icon: TrendingUp, label: "Lucratividade" },
-      { path: "/financeiro/faturamento", icon: DollarSign, label: "Faturamento" },
-      { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos" },
-      { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações" },
+      { path: "/financeiro/lucratividade", icon: TrendingUp, label: "Lucratividade", roles: ["ADMIN"] },
+      { path: "/financeiro/faturamento", icon: DollarSign, label: "Faturamento", roles: ["ADMIN"] },
+      { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos", roles: ["ADMIN"] },
+      { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
     ],
   },
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
-  const handleLogout = () => {
-    window.location.href = `${API_ORIGIN}/logout`;
+  const { usuario, configuracao, logout } = useAuth();
+  const navigate = useNavigate();
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
   };
+
+  const secoesVisiveis = secoesMenu
+    .map((secao) => ({ ...secao, itens: secao.itens.filter((item) => item.roles.includes(usuario?.perfil)) }))
+    .filter((secao) => secao.itens.length > 0);
 
   return (
     <>
@@ -83,7 +90,7 @@ export default function Sidebar({ isOpen, onClose }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {secoesMenu.map((secao) => (
+          {secoesVisiveis.map((secao) => (
             <div key={secao.titulo} className="mb-4">
               <p className="mb-1 px-3 text-[10px] font-bold uppercase text-slate-500">
                 {secao.titulo}
@@ -114,22 +121,24 @@ export default function Sidebar({ isOpen, onClose }) {
         </nav>
 
         <div className="border-t border-slate-800 p-3">
-          <NavLink
-            to="/tecnico"
-            onClick={onClose}
-            className="mb-2 flex min-h-10 items-center gap-3 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:bg-slate-900"
-          >
-            <Smartphone size={17} />
-            <span>Área do Técnico</span>
-          </NavLink>
-          <button
+          {["ADMIN", "SUPERVISOR_TECNICO", "TECNICO"].includes(usuario?.perfil) && (
+            <NavLink
+              to="/tecnico"
+              onClick={onClose}
+              className="mb-2 flex min-h-10 items-center gap-3 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:bg-slate-900"
+            >
+              <Smartphone size={17} />
+              <span>Área do Técnico</span>
+            </NavLink>
+          )}
+          {configuracao.securityEnabled && <button
             type="button"
             onClick={handleLogout}
             className="flex min-h-9 w-full items-center gap-3 rounded px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
           >
             <LogOut size={17} />
             <span>Sair</span>
-          </button>
+          </button>}
         </div>
       </aside>
 

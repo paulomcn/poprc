@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   MapPin,
@@ -20,8 +20,8 @@ import {
 } from 'lucide-react'
 import api from '../services/api'
 import { buildApiFileUrl } from '../services/runtimeConfig'
-
-const TECNICO_STORAGE_KEY = 'rc-tecnico-operacao-id'
+import { useAuth } from '../contexts/AuthContext'
+import UserMenu from '../components/UserMenu'
 const MAX_FOTO_BYTES = 10 * 1024 * 1024
 
 function getApiErrorMessage(error, fallback) {
@@ -114,8 +114,8 @@ function getTemporalAlerts(os) {
 export default function ExecutarOrdemServico() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const funcionarioId = searchParams.get('funcionarioId') || localStorage.getItem(TECNICO_STORAGE_KEY)
+  const { usuario } = useAuth()
+  const funcionarioId = usuario?.funcionarioId
 
   const [os, setOs] = useState(null)
   const [tecnico, setTecnico] = useState(null)
@@ -147,19 +147,14 @@ export default function ExecutarOrdemServico() {
           throw new Error('Selecione o técnico no painel antes de acessar uma OS.')
         }
 
-        const [osResponse, atividadesResponse, evidenciasResponse, funcionariosResponse, comarcasResponse] = await Promise.all([
+        const [osResponse, atividadesResponse, evidenciasResponse, comarcasResponse] = await Promise.all([
           api.get(`/ordens-servico/${id}`),
           api.get('/atividades-padrao/ativas'),
           api.get(`/campo/evidencias/os/${id}`),
-          api.get('/funcionarios'),
           api.get('/comarcas')
         ])
 
-        const tecnicoSelecionado = (funcionariosResponse.data || [])
-          .find((funcionario) => String(funcionario.id) === String(funcionarioId))
-        if (!tecnicoSelecionado) {
-          throw new Error('O técnico selecionado não foi encontrado.')
-        }
+        const tecnicoSelecionado = { id: funcionarioId, nome: usuario.nome, perfilAcesso: usuario.perfil }
 
         const ordem = osResponse.data
         const responsavelId = ordem?.projeto?.responsavel?.id
@@ -195,7 +190,7 @@ export default function ExecutarOrdemServico() {
       }
     }
     puxarDadosDaTela()
-  }, [funcionarioId, id])
+  }, [funcionarioId, id, usuario])
 
   const handleToggleAtividade = (atividadeId) => {
     setAtividadesSelecionadas((prev) => {
@@ -382,13 +377,16 @@ export default function ExecutarOrdemServico() {
   return (
     <div className="bg-slate-950 min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8 font-sans antialiased">
       <div className="max-w-4xl mx-auto space-y-6">
-        <button
-          onClick={() => navigate('/tecnico')}
-          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white transition group"
-        >
-          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          Voltar para o Painel
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={() => navigate('/tecnico')}
+            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white transition group"
+          >
+            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+            Voltar para o Painel
+          </button>
+          <div className="rounded bg-white"><UserMenu compacto /></div>
+        </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
           <div>

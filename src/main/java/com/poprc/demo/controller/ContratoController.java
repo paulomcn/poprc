@@ -19,7 +19,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/contratos")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class ContratoController {
 

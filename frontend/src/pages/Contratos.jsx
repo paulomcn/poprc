@@ -17,6 +17,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import api from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
 
 const STATUS_OPTIONS = [
   { value: "ATIVO", label: "Ativo" },
@@ -27,6 +28,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function Contratos() {
+  const { usuario } = useAuth();
   const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -139,7 +141,7 @@ export default function Contratos() {
         const motivo = window.prompt("Informe o motivo para arquivar este contrato:");
         if (!motivo?.trim()) return;
         await api.patch(`/contratos/${contratoAtual.id}/arquivar`, {
-          usuario: "Paulo Morais",
+          usuario: usuario?.email || usuario?.nome,
           motivo: motivo.trim(),
         });
       }

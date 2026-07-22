@@ -23,7 +23,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/faturamentos")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class FaturamentoController {
 

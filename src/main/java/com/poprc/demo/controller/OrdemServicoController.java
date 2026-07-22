@@ -20,7 +20,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/ordens-servico")
-@CrossOrigin(origins = "*") // 🛡️ Blindagem total contra erro de CORS no front
 @RequiredArgsConstructor
 public class OrdemServicoController {
 

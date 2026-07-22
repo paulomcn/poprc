@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/pendencias-operacionais")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class PendenciaOperacionalController {
 

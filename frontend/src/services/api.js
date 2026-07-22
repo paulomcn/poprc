@@ -1,10 +1,24 @@
 import axios from 'axios'
-import { API_BASE_URL, API_ORIGIN } from './runtimeConfig'
+import { API_BASE_URL } from './runtimeConfig'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  withXSRFToken: true,
 })
+
+let reauthHandler = null
+
+export const setReauthHandler = (handler) => {
+  reauthHandler = handler
+}
+
+export const refreshCsrfToken = async () => {
+  const response = await api.get('/auth/csrf', { __csrfRefresh: true })
+  const token = response.data?.token
+  if (token) api.defaults.headers.common['X-XSRF-TOKEN'] = token
+  return token
+}
 
 export const getApiErrorMessage = (error, fallback = 'Não foi possível concluir a operação.') => {
   const data = error?.response?.data
@@ -20,9 +34,41 @@ export const getApiErrorMessage = (error, fallback = 'Não foi possível conclui
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      window.location.href = `${API_ORIGIN}/login`
+  async (error) => {
+    const config = error.config
+    const responseData = error.response?.data
+    const responseMessage = typeof responseData === 'string'
+      ? responseData
+      : responseData?.erro || responseData?.message || ''
+    if (
+      error.response?.status === 428 &&
+      error.response?.data?.reautenticacaoNecessaria &&
+      reauthHandler &&
+      config &&
+      !config.__reauthRetry &&
+      !config.url?.includes('/auth/reauth')
+    ) {
+      config.__reauthRetry = true
+      await reauthHandler()
+      return api(config)
+    }
+    const sessaoExpirada = error.response?.status === 403
+      && responseMessage.toLowerCase().includes('sessão de segurança expirada')
+    if (sessaoExpirada && config && !config.__csrfRetry && !config.url?.includes('/auth/csrf')) {
+      config.__csrfRetry = true
+      try {
+        const token = await refreshCsrfToken()
+        if (token && config.headers) {
+          config.headers['X-XSRF-TOKEN'] = token
+        }
+        return api(config)
+      } catch {
+        // A sessão pode ter expirado de fato; o fluxo abaixo encerra o acesso local.
+      }
+    }
+    if ((error.response?.status === 401 || sessaoExpirada) && !error.config?.url?.includes('/auth/me')) {
+      if (sessaoExpirada) sessionStorage.setItem('auth:reason', 'sessao')
+      window.dispatchEvent(new Event('auth:unauthorized'))
     }
     return Promise.reject(error)
   }
