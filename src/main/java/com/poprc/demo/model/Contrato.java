@@ -28,6 +28,10 @@ public class Contrato {
 
     private String contrato;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_contratante", nullable = false)
+    private TipoContratante tipoContratante = TipoContratante.SETOR_PUBLICO;
+
     private LocalDate vigenciaInicio;
 
     private LocalDate vigenciaFim;

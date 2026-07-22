@@ -4,6 +4,8 @@ import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Faturamento;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.SituacaoFaturamento;
+import com.poprc.demo.model.TipoContratante;
+import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FaturamentoRepository;
 import com.poprc.demo.repository.ProjetoRepository;
@@ -29,6 +31,7 @@ class FaturamentoServiceTest {
     private FaturamentoRepository faturamentoRepository;
     private ContratoRepository contratoRepository;
     private ProjetoRepository projetoRepository;
+    private ComarcaRepository comarcaRepository;
     private FaturamentoService service;
     private Contrato contrato;
     private Projeto projeto;
@@ -38,10 +41,13 @@ class FaturamentoServiceTest {
         faturamentoRepository = mock(FaturamentoRepository.class);
         contratoRepository = mock(ContratoRepository.class);
         projetoRepository = mock(ProjetoRepository.class);
-        service = new FaturamentoService(faturamentoRepository, contratoRepository, projetoRepository);
+        comarcaRepository = mock(ComarcaRepository.class);
+        service = new FaturamentoService(
+                faturamentoRepository, contratoRepository, projetoRepository, comarcaRepository);
 
         contrato = new Contrato();
         contrato.setId(1L);
+        contrato.setTipoContratante(TipoContratante.SETOR_PUBLICO);
         projeto = new Projeto();
         projeto.setId(10L);
         projeto.setContrato(contrato);
@@ -55,6 +61,7 @@ class FaturamentoServiceTest {
     @Test
     void deveCriarMedicaoVinculadaAoProjetoComoAFaturar() {
         Faturamento medicao = medicaoValida();
+        medicao.setServicosExecutados(null);
         medicao.setNumeroNotaFiscal("não deve permanecer");
 
         Faturamento salvo = service.registrarMedicao(medicao, 1L, 10L);
@@ -63,6 +70,7 @@ class FaturamentoServiceTest {
         assertEquals(projeto, salvo.getProjeto());
         assertEquals(SituacaoFaturamento.A_FATURAR, salvo.getSituacao());
         assertNull(salvo.getNumeroNotaFiscal());
+        assertNull(salvo.getServicosExecutados());
     }
 
     @Test
@@ -100,10 +108,85 @@ class FaturamentoServiceTest {
         verify(faturamentoRepository).saveAll(anyList());
     }
 
+    @Test
+    void deveCalcularNf14DaPlanilhaCentavoACentavo() {
+        Faturamento faturamento = faturamentoEmitivel("23450.00");
+        when(faturamentoRepository.findById(14L)).thenReturn(Optional.of(faturamento));
+
+        Faturamento emitido = service.emitirNotaFiscal(
+                14L, "14", LocalDate.of(2026, 7, 16), LocalDate.of(2026, 8, 30));
+
+        assertEquals(LocalDate.of(2026, 8, 20), emitido.getCompetenciaFiscal());
+        assertEquals(new BigDecimal("1125.60"), emitido.getImpostoRetido());
+        assertEquals(new BigDecimal("3501.09"), emitido.getImpostoPagar());
+        assertEquals(new BigDecimal("4626.69"), emitido.getImpostoTotal());
+    }
+
+    @Test
+    void deveCalcularNf15DaPlanilhaCentavoACentavo() {
+        Faturamento faturamento = faturamentoEmitivel("30524.00");
+        when(faturamentoRepository.findById(15L)).thenReturn(Optional.of(faturamento));
+
+        Faturamento emitido = service.emitirNotaFiscal(
+                15L, "15", LocalDate.of(2026, 7, 16), LocalDate.of(2026, 8, 30));
+
+        assertEquals(new BigDecimal("1465.15"), emitido.getImpostoRetido());
+        assertEquals(new BigDecimal("4557.23"), emitido.getImpostoPagar());
+        assertEquals(new BigDecimal("6022.38"), emitido.getImpostoTotal());
+    }
+
+    @Test
+    void deveLevarCompetenciaDeDezembroParaJaneiro() {
+        Faturamento faturamento = faturamentoEmitivel("1000.00");
+        when(faturamentoRepository.findById(20L)).thenReturn(Optional.of(faturamento));
+
+        Faturamento emitido = service.emitirNotaFiscal(
+                20L, "20", LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 31));
+
+        assertEquals(LocalDate.of(2027, 1, 20), emitido.getCompetenciaFiscal());
+    }
+
+    @Test
+    void deveBloquearNotaDuplicadaNoMesmoContrato() {
+        Faturamento faturamento = faturamentoEmitivel("1000.00");
+        when(faturamentoRepository.findById(30L)).thenReturn(Optional.of(faturamento));
+        when(faturamentoRepository.existsByContratoIdAndNumeroNotaFiscalIgnoreCase(1L, "NF-30"))
+                .thenReturn(true);
+
+        IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                () -> service.emitirNotaFiscal(
+                        30L, "NF-30", LocalDate.of(2026, 7, 16), LocalDate.of(2026, 8, 16)));
+
+        assertEquals("Já existe uma nota fiscal com este número no contrato.", erro.getMessage());
+    }
+
+    @Test
+    void devePersistirDataDoPagamento() {
+        Faturamento faturamento = faturamentoEmitivel("1000.00");
+        faturamento.setSituacao(SituacaoFaturamento.FATURADO);
+        faturamento.setDataEmissao(LocalDate.now().minusDays(10));
+        when(faturamentoRepository.findById(40L)).thenReturn(Optional.of(faturamento));
+
+        LocalDate pagamento = LocalDate.now().minusDays(1);
+        Faturamento pago = service.darBaixaPagamento(40L, pagamento);
+
+        assertEquals(SituacaoFaturamento.PAGO, pago.getSituacao());
+        assertEquals(pagamento, pago.getDataPagamento());
+    }
+
     private Faturamento medicaoValida() {
         Faturamento faturamento = new Faturamento();
         faturamento.setServicosExecutados("Instalação e certificação");
         faturamento.setValorMedicao(new BigDecimal("1500.00"));
+        return faturamento;
+    }
+
+    private Faturamento faturamentoEmitivel(String valor) {
+        Faturamento faturamento = medicaoValida();
+        faturamento.setValorMedicao(new BigDecimal(valor));
+        faturamento.setContrato(contrato);
+        faturamento.setProjeto(projeto);
+        faturamento.setSituacao(SituacaoFaturamento.A_FATURAR);
         return faturamento;
     }
 }

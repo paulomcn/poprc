@@ -11,4 +11,6 @@ public interface FaturamentoRepository extends JpaRepository<Faturamento, Long> 
     List<Faturamento> findByContratoId(Long contratoId);
 
     List<Faturamento> findByProjetoId(Long projetoId);
+
+    boolean existsByContratoIdAndNumeroNotaFiscalIgnoreCase(Long contratoId, String numeroNotaFiscal);
 }

@@ -40,9 +40,16 @@ public class ContratoController {
             response.put("erro", "O campo 'contrato' (número) é obrigatório.");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
+        if (novoContrato.getTipoContratante() == null) {
+            response.put("erro", "O tipo do contratante é obrigatório.");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
 
         if (novoContrato.getStatus() == null || novoContrato.getStatus().isBlank()) {
             novoContrato.setStatus("ATIVO");
+        }
+        if (novoContrato.getArquivado() == null) {
+            novoContrato.setArquivado(false);
         }
 
         Contrato salvo = contratoRepository.save(novoContrato);
@@ -74,6 +81,10 @@ public class ContratoController {
                 .map(contrato -> {
                     contrato.setCliente(dadosAtualizados.getCliente());
                     contrato.setContrato(dadosAtualizados.getContrato());
+                    if (dadosAtualizados.getTipoContratante() == null) {
+                        throw new IllegalArgumentException("O tipo do contratante é obrigatório.");
+                    }
+                    contrato.setTipoContratante(dadosAtualizados.getTipoContratante());
                     contrato.setVigenciaInicio(dadosAtualizados.getVigenciaInicio());
                     contrato.setVigenciaFim(dadosAtualizados.getVigenciaFim());
                     contrato.setValorGlobal(dadosAtualizados.getValorGlobal());

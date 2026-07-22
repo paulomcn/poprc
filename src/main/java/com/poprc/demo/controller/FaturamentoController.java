@@ -1,5 +1,6 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.dto.FaturamentoPainelDTO;
 import com.poprc.demo.model.Faturamento;
 import com.poprc.demo.service.FaturamentoService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,11 @@ public class FaturamentoController {
         return ResponseEntity.ok(faturamentoService.listarTodos());
     }
 
+    @GetMapping("/painel")
+    public ResponseEntity<List<FaturamentoPainelDTO>> listarPainel() {
+        return ResponseEntity.ok(faturamentoService.listarPainel());
+    }
+
     @PostMapping
     public ResponseEntity<Faturamento> criarFaturamento(@RequestBody Faturamento faturamento) {
         Long contratoId = idContrato(faturamento);
@@ -53,14 +59,17 @@ public class FaturamentoController {
     public ResponseEntity<Faturamento> emitirNotaFiscal(
             @PathVariable Long id,
             @RequestParam String numeroNotaFiscal,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataEmissao,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataVencimento) {
         return ResponseEntity.ok(
-                faturamentoService.emitirNotaFiscal(id, numeroNotaFiscal, dataVencimento));
+                faturamentoService.emitirNotaFiscal(id, numeroNotaFiscal, dataEmissao, dataVencimento));
     }
 
     @PutMapping("/{id}/baixar-pagamento")
-    public ResponseEntity<Faturamento> baixarPagamento(@PathVariable Long id) {
-        return ResponseEntity.ok(faturamentoService.darBaixaPagamento(id));
+    public ResponseEntity<Faturamento> baixarPagamento(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataPagamento) {
+        return ResponseEntity.ok(faturamentoService.darBaixaPagamento(id, dataPagamento));
     }
 
     @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
