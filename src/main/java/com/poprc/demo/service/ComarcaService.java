@@ -378,17 +378,31 @@ public class ComarcaService {
         }
 
         List<MaterialItem> materiais = materiaisDaComarca(comarca);
+        Set<Long> idsSelecionados = materialItemIds == null
+                ? Set.of()
+                : materialItemIds.stream().collect(Collectors.toSet());
+        if (marcouFalta && idsSelecionados.isEmpty()) {
+            throw new IllegalArgumentException("Selecione ao menos um material que está faltando.");
+        }
+        Set<Long> idsDaComarca = materiais.stream().map(MaterialItem::getId).collect(Collectors.toSet());
+        if (marcouFalta && !idsDaComarca.containsAll(idsSelecionados)) {
+            throw new IllegalArgumentException("Um dos materiais selecionados não pertence a esta obra.");
+        }
+
         materiais.forEach(material -> {
-            boolean selecionado = materialItemIds != null && materialItemIds.contains(material.getId());
+            boolean selecionado = idsSelecionados.contains(material.getId());
             material.setMaterialFaltante(marcouFalta && selecionado);
             material.setDescricaoFaltante(marcouFalta && selecionado ? descricao : null);
             materialItemRepository.save(material);
         });
 
+        String descricaoAnterior = comarca.getDescricaoMaterialFaltante();
         comarca.setFaltouMaterial(marcouFalta);
         comarca.setDescricaoMaterialFaltante(marcouFalta ? descricao : null);
         if (marcouFalta) {
-            comarca.setPendencias(descricao);
+            comarca.setPendencias(descricao.trim());
+        } else if (descricaoAnterior != null && descricaoAnterior.equals(comarca.getPendencias())) {
+            comarca.setPendencias(null);
         }
         return comarcaRepository.save(comarca);
     }

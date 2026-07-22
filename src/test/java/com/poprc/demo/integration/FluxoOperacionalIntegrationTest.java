@@ -8,6 +8,7 @@ import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.model.EvidenciaFoto;
+import com.poprc.demo.model.Faturamento;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.model.MovimentacaoEstoque;
@@ -17,6 +18,7 @@ import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.ProjetoStatus;
 import com.poprc.demo.model.StatusOS;
+import com.poprc.demo.model.SituacaoFaturamento;
 import com.poprc.demo.model.TipoControleEstoque;
 import com.poprc.demo.model.TipoMovimentacao;
 import com.poprc.demo.model.UnidadeMedida;
@@ -33,6 +35,7 @@ import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.UnidadeEstoqueRastreavelRepository;
 import com.poprc.demo.service.ComarcaService;
 import com.poprc.demo.service.EstoqueService;
+import com.poprc.demo.service.FaturamentoService;
 import com.poprc.demo.service.FluxoOrdemServicoService;
 import com.poprc.demo.service.OrdemRetiradaService;
 import com.poprc.demo.service.OrdemServicoService;
@@ -73,6 +76,8 @@ class FluxoOperacionalIntegrationTest {
     private ComarcaService comarcaService;
     @Autowired
     private EstoqueService estoqueService;
+    @Autowired
+    private FaturamentoService faturamentoService;
     @Autowired
     private FluxoOrdemServicoService fluxoOrdemServicoService;
     @Autowired
@@ -237,6 +242,19 @@ class FluxoOperacionalIntegrationTest {
         ComarcaService.EncerramentoObraResultado resumoPersistido = comarcaService
                 .buscarEncerramento(cenario.comarcaId());
         assertEquals(resultado, resumoPersistido);
+
+        Faturamento medicao = new Faturamento();
+        medicao.setServicosExecutados("Execucao e encerramento da obra");
+        medicao.setValorMedicao(new BigDecimal("1500.00"));
+        Faturamento faturamento = faturamentoService.registrarMedicao(
+                medicao, cenario.contratoId(), cenario.projetoId());
+        faturamento = faturamentoService.emitirNotaFiscal(
+                faturamento.getId(), "NF-TESTE-001", LocalDate.now().plusDays(30));
+        assertEquals(SituacaoFaturamento.FATURADO, faturamento.getSituacao());
+        assertEquals(StatusOS.FATURADA,
+                ordemServicoService.atualizarStatus(os.getId(), StatusOS.FATURADA).getStatus());
+        assertEquals(SituacaoFaturamento.PAGO,
+                faturamentoService.darBaixaPagamento(faturamento.getId()).getSituacao());
     }
 
     @Test
@@ -338,6 +356,39 @@ class FluxoOperacionalIntegrationTest {
                 () -> ordemServicoService.criar(request));
 
         assertTrue(erro.getMessage().contains("mais de uma vez"));
+    }
+
+    @Test
+    void registraEResolvePendenciaCriticaDeMaterialFaltante() {
+        Cenario cenario = prepararCenario(false);
+        OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(4), null);
+        MaterialItem materialPrevisto = itemDaOr(unicaOrDaOs(os), cenario.consumoId());
+
+        IllegalArgumentException semMaterial = assertThrows(IllegalArgumentException.class,
+                () -> comarcaService.atualizarMateriaisFaltantes(
+                        cenario.comarcaId(), true, List.of(), "Cabo insuficiente em campo"));
+        assertTrue(semMaterial.getMessage().contains("Selecione ao menos um material"));
+
+        comarcaService.atualizarMateriaisFaltantes(
+                cenario.comarcaId(), true, List.of(materialPrevisto.getId()), "Cabo insuficiente em campo");
+
+        assertTrue(pendenciaOperacionalService.listar("ESTOQUE", null).stream()
+                .anyMatch(item -> os.getId().equals(item.ordemServicoId())
+                        && "MATERIAL_FALTANTE".equals(item.tipo())
+                        && "CRITICA".equals(item.prioridade())));
+        Comarca comFalta = comarcaRepository.findById(cenario.comarcaId()).orElseThrow();
+        assertTrue(comFalta.getFaltouMaterial());
+        assertEquals("Cabo insuficiente em campo", comFalta.getDescricaoMaterialFaltante());
+
+        comarcaService.atualizarMateriaisFaltantes(cenario.comarcaId(), false, List.of(), null);
+
+        assertFalse(pendenciaOperacionalService.listar("ESTOQUE", null).stream()
+                .anyMatch(item -> os.getId().equals(item.ordemServicoId())
+                        && "MATERIAL_FALTANTE".equals(item.tipo())));
+        Comarca resolvida = comarcaRepository.findById(cenario.comarcaId()).orElseThrow();
+        assertFalse(resolvida.getFaltouMaterial());
+        assertEquals(null, resolvida.getDescricaoMaterialFaltante());
+        assertEquals(null, resolvida.getPendencias());
     }
 
     @Test

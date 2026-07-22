@@ -1,28 +1,41 @@
 -- Massa pequena, deterministica e idempotente. Este arquivo so e carregado
 -- quando o perfil dev adiciona classpath:db/dev as locations do Flyway.
 
-INSERT INTO funcionarios (nome, funcao, cidade)
-SELECT 'Supervisor Desenvolvimento', 'Supervisor Tecnico', 'Joao Pessoa'
+INSERT INTO funcionarios (nome, funcao, cidade, perfil_acesso)
+SELECT 'Supervisor Desenvolvimento', 'Supervisor Tecnico', 'Joao Pessoa', 'SUPERVISOR_TECNICO'
 WHERE NOT EXISTS (
     SELECT 1 FROM funcionarios WHERE nome = 'Supervisor Desenvolvimento'
 );
 
-INSERT INTO funcionarios (nome, funcao, cidade)
-SELECT 'Tecnico Campo A', 'Tecnico', 'Joao Pessoa'
+INSERT INTO funcionarios (nome, funcao, cidade, perfil_acesso)
+SELECT 'Tecnico Campo A', 'Tecnico', 'Joao Pessoa', 'TECNICO'
 WHERE NOT EXISTS (
     SELECT 1 FROM funcionarios WHERE nome = 'Tecnico Campo A'
 );
 
-INSERT INTO funcionarios (nome, funcao, cidade)
-SELECT 'Tecnico Campo B', 'Tecnico', 'Joao Pessoa'
+INSERT INTO funcionarios (nome, funcao, cidade, perfil_acesso)
+SELECT 'Tecnico Campo B', 'Tecnico', 'Joao Pessoa', 'TECNICO'
 WHERE NOT EXISTS (
     SELECT 1 FROM funcionarios WHERE nome = 'Tecnico Campo B'
 );
 
-INSERT INTO funcionarios (nome, funcao, cidade)
-SELECT 'Gestor Desenvolvimento', 'Gestor', 'Joao Pessoa'
+INSERT INTO funcionarios (nome, funcao, cidade, perfil_acesso)
+SELECT 'Gestor Desenvolvimento', 'Gestor', 'Joao Pessoa', 'ADMIN'
 WHERE NOT EXISTS (
     SELECT 1 FROM funcionarios WHERE nome = 'Gestor Desenvolvimento'
+);
+
+UPDATE funcionarios
+SET perfil_acesso = CASE nome
+    WHEN 'Gestor Desenvolvimento' THEN 'ADMIN'
+    WHEN 'Supervisor Desenvolvimento' THEN 'SUPERVISOR_TECNICO'
+    ELSE 'TECNICO'
+END
+WHERE nome IN (
+    'Gestor Desenvolvimento',
+    'Supervisor Desenvolvimento',
+    'Tecnico Campo A',
+    'Tecnico Campo B'
 );
 
 INSERT INTO contratos (
