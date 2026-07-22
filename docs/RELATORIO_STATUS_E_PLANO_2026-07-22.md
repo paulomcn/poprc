@@ -81,7 +81,11 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
   paginas principais e 86 testes automatizados aprovados.
 - Fase B.1 concluida: Faturamento e Impostos remodelados e conciliados com a
   planilha de referencia; 92 testes e smoke test visual aprovados.
-- Proxima execucao: Fase C, coerencia visual e usabilidade.
+- Fase C concluida: coerencia visual aplicada ao Dashboard, Projetos, Ordens de
+  Servico, Gestao de Obras, Area do Tecnico e Auditoria, com homologacao desktop
+  e celular registrada em `RESULTADO_FASE_C_INTERFACE_2026-07-22.md`.
+- Proxima execucao: Fase D, documentos e recuperacao. A impressao fisica aguarda
+  o retorno do time; as verificacoes digitais podem seguir separadamente.
 
 ## 6. Pendencias por prioridade
 
