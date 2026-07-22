@@ -1,6 +1,10 @@
 # Homologacao do fluxo operacional
 
-**Status:** APROVADA em 20/07/2026 por execucao ponta a ponta e suite automatizada isolada.
+**Status:** APROVADA em 22/07/2026 por execucao assistida e suite automatizada isolada.
+
+A regressao mais recente executou smoke test das paginas principais e `86`
+testes sem falhas, incluindo encerramento, faturamento e pagamento. Consulte
+`RESULTADO_REGRESSAO_FASE_B_2026-07-22.md` para as evidencias e correcoes.
 
 ## Validacao automatizada
 

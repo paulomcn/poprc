@@ -76,17 +76,17 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 
 ## 5. Trabalho atual
 
-- Consolidacao do modo local sem autenticacao.
-- Revisao da configuracao para impedir que login/CSRF bloqueiem o desenvolvimento.
-- Atualizacao deste cronograma contra o estado real do repositorio.
-- Preparacao de um novo checkpoint para as mudancas de UI, perfis e seguranca suspensa.
+- Fase A concluida: modo local sem autenticacao consolidado e checkpoint publicado.
+- Fase B concluida: regressao operacional em ambiente isolado, smoke test das
+  paginas principais e 86 testes automatizados aprovados.
+- Proxima execucao: Fase B.1, remodelagem de Faturamento e Impostos.
 
 ## 6. Pendencias por prioridade
 
 | Prioridade | Pendencia | Motivo |
 |---|---|---|
-| P0 - imediata | Criar checkpoint limpo das alteracoes atuais | A arvore possui muitos arquivos modificados e novos; perder esse estado teria alto impacto. |
-| P0 - imediata | Regressao do fluxo principal no modo sem autenticacao | As 85 verificacoes automatizadas passaram, mas o navegador precisa validar as mudancas recentes. |
+| Concluida | Criar checkpoint limpo das alteracoes atuais | Fase A publicada na branch de checkpoint. |
+| Concluida | Regressao do fluxo principal no modo sem autenticacao | Fase B aprovada com smoke test e 86 verificacoes automatizadas. |
 | P0 - antes de usuarios reais | Reimplementar e homologar autenticacao ponta a ponta | Hoje nao ha identidade comprovada nem protecao efetiva de rotas. |
 | P1 - alta | Homologar visualmente Dashboard, Projetos, OS, Obras, Tecnico e Auditoria | O feedback aponta inconsistencias, seletores escondidos e escalabilidade ruim das listas. |
 | P1 - alta | Executar e registrar uma restauracao real de backup | Scripts existem, mas recuperacao so e confiavel depois de um restore aprovado. |
@@ -110,6 +110,9 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 **Aceite:** Git limpo, branch publicada, 85 ou mais testes aprovados e builds aprovados.
 
 ### Fase B - Regressao operacional assistida (2-3 dias)
+
+**Status em 22/07/2026: concluida.** Evidencias em
+`RESULTADO_REGRESSAO_FASE_B_2026-07-22.md`.
 
 1. Resetar a massa dev de forma controlada.
 2. Executar Contrato -> Projeto -> OS -> OR -> Retirada -> Tecnico -> Devolucao -> Auditoria -> As-Built -> Encerramento -> Faturamento.
