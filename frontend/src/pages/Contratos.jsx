@@ -65,7 +65,7 @@ export default function Contratos() {
     status: "ATIVO",
     escopo: "",
     recorrencia: "MENSAL",
-    segmento: "PRIVADO",
+    tipoContratante: "SETOR_PUBLICO",
     gestorResponsavel: "",
   });
 
@@ -184,7 +184,9 @@ export default function Contratos() {
         status: contrato.status || "ATIVO",
         escopo: contrato.escopo || "",
         recorrencia: contrato.recorrencia || "MENSAL",
-        segmento: contrato.segmento || "PRIVADO",
+        tipoContratante:
+          contrato.tipoContratante ||
+          (contrato.segmento === "PRIVADO" ? "SETOR_PRIVADO" : "SETOR_PUBLICO"),
         gestorResponsavel: contrato.gestorResponsavel || "",
       });
     } else {
@@ -197,7 +199,7 @@ export default function Contratos() {
         status: "ATIVO",
         escopo: "",
         recorrencia: "MENSAL",
-        segmento: "PRIVADO",
+        tipoContratante: "SETOR_PUBLICO",
         gestorResponsavel: "",
       });
     }
@@ -580,7 +582,10 @@ export default function Contratos() {
                   className={`hover:bg-slate-50/50 transition-colors ${c.arquivado ? "opacity-60" : ""}`}
                 >
                   <td className="p-4 font-semibold text-slate-800">
-                    {c.cliente}
+                    <div>{c.cliente}</div>
+                    <span className="mt-1 inline-block text-[10px] font-bold uppercase text-slate-500">
+                      {c.tipoContratante === "SETOR_PRIVADO" ? "Setor privado" : "Setor público"}
+                    </span>
                   </td>
                   <td className="p-4 font-mono text-xs text-slate-500">
                     {c.contrato}
@@ -774,18 +779,19 @@ export default function Contratos() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-                    Segmento
+                    Tipo de contratante
                   </label>
                   <select
                     disabled={selectedContrato && !isEditing}
-                    value={formData.segmento}
+                    value={formData.tipoContratante}
                     onChange={(e) =>
-                      setFormData({ ...formData, segmento: e.target.value })
+                      setFormData({ ...formData, tipoContratante: e.target.value })
                     }
                     className="w-full mt-1 p-2 border border-slate-200 rounded-lg text-sm bg-slate-50 disabled:opacity-70 outline-none focus:ring-2 focus:ring-blue-500"
+                    required
                   >
-                    <option value="PRIVADO">PRIVADO (B2B)</option>
-                    <option value="PUBLICO">PÚBLICO</option>
+                    <option value="SETOR_PUBLICO">SETOR PÚBLICO</option>
+                    <option value="SETOR_PRIVADO">SETOR PRIVADO (B2B)</option>
                   </select>
                 </div>
                 <div className="md:col-span-2">

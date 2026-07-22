@@ -1,605 +1,566 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  FileText,
-  Receipt,
-  CheckCircle,
-  Clock,
-  DollarSign,
-  X,
   AlertTriangle,
+  BarChart3,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  DollarSign,
+  Eye,
+  FileText,
+  FilterX,
+  Landmark,
+  Pencil,
   Plus,
-  Edit,
-  AlertCircle,
-  TrendingUp,
+  Receipt,
+  Search,
+  X,
 } from "lucide-react";
-import api from "../services/api";
-import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
+import LoadingSpinner from "../components/LoadingSpinner";
+import api from "../services/api";
+
+const hoje = () => new Date().toISOString().slice(0, 10);
+
+const formularioInicial = {
+  contratoId: "",
+  projetoId: "",
+  valorMedicao: "",
+  servicosExecutados: "",
+};
+
+const filtrosIniciais = {
+  tipoContratante: "",
+  contratoId: "",
+  situacao: "",
+  numeroNotaFiscal: "",
+  destino: "",
+  dataInicio: "",
+  dataFim: "",
+  competencia: "",
+};
+
+const dinheiro = (valor) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(valor) || 0);
+
+const dataBr = (valor) => {
+  if (!valor) return "---";
+  const [ano, mes, dia] = valor.split("-");
+  return `${dia}/${mes}/${ano}`;
+};
+
+const mesBr = (valor) => {
+  if (!valor) return "---";
+  const [ano, mes] = valor.split("-");
+  return `${mes}/${ano}`;
+};
+
+const nomeSituacao = {
+  A_FATURAR: "A faturar",
+  FATURADO: "A receber",
+  EM_ATRASO: "Em atraso",
+  PAGO: "Pago",
+};
+
+function StatusBadge({ situacao }) {
+  const estilos = {
+    A_FATURAR: "border-amber-200 bg-amber-50 text-amber-700",
+    FATURADO: "border-blue-200 bg-blue-50 text-blue-700",
+    EM_ATRASO: "border-red-200 bg-red-50 text-red-700",
+    PAGO: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  };
+  return (
+    <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-xs font-bold ${estilos[situacao] || estilos.A_FATURAR}`}>
+      {nomeSituacao[situacao] || situacao}
+    </span>
+  );
+}
+
+function AlertaFiscal({ alerta }) {
+  const configuracao = {
+    VENCIDO: ["Vencido", "border-red-200 bg-red-50 text-red-700"],
+    VENCE_HOJE: ["Vence hoje", "border-amber-300 bg-amber-50 text-amber-800"],
+    PROXIMO: ["Próximo", "border-amber-200 bg-amber-50 text-amber-700"],
+    NO_PRAZO: ["No prazo", "border-emerald-200 bg-emerald-50 text-emerald-700"],
+  }[alerta] || ["Sem NF", "border-slate-200 bg-slate-50 text-slate-600"];
+
+  return (
+    <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-xs font-bold ${configuracao[1]}`}>
+      {configuracao[0]}
+    </span>
+  );
+}
+
+function Metrica({ titulo, valor, destaque = "slate", Icon }) {
+  const cores = {
+    slate: "text-slate-800 bg-slate-100",
+    blue: "text-blue-700 bg-blue-50",
+    green: "text-emerald-700 bg-emerald-50",
+    red: "text-red-700 bg-red-50",
+  };
+  return (
+    <div className="flex min-h-24 items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase text-slate-500">{titulo}</p>
+        <p className="mt-1 truncate text-xl font-bold text-slate-900">{dinheiro(valor)}</p>
+      </div>
+      <div className={`ml-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${cores[destaque]}`}>
+        <Icon size={19} />
+      </div>
+    </div>
+  );
+}
+
+function Barras({ titulo, dados, formatarValor = dinheiro }) {
+  const maximo = Math.max(...dados.map((item) => item.valor), 0);
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-800">
+        <BarChart3 size={17} className="text-blue-600" /> {titulo}
+      </h2>
+      <div className="space-y-3">
+        {dados.map((item) => (
+          <div key={item.rotulo} className="grid grid-cols-[72px_1fr_auto] items-center gap-3 text-xs">
+            <span className="font-semibold text-slate-600">{item.rotulo}</span>
+            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-blue-600"
+                style={{ width: `${maximo ? Math.max((item.valor / maximo) * 100, 3) : 0}%` }}
+              />
+            </div>
+            <span className="min-w-24 text-right font-semibold text-slate-700">{formatarValor(item.valor)}</span>
+          </div>
+        ))}
+        {dados.length === 0 && <p className="py-5 text-center text-sm text-slate-500">Sem dados para o período.</p>}
+      </div>
+    </section>
+  );
+}
 
 export default function GestaoFaturamento() {
   const [faturamentos, setFaturamentos] = useState([]);
   const [contratos, setContratos] = useState([]);
   const [projetos, setProjetos] = useState([]);
+  const [aba, setAba] = useState("faturamento");
+  const [filtros, setFiltros] = useState(filtrosIniciais);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  // 🎛️ CONTROLE DOS MODAIS
-  const [crudModalOpen, setCrudModalOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [selectedId, setSelectedId] = useState(null);
-
-  const [nfModalOpen, setNfModalOpen] = useState(false);
-  const [baixaModalOpen, setBaixaModalOpen] = useState(false);
-  const [numeroNF, setNumeroNF] = useState("");
-  const [vencimentoNF, setVencimentoNF] = useState("");
-  const [filtroContrato, setFiltroContrato] = useState("");
-  const [filtroSituacao, setFiltroSituacao] = useState("");
-
-  // FORMULÁRIO COMPLETO
-  const [formData, setFormData] = useState({
-    contrato: { id: "" },
-    projeto: { id: "" },
-    servicosExecutados: "",
-    valorMedicao: "",
-    dataVencimento: "",
-    numeroNotaFiscal: "",
-    situacao: "A_FATURAR",
-  });
-
-  useEffect(() => {
-    carregarDados();
-  }, []);
+  const [formModal, setFormModal] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
+  const [formData, setFormData] = useState(formularioInicial);
+  const [detalhes, setDetalhes] = useState(null);
+  const [notaModal, setNotaModal] = useState(null);
+  const [notaData, setNotaData] = useState({ numero: "", emissao: hoje(), vencimento: "" });
+  const [pagamentoModal, setPagamentoModal] = useState(null);
+  const [dataPagamento, setDataPagamento] = useState(hoje());
 
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const [resFat, resCont, resProj] = await Promise.all([
-        api.get("/faturamentos"),
+      const [resFaturamentos, resContratos, resProjetos] = await Promise.all([
+        api.get("/faturamentos/painel"),
         api.get("/contratos"),
         api.get("/projetos"),
       ]);
-      setFaturamentos(resFat.data);
-      setContratos(resCont.data);
-      setProjetos((resProj.data || []).filter((projeto) => !projeto.arquivado));
+      setFaturamentos(resFaturamentos.data || []);
+      setContratos(resContratos.data || []);
+      setProjetos((resProjetos.data || []).filter((projeto) => !projeto.arquivado));
     } catch (err) {
-      console.error(err);
-      setError("Erro ao sincronizar dados financeiros com o servidor.");
+      setError(err.response?.data?.erro || "Não foi possível carregar os dados financeiros.");
     } finally {
       setLoading(false);
     }
   };
 
-  // 📈 CÁLCULO DINÂMICO DOS CARD DE METRICAS (Padrão Dashboard Executivo)
-  const metricas = faturamentos.reduce(
-    (acc, curr) => {
-      const valor = parseFloat(curr.valorMedicao) || 0;
-      const sit = String(curr.situacao).toUpperCase();
+  useEffect(() => {
+    carregarDados();
+  }, []);
 
-      if (sit === "A_FATURAR") acc.aFaturar += valor;
-      else if (sit === "FATURADO") acc.faturado += valor;
-      else if (sit === "PAGO" || sit === "LIQUIDADO") acc.pago += valor;
-      else if (sit === "EM_ATRASO") acc.emAtraso += valor;
-
-      return acc;
-    },
-    { aFaturar: 0, faturado: 0, pago: 0, emAtraso: 0 },
+  const faturamentosFiltrados = useMemo(
+    () =>
+      faturamentos.filter((item) => {
+        const dataReferencia = item.dataEmissao || "";
+        return (
+          (!filtros.tipoContratante || item.tipoContratante === filtros.tipoContratante) &&
+          (!filtros.contratoId || String(item.contratoId) === filtros.contratoId) &&
+          (!filtros.situacao || item.situacao === filtros.situacao) &&
+          (!filtros.numeroNotaFiscal ||
+            String(item.numeroNotaFiscal || "").toLowerCase().includes(filtros.numeroNotaFiscal.toLowerCase())) &&
+          (!filtros.destino || String(item.destino || "").toLowerCase().includes(filtros.destino.toLowerCase())) &&
+          (!filtros.dataInicio || (dataReferencia && dataReferencia >= filtros.dataInicio)) &&
+          (!filtros.dataFim || (dataReferencia && dataReferencia <= filtros.dataFim)) &&
+          (!filtros.competencia || String(item.competenciaFiscal || "").startsWith(filtros.competencia))
+        );
+      }),
+    [faturamentos, filtros],
   );
 
-  const faturamentosFiltrados = faturamentos.filter((faturamento) => {
-    const contratoOk = !filtroContrato || String(faturamento.contrato?.id) === filtroContrato;
-    const situacaoOk = !filtroSituacao || String(faturamento.situacao) === filtroSituacao;
-    return contratoOk && situacaoOk;
-  });
+  const impostosFiltrados = faturamentosFiltrados.filter((item) => item.numeroNotaFiscal);
+
+  const metricasFaturamento = useMemo(
+    () =>
+      faturamentosFiltrados.reduce(
+        (acc, item) => {
+          const valor = Number(item.valorMedicao) || 0;
+          acc.total += valor;
+          if (["FATURADO", "EM_ATRASO"].includes(item.situacao)) acc.receber += valor;
+          if (item.situacao === "PAGO") acc.pago += valor;
+          if (item.situacao === "EM_ATRASO") acc.atraso += valor;
+          return acc;
+        },
+        { total: 0, receber: 0, pago: 0, atraso: 0 },
+      ),
+    [faturamentosFiltrados],
+  );
+
+  const metricasImpostos = useMemo(
+    () =>
+      impostosFiltrados.reduce(
+        (acc, item) => {
+          acc.base += Number(item.valorMedicao) || 0;
+          acc.retido += Number(item.impostoRetido) || 0;
+          acc.pagar += Number(item.impostoPagar) || 0;
+          acc.total += Number(item.impostoTotal) || 0;
+          return acc;
+        },
+        { base: 0, retido: 0, pagar: 0, total: 0 },
+      ),
+    [impostosFiltrados],
+  );
+
+  const faturamentoMensal = useMemo(() => {
+    const grupos = new Map();
+    impostosFiltrados.forEach((item) => {
+      const chave = item.dataEmissao?.slice(0, 7);
+      if (chave) grupos.set(chave, (grupos.get(chave) || 0) + Number(item.valorMedicao || 0));
+    });
+    return [...grupos.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([rotulo, valor]) => ({ rotulo: mesBr(rotulo), valor }));
+  }, [impostosFiltrados]);
+
+  const impostosPorCompetencia = useMemo(() => {
+    const grupos = new Map();
+    impostosFiltrados.forEach((item) => {
+      const chave = item.competenciaFiscal?.slice(0, 7);
+      if (chave) grupos.set(chave, (grupos.get(chave) || 0) + Number(item.impostoTotal || 0));
+    });
+    return [...grupos.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([rotulo, valor]) => ({ rotulo: mesBr(rotulo), valor }));
+  }, [impostosFiltrados]);
 
   const projetosDoContrato = projetos.filter(
-    (projeto) => String(projeto.contrato?.id) === String(formData.contrato.id),
+    (projeto) => String(projeto.contrato?.id) === String(formData.contratoId),
   );
 
-  const handleOpenCreate = () => {
-    const contratoId = contratos[0]?.id || "";
-    const primeiroProjeto = projetos.find(
-      (projeto) => String(projeto.contrato?.id) === String(contratoId),
-    );
-    setIsEditing(false);
-    setSelectedId(null);
-    setFormData({
-      contrato: { id: contratoId },
-      projeto: { id: primeiroProjeto?.id || "" },
-      servicosExecutados: "",
-      valorMedicao: "",
-      dataVencimento: "",
-      numeroNotaFiscal: "",
-      situacao: "A_FATURAR",
-    });
-    setCrudModalOpen(true);
+  const abrirNovo = () => {
+    const contratoId = contratos[0]?.id ? String(contratos[0].id) : "";
+    const projeto = projetos.find((item) => String(item.contrato?.id) === contratoId);
+    setEditandoId(null);
+    setFormData({ ...formularioInicial, contratoId, projetoId: projeto ? String(projeto.id) : "" });
+    setFormModal(true);
   };
 
-  const handleOpenEdit = (f) => {
-    setIsEditing(true);
-    setSelectedId(f.id);
+  const abrirEdicao = (item) => {
+    setEditandoId(item.id);
     setFormData({
-      contrato: { id: f.contrato?.id || "" },
-      projeto: { id: f.projeto?.id || "" },
-      servicosExecutados: f.servicosExecutados || "",
-      valorMedicao: f.valorMedicao || "",
-      dataVencimento: f.dataVencimento || "",
-      numeroNotaFiscal: f.numeroNotaFiscal || "",
-      situacao: f.situacao || "A_FATURAR",
+      contratoId: String(item.contratoId || ""),
+      projetoId: String(item.projetoId || ""),
+      valorMedicao: item.valorMedicao || "",
+      servicosExecutados: item.servicosExecutados || "",
     });
-    setCrudModalOpen(true);
+    setFormModal(true);
   };
 
-  const handleSaveFaturamento = async (e) => {
-    e.preventDefault();
+  const salvarLancamento = async (event) => {
+    event.preventDefault();
     try {
       const payload = {
-        ...formData,
-        valorMedicao: parseFloat(formData.valorMedicao) || 0,
+        contrato: { id: Number(formData.contratoId) },
+        projeto: { id: Number(formData.projetoId) },
+        valorMedicao: Number(formData.valorMedicao),
+        servicosExecutados: formData.servicosExecutados.trim() || null,
       };
-      if (isEditing) {
-        await api.put(`/faturamentos/${selectedId}`, payload);
-        setSuccess("Medição atualizada com sucesso!");
-      } else {
-        await api.post("/faturamentos", payload);
-        setSuccess("Nova medição lançada no sistema!");
-      }
-      setCrudModalOpen(false);
-      carregarDados();
+      if (editandoId) await api.put(`/faturamentos/${editandoId}`, payload);
+      else await api.post("/faturamentos", payload);
+      setSuccess(editandoId ? "Lançamento atualizado." : "Lançamento criado.");
+      setFormModal(false);
+      await carregarDados();
     } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.erro || "Erro ao salvar dados do faturamento.");
+      setError(err.response?.data?.erro || "Não foi possível salvar o lançamento.");
     }
   };
 
-  const handleEmitirNota = async (id) => {
-    setSelectedId(id);
-    setNumeroNF("");
-    setVencimentoNF("");
-    setNfModalOpen(true);
+  const abrirNota = (item) => {
+    setNotaModal(item);
+    setNotaData({ numero: "", emissao: hoje(), vencimento: "" });
   };
-  const confirmarEmitirNota = async (e) => {
-    e.preventDefault();
-    if (!numeroNF.trim() || !vencimentoNF) {
-      setError("Informe o número da nota fiscal e a data de vencimento.");
-      return;
-    }
+
+  const emitirNota = async (event) => {
+    event.preventDefault();
     try {
-      await api.put(`/faturamentos/${selectedId}/emitir-nota`, null, {
-        params: { numeroNotaFiscal: numeroNF, dataVencimento: vencimentoNF },
+      await api.put(`/faturamentos/${notaModal.id}/emitir-nota`, null, {
+        params: {
+          numeroNotaFiscal: notaData.numero.trim(),
+          dataEmissao: notaData.emissao,
+          dataVencimento: notaData.vencimento,
+        },
       });
-      setSuccess("Nota Fiscal registrada corporativamente!");
-      setNfModalOpen(false);
-      carregarDados();
+      setSuccess("Nota fiscal registrada e impostos calculados.");
+      setNotaModal(null);
+      await carregarDados();
     } catch (err) {
-      setError(err.response?.data?.erro || "Erro ao emitir nota.");
+      setError(err.response?.data?.erro || "Não foi possível registrar a nota fiscal.");
     }
   };
 
-  const handleBaixarPagamento = async (id) => {
-    setSelectedId(id);
-    setBaixaModalOpen(true);
+  const abrirPagamento = (item) => {
+    setPagamentoModal(item);
+    setDataPagamento(hoje());
   };
-  const confirmarBaixarPagamento = async () => {
+
+  const registrarPagamento = async (event) => {
+    event.preventDefault();
     try {
-      await api.put(`/faturamentos/${selectedId}/baixar-pagamento`);
-      setSuccess("Pagamento liquidado e caixa atualizado!");
-      setBaixaModalOpen(false);
-      carregarDados();
+      await api.put(`/faturamentos/${pagamentoModal.id}/baixar-pagamento`, null, {
+        params: { dataPagamento },
+      });
+      setSuccess("Pagamento registrado com data e situação atualizadas.");
+      setPagamentoModal(null);
+      await carregarDados();
     } catch (err) {
-      setError(err.response?.data?.erro || "Erro ao liquidar faturamento.");
+      setError(err.response?.data?.erro || "Não foi possível registrar o pagamento.");
     }
   };
 
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value || 0);
+  const limparFiltros = () => setFiltros(filtrosIniciais);
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
-      {/* Header Principal */}
-      <div className="flex justify-between items-center">
+    <div className="space-y-5">
+      <header className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-            <FileText size={30} className="text-blue-600" /> Gestão de Faturamento
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+            <FileText size={24} className="text-blue-600" /> Gestão de Faturamento
           </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Medições, emissão de notas e recebimentos vinculados aos projetos
-          </p>
+          <p className="mt-1 text-sm text-slate-500">Cobranças, recebimentos e obrigações fiscais por nota.</p>
         </div>
-        <button
-          onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 shadow-md shadow-blue-600/10 transition-all"
-        >
-          <Plus size={18} /> Nova Medição
+        <button onClick={abrirNovo} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">
+          <Plus size={17} /> Novo lançamento
+        </button>
+      </header>
+
+      {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
+      {success && <Alert type="success" message={success} onClose={() => setSuccess(null)} />}
+
+      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1">
+        <button onClick={() => setAba("faturamento")} className={`flex h-9 items-center gap-2 rounded-md px-4 text-sm font-bold ${aba === "faturamento" ? "bg-white text-blue-700 shadow-sm" : "text-slate-600"}`}>
+          <Receipt size={16} /> Faturamento
+        </button>
+        <button onClick={() => setAba("impostos")} className={`flex h-9 items-center gap-2 rounded-md px-4 text-sm font-bold ${aba === "impostos" ? "bg-white text-blue-700 shadow-sm" : "text-slate-600"}`}>
+          <Landmark size={16} /> Impostos
         </button>
       </div>
 
-      {error && (
-        <Alert type="error" message={error} onClose={() => setError(null)} />
-      )}
-      {success && (
-        <Alert
-          type="success"
-          message={success}
-          onClose={() => setSuccess(null)}
-        />
-      )}
-
-      <div className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
-        <label>
-          <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Contrato</span>
-          <select value={filtroContrato} onChange={(event) => setFiltroContrato(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
-            <option value="">Todos os contratos</option>
-            {contratos.map((contrato) => <option key={contrato.id} value={contrato.id}>{contrato.contrato} - {contrato.cliente}</option>)}
-          </select>
-        </label>
-        <label>
-          <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Situação</span>
-          <select value={filtroSituacao} onChange={(event) => setFiltroSituacao(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
-            <option value="">Todas as situações</option>
-            <option value="A_FATURAR">A faturar</option>
-            <option value="FATURADO">Faturado</option>
-            <option value="EM_ATRASO">Em atraso</option>
-            <option value="PAGO">Pago</option>
-          </select>
-        </label>
-      </div>
-
-      {/* 📊 SEÇÃO DE METRICAS DINÂMICAS REESTILIZADAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              A Faturar
-            </p>
-            <p className="text-2xl font-black text-slate-800 mt-1">
-              {formatCurrency(metricas.aFaturar)}
-            </p>
-          </div>
-          <div className="p-3 bg-slate-50 text-slate-500 rounded-lg border border-slate-100">
-            <Clock size={20} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Faturado (Aguardando)
-            </p>
-            <p className="text-2xl font-black text-blue-600 mt-1">
-              {formatCurrency(metricas.faturado)}
-            </p>
-          </div>
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
-            <Receipt size={20} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Total Recebido
-            </p>
-            <p className="text-2xl font-black text-emerald-600 mt-1">
-              {formatCurrency(metricas.pago)}
-            </p>
-          </div>
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
-            <CheckCircle size={20} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-rose-100 p-5 rounded-xl shadow-sm flex items-center justify-between bg-gradient-to-br from-white to-rose-50/20">
-          <div>
-            <p className="text-xs font-bold text-rose-500 uppercase tracking-wider">
-              Inadimplência / Atraso
-            </p>
-            <p className="text-2xl font-black text-rose-600 mt-1">
-              {formatCurrency(metricas.emAtraso)}
-            </p>
-          </div>
-          <div className="p-3 bg-rose-50 text-rose-600 rounded-lg border border-rose-100">
-            <AlertCircle size={20} />
-          </div>
-        </div>
-      </div>
-
-      {/* Tabela Principal */}
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <th className="p-4">Contrato</th>
-              <th className="p-4">Projeto</th>
-              <th className="p-4">Serviços Executados</th>
-              <th className="p-4">Valor</th>
-              <th className="p-4">Vencimento</th>
-              <th className="p-4">Nota Fiscal</th>
-              <th className="p-4">Situação</th>
-              <th className="p-4 text-center">Etapa do Fluxo</th>
-              <th className="p-4 text-center">Ajustar</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-            {faturamentosFiltrados.map((f) => {
-              const situacaoStr = String(f.situacao).toUpperCase();
-              return (
-                <tr
-                  key={f.id}
-                  className="hover:bg-slate-50/50 transition-colors"
-                >
-                  <td className="p-4 font-bold text-slate-800">
-                    {f.contrato?.contrato || "---"}
-                  </td>
-                  <td className="p-4 text-xs font-semibold text-slate-600">
-                    {f.projeto?.id ? `Projeto #${f.projeto.id}` : "Histórico sem projeto"}
-                  </td>
-                  <td className="p-4 max-w-xs truncate text-slate-500">
-                    {f.servicosExecutados || "---"}
-                  </td>
-                  <td className="p-4 font-mono font-semibold text-slate-900">
-                    {formatCurrency(f.valorMedicao)}
-                  </td>
-                  <td className="p-4 font-medium">
-                    {f.dataVencimento || "---"}
-                  </td>
-                  <td className="p-4 font-mono text-xs text-slate-400">
-                    {f.numeroNotaFiscal || "---"}
-                  </td>
-                  <td className="p-4">
-                    {/* Status Tags com visibilidade premium 💥 */}
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                        situacaoStr === "PAGO"
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : situacaoStr === "FATURADO"
-                            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                            : situacaoStr === "EM_ATRASO"
-                              ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
-                              : "bg-amber-50 text-amber-700 border-amber-200"
-                      }`}
-                    >
-                      {situacaoStr === "EM_ATRASO"
-                        ? "EM ATRASO"
-                        : f.situacao}
-                    </span>
-                  </td>
-                  <td className="p-4 text-center">
-                    {/* LÓGICA DO FLUXO CORRIGIDA SEM FALSOS LIQUIDADOS 💥 */}
-                    {situacaoStr === "A_FATURAR" ? (
-                      <button
-                        onClick={() => handleEmitirNota(f.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 mx-auto"
-                      >
-                        <Receipt size={13} /> Emitir NF-e
-                      </button>
-                    ) : situacaoStr === "FATURADO" ? (
-                      <button
-                        onClick={() => handleBaixarPagamento(f.id)}
-                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 mx-auto"
-                      >
-                        <DollarSign size={13} /> Registrar Recebimento
-                      </button>
-                    ) : situacaoStr === "EM_ATRASO" ? (
-                      /* Se está em atraso, a ação contábil ainda é receber o dinheiro! 💥 */
-                      <button
-                        onClick={() => handleBaixarPagamento(f.id)}
-                        className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 mx-auto shadow-rose-600/10"
-                      >
-                        <AlertTriangle size={13} /> Registrar Recebimento
-                        Atrasado
-                      </button>
-                    ) : (
-                      <span className="text-xs text-green-600 font-bold bg-green-50 px-2.5 py-1 rounded-full border border-green-200 inline-flex items-center gap-1">
-                        <CheckCircle size={12} /> Liquidado
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-center">
-                    <button
-                      onClick={() => handleOpenEdit(f)}
-                      disabled={situacaoStr !== "A_FATURAR"}
-                      title={situacaoStr === "A_FATURAR" ? "Editar medição" : "Medições faturadas não podem ser editadas"}
-                      className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <Edit size={16} />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {faturamentosFiltrados.length === 0 && (
-              <tr><td colSpan="9" className="p-10 text-center text-sm text-slate-500">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* 🛑 MODAL DO CRUD: CADASTRAR / EDITAR COMPLETO */}
-      {crudModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
-            <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
-              <h2 className="text-lg font-bold">
-                {isEditing ? "✏️ Editar Lançamento" : "✨ Nova Medição"}
-              </h2>
-              <button
-                onClick={() => setCrudModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X size={22} />
-              </button>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label>
+            <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Tipo</span>
+            <select value={filtros.tipoContratante} onChange={(e) => setFiltros({ ...filtros, tipoContratante: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+              <option value="">Público e privado</option>
+              <option value="SETOR_PUBLICO">Setor público</option>
+              <option value="SETOR_PRIVADO">Setor privado</option>
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Contrato</span>
+            <select value={filtros.contratoId} onChange={(e) => setFiltros({ ...filtros, contratoId: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+              <option value="">Todos os contratos</option>
+              {contratos.map((contrato) => <option key={contrato.id} value={contrato.id}>{contrato.contrato} - {contrato.cliente}</option>)}
+            </select>
+          </label>
+          {aba === "faturamento" ? (
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Situação</span>
+              <select value={filtros.situacao} onChange={(e) => setFiltros({ ...filtros, situacao: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                <option value="">Todas</option>
+                <option value="A_FATURAR">A faturar</option>
+                <option value="FATURADO">A receber</option>
+                <option value="EM_ATRASO">Em atraso</option>
+                <option value="PAGO">Pago</option>
+              </select>
+            </label>
+          ) : (
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Competência</span>
+              <input type="month" value={filtros.competencia} onChange={(e) => setFiltros({ ...filtros, competencia: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+            </label>
+          )}
+          <label>
+            <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Nota fiscal</span>
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-3 text-slate-400" />
+              <input value={filtros.numeroNotaFiscal} onChange={(e) => setFiltros({ ...filtros, numeroNotaFiscal: e.target.value })} placeholder="Buscar número" className="h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" />
             </div>
-            <form onSubmit={handleSaveFaturamento} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 uppercase">
-                    Contrato Vinculado *
-                  </label>
-                  <select
-                    value={formData.contrato.id}
-                    onChange={(e) => {
-                      const contratoId = e.target.value;
-                      const primeiroProjeto = projetos.find(
-                        (projeto) => String(projeto.contrato?.id) === contratoId,
-                      );
-                      setFormData({
-                        ...formData,
-                        contrato: { id: contratoId },
-                        projeto: { id: primeiroProjeto?.id || "" },
-                      });
-                    }}
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    {contratos.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.contrato} - {c.cliente}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 uppercase">
-                    Projeto Vinculado *
-                  </label>
-                  <select
-                    value={formData.projeto.id}
-                    onChange={(e) => setFormData({ ...formData, projeto: { id: e.target.value } })}
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="">Selecione o projeto</option>
-                    {projetosDoContrato.map((projeto) => (
-                      <option key={projeto.id} value={projeto.id}>Projeto #{projeto.id}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 uppercase">
-                    Valor da Medição (R$) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.valorMedicao}
-                    onChange={(e) =>
-                      setFormData({ ...formData, valorMedicao: e.target.value })
-                    }
-                    className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
-                  />
-                </div>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Comarca ou cliente</span>
+            <input value={filtros.destino} onChange={(e) => setFiltros({ ...filtros, destino: e.target.value })} placeholder="Buscar destino" className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Emissão inicial</span>
+            <input type="date" value={filtros.dataInicio} onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Emissão final</span>
+            <input type="date" value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </label>
+          <button onClick={limparFiltros} className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            <FilterX size={16} /> Limpar filtros
+          </button>
+        </div>
+      </section>
+
+      {aba === "faturamento" ? (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metrica titulo="Total lançado" valor={metricasFaturamento.total} Icon={DollarSign} />
+            <Metrica titulo="A receber" valor={metricasFaturamento.receber} destaque="blue" Icon={Clock3} />
+            <Metrica titulo="Pago" valor={metricasFaturamento.pago} destaque="green" Icon={CheckCircle2} />
+            <Metrica titulo="Em atraso" valor={metricasFaturamento.atraso} destaque="red" Icon={AlertTriangle} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <Barras titulo="Faturamento mensal" dados={faturamentoMensal} />
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-800"><DollarSign size={17} className="text-blue-600" /> Pago x a receber</h2>
+              <div className="space-y-4">
+                {[["Pago", metricasFaturamento.pago, "bg-emerald-600"], ["A receber", metricasFaturamento.receber, "bg-blue-600"]].map(([rotulo, valor, cor]) => {
+                  const base = metricasFaturamento.pago + metricasFaturamento.receber;
+                  return (
+                    <div key={rotulo}>
+                      <div className="mb-1 flex justify-between text-xs font-semibold text-slate-600"><span>{rotulo}</span><span>{dinheiro(valor)}</span></div>
+                      <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${cor}`} style={{ width: `${base ? (valor / base) * 100 : 0}%` }} /></div>
+                    </div>
+                  );
+                })}
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-600 uppercase">
-                  Descrição dos Serviços
-                </label>
-                <textarea
-                  rows="2"
-                  value={formData.servicosExecutados}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      servicosExecutados: e.target.value,
-                    })
-                  }
-                  className="w-full mt-1 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ex: Certificação de rede estruturada..."
-                ></textarea>
+            </section>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full min-w-[1040px] text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                <tr><th className="p-3">Contrato</th><th className="p-3">NF</th><th className="p-3">Emissão</th><th className="p-3">Valor</th><th className="p-3">Comarca / Cliente</th><th className="p-3">Vencimento</th><th className="p-3">Situação</th><th className="p-3 text-right">Ações</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {faturamentosFiltrados.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="p-3"><div className="font-bold text-slate-800">{item.numeroContrato}</div><div className="text-xs text-slate-500">{item.tipoContratante === "SETOR_PRIVADO" ? "Privado" : "Público"}</div></td>
+                    <td className="p-3 font-mono text-xs">{item.numeroNotaFiscal || "---"}</td>
+                    <td className="p-3">{dataBr(item.dataEmissao)}</td>
+                    <td className="p-3 font-semibold">{dinheiro(item.valorMedicao)}</td>
+                    <td className="p-3"><div className="flex items-center gap-2"><Building2 size={15} className="text-slate-400" /><span>{item.destino}</span></div></td>
+                    <td className="p-3">{dataBr(item.dataVencimento)}</td>
+                    <td className="p-3"><StatusBadge situacao={item.situacao} /></td>
+                    <td className="p-3"><div className="flex justify-end gap-1">
+                      <button onClick={() => setDetalhes(item)} title="Ver detalhes" aria-label="Ver detalhes" className="rounded-md p-2 text-slate-500 hover:bg-slate-100"><Eye size={16} /></button>
+                      {item.situacao === "A_FATURAR" && <button onClick={() => abrirEdicao(item)} title="Editar lançamento" aria-label="Editar lançamento" className="rounded-md p-2 text-blue-600 hover:bg-blue-50"><Pencil size={16} /></button>}
+                      {item.situacao === "A_FATURAR" && <button onClick={() => abrirNota(item)} title="Registrar nota fiscal" aria-label="Registrar nota fiscal" className="rounded-md p-2 text-blue-600 hover:bg-blue-50"><Receipt size={16} /></button>}
+                      {["FATURADO", "EM_ATRASO"].includes(item.situacao) && <button onClick={() => abrirPagamento(item)} title="Registrar pagamento" aria-label="Registrar pagamento" className="rounded-md p-2 text-emerald-600 hover:bg-emerald-50"><DollarSign size={16} /></button>}
+                    </div></td>
+                  </tr>
+                ))}
+                {faturamentosFiltrados.length === 0 && <tr><td colSpan="8" className="p-10 text-center text-slate-500">Nenhum lançamento encontrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metrica titulo="Base das NFs" valor={metricasImpostos.base} Icon={FileText} />
+            <Metrica titulo="Retido 4,8%" valor={metricasImpostos.retido} destaque="blue" Icon={Landmark} />
+            <Metrica titulo="A pagar 14,93%" valor={metricasImpostos.pagar} destaque="red" Icon={CalendarDays} />
+            <Metrica titulo="Total de impostos" valor={metricasImpostos.total} destaque="slate" Icon={DollarSign} />
+          </div>
+          <Barras titulo="Impostos por competência" dados={impostosPorCompetencia} />
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full min-w-[1100px] text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                <tr><th className="p-3">Contrato</th><th className="p-3">NF</th><th className="p-3">Emissão</th><th className="p-3">Competência</th><th className="p-3">Valor</th><th className="p-3">Retido 4,8%</th><th className="p-3">A pagar 14,93%</th><th className="p-3">Total</th><th className="p-3">Alerta</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {impostosFiltrados.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold text-slate-800">{item.numeroContrato}</td><td className="p-3 font-mono text-xs">{item.numeroNotaFiscal}</td><td className="p-3">{dataBr(item.dataEmissao)}</td><td className="p-3 font-semibold">{dataBr(item.competenciaFiscal)}</td><td className="p-3">{dinheiro(item.valorMedicao)}</td><td className="p-3">{dinheiro(item.impostoRetido)}</td><td className="p-3">{dinheiro(item.impostoPagar)}</td><td className="p-3 font-bold">{dinheiro(item.impostoTotal)}</td><td className="p-3"><AlertaFiscal alerta={item.alertaFiscal} /></td>
+                  </tr>
+                ))}
+                {impostosFiltrados.length === 0 && <tr><td colSpan="9" className="p-10 text-center text-slate-500">Nenhuma nota fiscal encontrada.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {formModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4"><h2 className="font-bold text-slate-900">{editandoId ? "Editar lançamento" : "Novo lançamento"}</h2><button onClick={() => setFormModal(false)} aria-label="Fechar" className="rounded-md p-1 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
+            <form onSubmit={salvarLancamento} className="space-y-4 p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Contrato *</span><select required value={formData.contratoId} onChange={(e) => { const contratoId = e.target.value; const projeto = projetos.find((item) => String(item.contrato?.id) === contratoId); setFormData({ ...formData, contratoId, projetoId: projeto ? String(projeto.id) : "" }); }} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{contratos.map((item) => <option key={item.id} value={item.id}>{item.contrato} - {item.cliente}</option>)}</select></label>
+                <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Projeto / comarca *</span><select required value={formData.projetoId} onChange={(e) => setFormData({ ...formData, projetoId: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{projetosDoContrato.map((item) => <option key={item.id} value={item.id}>Projeto #{item.id}{item.nomeComarcaVinculada ? ` - ${item.nomeComarcaVinculada}` : ""}</option>)}</select></label>
               </div>
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors shadow-sm mt-2"
-              >
-                Salvar Lançamento
-              </button>
+              <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Valor *</span><input required min="0.01" step="0.01" type="number" value={formData.valorMedicao} onChange={(e) => setFormData({ ...formData, valorMedicao: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+              <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Serviços executados</span><textarea rows="3" value={formData.servicosExecutados} onChange={(e) => setFormData({ ...formData, servicosExecutados: e.target.value })} className="w-full rounded-lg border border-slate-300 p-3 text-sm" /></label>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setFormModal(false)} className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700">Cancelar</button><button type="submit" className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Salvar</button></div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL OPERACIONAL 1: NOTA FISCAL */}
-      {nfModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-md overflow-hidden p-6 space-y-4 animate-fade-in">
-            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-              <Receipt size={20} className="text-blue-600" /> Registrar Nota
-              Fiscal
-            </h2>
-            <input
-              type="text"
-              required
-              value={numeroNF}
-              onChange={(e) => setNumeroNF(e.target.value)}
-              className="w-full p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Número da NF-e"
-            />
-            <label className="block">
-              <span className="mb-1 block text-xs font-bold uppercase text-slate-600">Vencimento *</span>
-              <input
-                type="date"
-                required
-                value={vencimentoNF}
-                onChange={(event) => setVencimentoNF(event.target.value)}
-                className="w-full p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </label>
-            <div className="flex gap-3">
-              <button
-                onClick={confirmarEmitirNota}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-semibold text-sm transition-colors"
-              >
-                Confirmar
-              </button>
-              <button
-                type="button"
-                onClick={() => setNfModalOpen(false)}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg font-semibold text-sm transition-colors"
-              >
-                Cancelar
-              </button>
-            </div>
+      {notaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4"><h2 className="font-bold text-slate-900">Registrar nota fiscal</h2><button onClick={() => setNotaModal(null)} aria-label="Fechar" className="rounded-md p-1 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
+            <form onSubmit={emitirNota} className="space-y-4 p-5">
+              <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Número da NF *</span><input required value={notaData.numero} onChange={(e) => setNotaData({ ...notaData, numero: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Emissão *</span><input required type="date" value={notaData.emissao} onChange={(e) => setNotaData({ ...notaData, emissao: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label><label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Vencimento *</span><input required min={notaData.emissao} type="date" value={notaData.vencimento} onChange={(e) => setNotaData({ ...notaData, vencimento: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label></div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">Os impostos serão calculados e vinculados automaticamente a esta NF.</div>
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => setNotaModal(null)} className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700">Cancelar</button><button type="submit" className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white">Registrar NF</button></div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* MODAL OPERACIONAL 2: BAIXA DE PAGAMENTO */}
-      {baixaModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-sm overflow-hidden text-center p-6 space-y-4 animate-fade-in">
-            <div className="mx-auto w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-200">
-              <TrendingUp size={24} />
+      {pagamentoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4"><h2 className="font-bold text-slate-900">Registrar pagamento</h2><button onClick={() => setPagamentoModal(null)} aria-label="Fechar" className="rounded-md p-1 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
+            <form onSubmit={registrarPagamento} className="space-y-4 p-5"><p className="text-sm text-slate-600">NF {pagamentoModal.numeroNotaFiscal} · {dinheiro(pagamentoModal.valorMedicao)}</p><label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Data do pagamento *</span><input required min={pagamentoModal.dataEmissao} max={hoje()} type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setPagamentoModal(null)} className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700">Cancelar</button><button type="submit" className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white">Confirmar</button></div></form>
+          </div>
+        </div>
+      )}
+
+      {detalhes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4"><h2 className="font-bold text-slate-900">Detalhes do lançamento</h2><button onClick={() => setDetalhes(null)} aria-label="Fechar" className="rounded-md p-1 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
+            <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2">
+              {[["Contrato", detalhes.numeroContrato], ["Destino", detalhes.destino], ["Nota fiscal", detalhes.numeroNotaFiscal || "Não emitida"], ["Situação", nomeSituacao[detalhes.situacao]], ["Emissão", dataBr(detalhes.dataEmissao)], ["Pagamento", dataBr(detalhes.dataPagamento)], ["Valor", dinheiro(detalhes.valorMedicao)], ["Total de impostos", dinheiro(detalhes.impostoTotal)]].map(([rotulo, valor]) => <div key={rotulo} className="bg-white p-4"><p className="text-xs font-bold uppercase text-slate-500">{rotulo}</p><p className="mt-1 text-sm font-semibold text-slate-800">{valor}</p></div>)}
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-800">
-                Confirmar Recebimento?
-              </h3>
-              <p className="text-sm text-slate-500 mt-2">
-                Isto confirmará a entrada de capital no banco e alterará o
-                status da medição para liquidado.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={confirmarBaixarPagamento}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors"
-              >
-                Confirmar Entrada
-              </button>
-              <button
-                onClick={() => setBaixaModalOpen(false)}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg font-semibold text-sm transition-colors"
-              >
-                Cancelar
-              </button>
-            </div>
+            <div className="border-t border-slate-200 p-4"><p className="text-xs font-bold uppercase text-slate-500">Serviços executados</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{detalhes.servicosExecutados || "Não informado"}</p></div>
           </div>
         </div>
       )}
