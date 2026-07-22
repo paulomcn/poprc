@@ -2,6 +2,9 @@
 
 Data: 22/07/2026
 
+**Status:** IMPLEMENTADA E HOMOLOGADA em 22/07/2026. Evidencias em
+`RESULTADO_FASE_B1_FATURAMENTO_2026-07-22.md`.
+
 ## 1. Decisao de cronograma
 
 O modulo sera implementado depois da Fase A (baseline/checkpoint) e da Fase B (regressao operacional), como **Fase B.1**. Ele deve entrar antes da revisao visual ampla, pois altera banco, API, regras de calculo e a propria pagina que depois sera padronizada visualmente.

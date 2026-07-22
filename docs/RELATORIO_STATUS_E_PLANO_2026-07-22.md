@@ -79,7 +79,9 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 - Fase A concluida: modo local sem autenticacao consolidado e checkpoint publicado.
 - Fase B concluida: regressao operacional em ambiente isolado, smoke test das
   paginas principais e 86 testes automatizados aprovados.
-- Proxima execucao: Fase B.1, remodelagem de Faturamento e Impostos.
+- Fase B.1 concluida: Faturamento e Impostos remodelados e conciliados com a
+  planilha de referencia; 92 testes e smoke test visual aprovados.
+- Proxima execucao: Fase C, coerencia visual e usabilidade.
 
 ## 6. Pendencias por prioridade
 
@@ -122,6 +124,9 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 **Aceite:** nenhuma operacao apresenta sucesso sem persistir; estados e saldos coincidem com o banco; defeitos registrados com evidencia.
 
 ### Fase B.1 - Faturamento e impostos (3-5 dias)
+
+**Status em 22/07/2026: concluida.** Evidencias em
+`RESULTADO_FASE_B1_FATURAMENTO_2026-07-22.md`.
 
 1. Remodelar a listagem de cobrancas com contrato, NF, emissao, valor, identificacao do destino e situacao de pagamento.
 2. Separar visualmente setor publico e privado, adicionando classificacao explicita ao contrato.
