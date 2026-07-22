@@ -12,6 +12,7 @@ import {
   Loader2,
   MapPin,
   RefreshCw,
+  User,
   Users,
   TimerReset
 } from 'lucide-react'
@@ -210,13 +211,13 @@ export default function PortalTecnicoDashboard() {
   return (
     <div className="min-h-screen bg-slate-950 p-4 font-sans text-slate-100 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex flex-col items-start justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900 p-6 shadow-xl sm:flex-row sm:items-center">
+        <header className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-center">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400">Portal de Operações</p>
+            <p className="text-xs font-bold uppercase text-cyan-400">Área do técnico</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
-              {tecnico?.nome || 'Usuário não identificado'}
+              {tecnico ? `Olá, ${tecnico.nome}` : 'Usuário não identificado'}
             </h1>
-            <p className="mt-0.5 text-xs text-slate-400">{tecnico?.funcao || 'Operação de campo'}</p>
+            <p className="mt-1 text-sm text-slate-400">Ordens atribuídas, jornada e evidências de campo.</p>
           </div>
           <div className="rounded bg-white"><UserMenu compacto /></div>
         </header>
@@ -239,8 +240,10 @@ export default function PortalTecnicoDashboard() {
             area="TECNICO"
             funcionarioId={tecnico.id}
             titulo="Execuções atribuídas a você"
-            limite={6}
+            limite={4}
             dark
+            recolhivel
+            inicialmenteAberta={false}
           />
         )}
 
@@ -331,7 +334,7 @@ export default function PortalTecnicoDashboard() {
           </aside>
 
           <main className="space-y-4 lg:col-span-2">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 xl:flex-row xl:items-end xl:justify-between">
               <div className="flex items-center gap-2">
                 <Briefcase className="h-5 w-5 text-indigo-400" />
                 <h2 className="font-black text-white">Ordens atribuídas</h2>
@@ -339,7 +342,7 @@ export default function PortalTecnicoDashboard() {
               <div className="flex flex-wrap items-end gap-2">
                 <label>
                   <span className="mb-1 block text-[9px] font-black uppercase text-slate-500">Situação</span>
-                  <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white">
+                  <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="h-10 min-w-32 rounded-md border border-slate-700 bg-slate-950 px-3 text-xs text-white">
                     <option value="ATIVAS">Ativas</option>
                     <option value="CONCLUIDAS">Concluídas</option>
                     <option value="TODAS">Todas</option>
@@ -347,7 +350,7 @@ export default function PortalTecnicoDashboard() {
                 </label>
                 <label>
                   <span className="mb-1 block text-[9px] font-black uppercase text-slate-500">Prazo</span>
-                  <select value={filtroPrazo} onChange={(e) => setFiltroPrazo(e.target.value)} className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white">
+                  <select value={filtroPrazo} onChange={(e) => setFiltroPrazo(e.target.value)} className="h-10 min-w-36 rounded-md border border-slate-700 bg-slate-950 px-3 text-xs text-white">
                     <option value="TODOS">Todos</option>
                     <option value="ATRASADA">Atrasadas</option>
                     <option value="PROXIMA">Vencem em 24h</option>
@@ -359,7 +362,7 @@ export default function PortalTecnicoDashboard() {
                   type="button"
                   onClick={carregarDados}
                   disabled={loading}
-                  className="rounded-md border border-slate-700 p-2 text-slate-400 hover:text-white disabled:opacity-50"
+                  className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-50"
                   title="Atualizar dados"
                 >
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

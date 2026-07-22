@@ -23,6 +23,7 @@ import api, { getApiErrorMessage } from "../services/api";
 import OrdensServicoCard from "../components/OrdensServicoCard";
 import StatusModal from "../components/StatusModal";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
+import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
 
 const STATUS_COLUMNS = [
@@ -499,16 +500,17 @@ export default function GestaoOrdensServico() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div><h1 className="text-2xl font-bold text-slate-900">Ordens de Serviço</h1><p className="mt-1 text-sm text-slate-500">Planejamento, emissão e acompanhamento do ciclo operacional.</p></div>
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      <PageHeader
+        eyebrow="Operação"
+        title="Ordens de Serviço"
+        description="Emita, priorize e acompanhe cada ordem do planejamento ao faturamento."
+        actions={
           <button onClick={abrirModalCriacao} disabled={projetosComResponsavel.length === 0} className="flex items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"><Plus className="h-4 w-4" /> Nova OS</button>
-        </div>
+        }
+      />
 
-        {/* Filtros e Ações */}
-        <div className="mb-5 rounded border border-slate-200 bg-white p-4">
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
@@ -561,18 +563,29 @@ export default function GestaoOrdensServico() {
               Consultando tabelas do Postgres...
             </div>
           )}
-        </div>
+        </section>
 
-        {error && (
+      {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg flex items-center gap-3 mb-6 text-sm">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
             <span>{error}</span>
           </div>
-        )}
-      </div>
+      )}
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {STATUS_COLUMNS.map((coluna) => (
+          <div key={coluna.value} className="rounded-lg border border-slate-200 bg-white p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-xs font-semibold text-slate-500">{coluna.label}</p>
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${coluna.color.replace("50", "500")}`} />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{ordensPorStatus[coluna.value]?.length || 0}</p>
+          </div>
+        ))}
+      </section>
 
       <div>
-        <FilaPendenciasOperacionais area="ADMINISTRACAO" titulo="Validações administrativas pendentes" limite={6} />
+        <FilaPendenciasOperacionais area="ADMINISTRACAO" titulo="Validações administrativas pendentes" limite={4} recolhivel inicialmenteAberta={false} />
       </div>
 
       {/* Kanban Board */}
@@ -596,7 +609,7 @@ export default function GestaoOrdensServico() {
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => handleDrop(e, coluna.targetStatus)}
-              className={`min-h-[520px] space-y-2 rounded border border-dashed border-slate-300 bg-slate-100/50 p-2 transition-colors ${coluna.dropColor}`}
+              className={`min-h-[380px] space-y-2 rounded border border-dashed border-slate-300 bg-slate-100/50 p-2 transition-colors ${coluna.dropColor}`}
             >
               {ordensPorStatus[coluna.value]?.length > 0 ? (
                 ordensPorStatus[coluna.value].map((ordem) => (

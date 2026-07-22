@@ -312,26 +312,28 @@ export default function AuditoriaMateriaisEAsBuilt() {
     );
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 md:p-8 font-sans text-slate-100">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="min-h-full bg-slate-950 p-4 font-sans text-slate-100 md:p-6">
+      <div className="mx-auto max-w-[1500px] space-y-6">
+        <header className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-end">
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-white flex items-center gap-2">
+            <p className="text-xs font-bold uppercase text-cyan-400">Materiais e auditoria</p>
+            <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">
               Auditoria de Retirada/Devolução
             </h1>
-            <p className="text-slate-400 text-sm mt-0.5">
+            <p className="mt-1 text-sm text-slate-400">
               Conciliação por OR, OS, estoque e documentação As-Built
             </p>
           </div>
 
-          <div className="flex min-w-0 w-full items-center gap-3 sm:w-auto">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300 sm:flex-none">
-              <Briefcase size={16} className="shrink-0 text-indigo-400" />
+          <div className="flex w-full min-w-0 items-end gap-2 lg:w-auto">
+            <label className="min-w-0 flex-1 lg:w-[430px]">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-400"><Briefcase size={13} /> OS / obra em análise</span>
               <select
                 value={selectedComarcaId}
                 onChange={(e) => setSelectedComarcaId(e.target.value)}
-                className="min-w-0 w-full cursor-pointer border-none bg-transparent text-xs font-bold text-white outline-none"
+                className="h-10 w-full min-w-0 cursor-pointer rounded border border-slate-700 bg-slate-900 px-3 text-sm font-bold text-white outline-none focus:border-blue-500"
               >
+                {comarcas.length === 0 && <option value="">Nenhuma obra disponível</option>}
                 {comarcas.map((comarca) => (
                   <option
                     key={comarca.id}
@@ -343,17 +345,20 @@ export default function AuditoriaMateriaisEAsBuilt() {
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
             <button
+              type="button"
               onClick={() => carregarAuditoria(selectedComarcaId)}
-              className="shrink-0 rounded-xl border border-slate-800 bg-slate-900 p-2.5 transition hover:bg-slate-800"
+              disabled={!selectedComarcaId || loading}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 disabled:opacity-40"
+              title="Atualizar auditoria"
             >
-              <RefreshCw className="w-4 h-4 text-slate-400" />
+              <RefreshCw className={`h-4 w-4 text-slate-300 ${loading ? "animate-spin" : ""}`} />
             </button>
           </div>
         </header>
 
-        <FilaPendenciasOperacionais area="AUDITORIA" titulo="Auditorias aguardando homologação" limite={6} dark />
+        <FilaPendenciasOperacionais area="AUDITORIA" titulo="Auditorias aguardando homologação" limite={4} dark recolhivel inicialmenteAberta={false} />
 
         {error && (
           <div className="bg-rose-950/40 border border-rose-500/30 text-rose-300 p-4 rounded-xl text-sm">
@@ -376,9 +381,9 @@ export default function AuditoriaMateriaisEAsBuilt() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Tabela de Discrepância de Inventário com Conciliação Dinâmica */}
-          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+          <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900 shadow-xl lg:col-span-2">
             <div className="p-6 border-b border-slate-800 flex items-center gap-3">
               <Package className="w-5 h-5 text-indigo-400" />
               <h2 className="font-bold text-white">
@@ -510,7 +515,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
           </div>
 
           {/* Card do As-Built */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-6">
+          <div className="flex flex-col justify-between space-y-6 rounded-lg border border-slate-800 bg-slate-900 p-6 shadow-xl">
             <div className="space-y-4">
               <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
                 <FileCheck className="w-5 h-5 text-indigo-400" />
@@ -567,7 +572,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900 shadow-xl">
           <div className="p-6 border-b border-slate-800 flex items-center justify-between gap-4">
             <div>
               <h2 className="font-bold text-white">Ciclo da Ordem de Retirada</h2>
@@ -640,7 +645,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900 shadow-xl">
           <div className="p-6 border-b border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-3">
               <Package className="w-5 h-5 text-indigo-400" />

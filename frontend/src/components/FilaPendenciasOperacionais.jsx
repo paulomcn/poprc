@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ChevronRight, Clock, ListTodo, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, Clock, ListTodo, RefreshCw } from "lucide-react";
 import api from "../services/api";
 
 const prioridadeClasses = {
@@ -27,10 +27,13 @@ export default function FilaPendenciasOperacionais({
   titulo = "Fila operacional",
   limite = 6,
   dark = false,
+  recolhivel = false,
+  inicialmenteAberta = true,
 }) {
   const [pendencias, setPendencias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [aberta, setAberta] = useState(!recolhivel || inicialmenteAberta);
 
   const carregar = useCallback(async () => {
     try {
@@ -75,12 +78,25 @@ export default function FilaPendenciasOperacionais({
             <p className={`text-xs ${secundaria}`}>{pendencias.length} {pendencias.length === 1 ? "pendência ativa" : "pendências ativas"}</p>
           </div>
         </div>
-        <button type="button" onClick={carregar} disabled={loading} className={`rounded p-2 ${dark ? "hover:bg-slate-800" : "hover:bg-slate-100"}`} title="Atualizar fila">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={carregar} disabled={loading} className={`rounded p-2 ${dark ? "hover:bg-slate-800" : "hover:bg-slate-100"}`} title="Atualizar fila" aria-label="Atualizar fila">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+          {recolhivel && (
+            <button
+              type="button"
+              onClick={() => setAberta((valor) => !valor)}
+              className={`inline-flex items-center gap-1 rounded px-2 py-2 text-xs font-bold ${dark ? "hover:bg-slate-800" : "hover:bg-slate-100"}`}
+              aria-expanded={aberta}
+            >
+              {aberta ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              <span className="hidden sm:inline">{aberta ? "Recolher" : "Ver fila"}</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {error ? (
+      {aberta && (error ? (
         <div className="flex items-center gap-2 px-4 py-4 text-xs text-rose-500">
           <AlertTriangle className="h-4 w-4" /> {error}
         </div>
@@ -111,8 +127,8 @@ export default function FilaPendenciasOperacionais({
             </div>
           ))}
         </div>
-      )}
-      {pendencias.length > limite && (
+      ))}
+      {aberta && pendencias.length > limite && (
         <p className={`border-t px-4 py-2 text-xs ${dark ? "border-slate-800 text-slate-400" : "border-slate-100 text-slate-500"}`}>
           Mais {pendencias.length - limite} pendências não exibidas neste resumo.
         </p>

@@ -9,7 +9,6 @@ import {
   Printer,
   Upload,
   CheckCircle2,
-  ChevronRight,
   PenTool,
   Package,
   ShieldCheck,
@@ -24,6 +23,8 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import HistoricoAtividadesComarca from "../components/HistoricoAtividadesComarca";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
+import EmptyState from "../components/EmptyState";
+import PageHeader from "../components/PageHeader";
 import { API_BASE_URL, buildApiFileUrl } from "../services/runtimeConfig";
 import rcLogo from "../assets/rclogo.jpg";
 import { useAuth } from "../contexts/AuthContext";
@@ -1524,18 +1525,24 @@ export default function GestaoComarcas() {
       (filtroEtapa === "VIRADA" && etapa === 3)
     );
   });
+  const resumoEtapas = {
+    vistoria: comarcas.filter((comarca) => comarca.situacao !== "CONCLUIDA" && (comarca.etapaAtual || 1) === 1).length,
+    infraestrutura: comarcas.filter((comarca) => comarca.situacao !== "CONCLUIDA" && comarca.etapaAtual === 2).length,
+    virada: comarcas.filter((comarca) => comarca.situacao !== "CONCLUIDA" && comarca.etapaAtual === 3).length,
+    concluidas: comarcas.filter((comarca) => comarca.situacao === "CONCLUIDA").length,
+  };
 
   if (loading) return <LoadingSpinner />;
   if (error) return <Alert type="error" message={error} />;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Gestão de Obras</h1>
-          <p className="mt-1 text-sm text-slate-500">Vistoria, infraestrutura, virada de rede e encerramento por OS.</p>
-        </div>
-        <div className="grid w-full grid-cols-1 gap-3 rounded border border-slate-200 bg-white p-3 sm:w-auto sm:grid-cols-[auto_minmax(12rem,1fr)_auto] sm:items-end">
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      <PageHeader
+        eyebrow="Operação"
+        title="Gestão de Obras"
+        description="Acompanhe vistoria, infraestrutura, virada de rede e encerramento por OS."
+        actions={
+        <div className="grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-[auto_minmax(12rem,1fr)_auto] sm:items-end">
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600 sm:pb-2">
             <input
               type="checkbox"
@@ -1564,13 +1571,28 @@ export default function GestaoComarcas() {
             {comarcasFiltradas.length} resultado(s)
           </span>
         </div>
-      </div>
+        }
+      />
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          ["Vistoria", resumoEtapas.vistoria, "border-amber-200", "text-amber-700"],
+          ["Infraestrutura", resumoEtapas.infraestrutura, "border-cyan-200", "text-cyan-700"],
+          ["Virada de rede", resumoEtapas.virada, "border-blue-200", "text-blue-700"],
+          ["Concluídas", resumoEtapas.concluidas, "border-emerald-200", "text-emerald-700"],
+        ].map(([label, valor, borda, cor]) => (
+          <div key={label} className={`rounded-lg border bg-white p-4 ${borda}`}>
+            <p className="text-xs font-semibold text-slate-500">{label}</p>
+            <p className={`mt-2 text-2xl font-bold ${cor}`}>{valor}</p>
+          </div>
+        ))}
+      </section>
 
       <div>
-        <FilaPendenciasOperacionais area="GESTAO_OBRAS" titulo="Pendências da Gestão de Obras" limite={5} />
+        <FilaPendenciasOperacionais area="GESTAO_OBRAS" titulo="Pendências da Gestão de Obras" limite={4} recolhivel inicialmenteAberta={false} />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2">
         {comarcasFiltradas.map((comarca) => {
           const materiaisPrevistos = Array.isArray(comarca.materiais)
             ? comarca.materiais
@@ -1614,11 +1636,12 @@ export default function GestaoComarcas() {
               </button>
             )}
             <div
-              className={`flex-1 space-y-4 p-5 ${comarca.arquivado ? "pointer-events-none opacity-50" : ""} ${comarca.pendencias ? "border-l-4 border-l-red-500 bg-red-50" : "bg-white"}`}
+              className={`flex-1 space-y-4 bg-white p-5 ${comarca.arquivado ? "pointer-events-none opacity-50" : ""} ${comarca.pendencias ? "border-l-4 border-l-red-500" : ""}`}
             >
               {/* Topo do Card: Identificador Único da OS + Stepper Visual de Linha do Tempo */}
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+              <div className="space-y-3">
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                   <h3 className="text-xl font-bold text-slate-800">
                     {comarca.nomeComarca}
                   </h3>
@@ -1626,18 +1649,31 @@ export default function GestaoComarcas() {
                     <FileText size={12} /> OS:{" "}
                     {comarca.ordemServico?.numeroOs || `OS-2026-0${comarca.id}`}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  </div>
+                  <span className={`w-fit shrink-0 rounded px-2.5 py-1 text-[10px] font-black uppercase ${obraConcluida ? "bg-emerald-50 text-emerald-700" : etapaAtual === 1 ? "bg-amber-50 text-amber-700" : etapaAtual === 2 ? "bg-cyan-50 text-cyan-700" : "bg-blue-50 text-blue-700"}`}>
+                    {obraConcluida ? "Concluída" : etapaAtual === 1 ? "Em vistoria" : etapaAtual === 2 ? "Em infraestrutura" : "Em virada de rede"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1 text-[9px] font-black uppercase sm:text-[10px]">
+                  <span className={`flex min-h-8 items-center justify-center rounded px-1 text-center ${etapaAtual === 1 && !obraConcluida ? "bg-amber-500 text-white" : etapaAtual > 1 || obraConcluida ? "bg-white text-slate-600" : "text-slate-400"}`}>1. Vistoria</span>
+                  <span className={`flex min-h-8 items-center justify-center rounded px-1 text-center ${etapaAtual === 2 && !obraConcluida ? "bg-cyan-600 text-white" : etapaAtual > 2 || obraConcluida ? "bg-white text-slate-600" : "text-slate-400"}`}>2. Infra</span>
+                  <span className={`flex min-h-8 items-center justify-center rounded px-1 text-center ${etapaAtual === 3 && !obraConcluida ? "bg-blue-600 text-white" : obraConcluida ? "bg-white text-slate-600" : "text-slate-400"}`}>3. Virada</span>
+                  <span className={`flex min-h-8 items-center justify-center rounded px-1 text-center ${obraConcluida ? "bg-emerald-600 text-white" : "text-slate-400"}`}>4. Concluída</span>
+                </div>
+
+                  <div className="flex gap-2 overflow-x-auto pb-1">
                     <button
                       type="button"
                       onClick={() => abrirDocumento("os", comarca)}
-                      className="rounded-md border border-blue-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700 hover:bg-blue-50"
+                      className="shrink-0 rounded-md border border-blue-200 bg-white px-3 py-2 text-[10px] font-black uppercase text-blue-700 hover:bg-blue-50"
                     >
                       Visualizar OS
                     </button>
                     <button
                       type="button"
                       onClick={() => abrirDocumento("retirada", comarca)}
-                      className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-slate-700 hover:bg-slate-50"
+                      className="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase text-slate-700 hover:bg-slate-50"
                     >
                       Visualizar Ordem de Retirada
                     </button>
@@ -1645,45 +1681,17 @@ export default function GestaoComarcas() {
                       type="button"
                       onClick={() => gerarOrAdicional(comarca)}
                       disabled={!comarca.ordemServico?.id}
-                      className="rounded-md border border-emerald-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
+                      className="shrink-0 rounded-md border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
                     >
                       Gerar OR Adicional
                     </button>
                     <button
                       type="button"
                       onClick={() => alterarArquivamentoComarca(comarca)}
-                      className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-red-700 hover:bg-red-50"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-[10px] font-black uppercase text-red-700 hover:bg-red-50"
                     >
                       <Archive size={12} /> Arquivar obra
                     </button>
-                  </div>
-                </div>
-
-                {/* Indicador de Passos / Status do Fluxo Linear */}
-                <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
-                  <span
-                    className={`px-2 py-0.5 rounded ${etapaAtual === 1 ? "bg-amber-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
-                  >
-                    1. Vistoria
-                  </span>
-                  <ChevronRight size={10} className="text-slate-400" />
-                  <span
-                    className={`px-2 py-0.5 rounded ${etapaAtual === 2 ? "bg-emerald-500 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
-                  >
-                    2. Infra
-                  </span>
-                  <ChevronRight size={10} className="text-slate-400" />
-                  <span
-                    className={`px-2 py-0.5 rounded ${etapaAtual === 3 && !obraConcluida ? "bg-blue-600 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
-                  >
-                    3. Virada
-                  </span>
-                  <ChevronRight size={10} className="text-slate-400" />
-                  <span
-                    className={`px-2 py-0.5 rounded ${obraConcluida ? "bg-emerald-600 text-white shadow-sm" : "bg-slate-200 text-slate-500"}`}
-                  >
-                    4. Concluída
-                  </span>
                 </div>
               </div>
 
@@ -1699,7 +1707,7 @@ export default function GestaoComarcas() {
                       Endereço
                     </p>
                     <p className="text-slate-800 font-medium">
-                      {comarca.endereco}
+                      {comarca.endereco || "Não informado"}
                     </p>
                   </div>
                 </div>
@@ -1714,7 +1722,7 @@ export default function GestaoComarcas() {
                       Juiz Responsável
                     </p>
                     <p className="text-slate-800 font-medium">
-                      {comarca.juizResponsavel}
+                      {comarca.juizResponsavel || "Não informado"}
                     </p>
                   </div>
                 </div>
@@ -2189,8 +2197,12 @@ export default function GestaoComarcas() {
           );
         })}
         {comarcasFiltradas.length === 0 && (
-          <div className="lg:col-span-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-500">
-            Nenhuma obra encontrada nesta etapa.
+          <div className="2xl:col-span-2 rounded-lg border border-dashed border-slate-300 bg-white">
+            <EmptyState
+              icon={MapPin}
+              title="Nenhuma obra encontrada nesta etapa"
+              description="Escolha outra etapa ou habilite a visualização de obras arquivadas."
+            />
           </div>
         )}
       </div>

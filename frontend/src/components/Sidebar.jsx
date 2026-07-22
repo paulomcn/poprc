@@ -22,7 +22,7 @@ import {
 const secoesMenu = [
   {
     titulo: "Visão geral",
-    itens: [{ path: "/", icon: LayoutDashboard, label: "Dashboard Executivo", end: true, roles: ["ADMIN", "SUPERVISOR_TECNICO"] }],
+    itens: [{ path: "/", icon: LayoutDashboard, label: "Central operacional", end: true, roles: ["ADMIN", "SUPERVISOR_TECNICO"] }],
   },
   {
     titulo: "Operação",

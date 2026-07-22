@@ -3,7 +3,7 @@ import { Bell, Menu } from "lucide-react";
 import UserMenu from "./UserMenu";
 
 const contextoRotas = [
-  { teste: (path) => path === "/", area: "Visão geral", pagina: "Dashboard Executivo" },
+  { teste: (path) => path === "/", area: "Visão geral", pagina: "Central operacional" },
   { teste: (path) => path.startsWith("/contratos"), area: "Operação", pagina: "Contratos" },
   { teste: (path) => path.startsWith("/projetos"), area: "Operação", pagina: "Projetos" },
   { teste: (path) => path.startsWith("/ordens-servico"), area: "Operação", pagina: "Ordens de Serviço" },

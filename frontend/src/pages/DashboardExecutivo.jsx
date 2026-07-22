@@ -19,6 +19,7 @@ import api from "../services/api";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
+import PageHeader from "../components/PageHeader";
 
 const indicadorClasses = {
   neutro: "border-slate-200 bg-white text-slate-700",
@@ -167,14 +168,11 @@ export default function DashboardExecutivo() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
-      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase text-blue-600">Visão operacional</p>
-          <h1 className="mt-1 text-3xl font-bold text-slate-900">Dashboard Executivo</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Contratos, prazos e execução das obras em uma única leitura.
-          </p>
-        </div>
+      <PageHeader
+        eyebrow="Visão operacional"
+        title="Central operacional"
+        description="Contratos, prazos, obras e posição financeira em uma única leitura."
+        actions={
         <button
           type="button"
           onClick={() => fetchDashboardData(true)}
@@ -184,7 +182,8 @@ export default function DashboardExecutivo() {
           <RefreshCw size={17} className={atualizando ? "animate-spin" : ""} />
           Atualizar dados
         </button>
-      </header>
+        }
+      />
 
       <section className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-3">
         <label className="block">
@@ -230,8 +229,6 @@ export default function DashboardExecutivo() {
 
       {error && <Alert type="error" message={error} />}
 
-      <FilaPendenciasOperacionais titulo="Pendências por área responsável" limite={8} />
-
       {(data?.totalComarcasEmAtraso || 0) > 0 && (
         <section className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
@@ -255,6 +252,8 @@ export default function DashboardExecutivo() {
         <Indicador icon={AlertTriangle} label="OS atrasadas" valor={data?.totalComarcasEmAtraso || 0} detalhe={`${data?.ordensProximasPrazo || 0} vencem nas próximas 24h`} variante={(data?.totalComarcasEmAtraso || 0) > 0 ? "vermelho" : "neutro"} />
         <Indicador icon={CheckCircle} label="Obras concluídas" valor={data?.totalComarcasConcluidas || 0} detalhe={`${percentualConclusao}% do total acompanhado`} variante="verde" />
       </section>
+
+      <FilaPendenciasOperacionais titulo="Pendências por área responsável" limite={5} recolhivel inicialmenteAberta={false} />
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-5">
         <div className="rounded-lg border border-slate-200 bg-white p-5 xl:col-span-3">
