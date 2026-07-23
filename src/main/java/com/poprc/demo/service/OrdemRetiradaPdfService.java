@@ -16,9 +16,12 @@ import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.OrdemRetirada;
+import com.poprc.demo.model.OrdemRetiradaDocumento;
 import com.poprc.demo.model.OrdemRetiradaItem;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.repository.OrdemRetiradaDocumentoRepository;
 import com.poprc.demo.repository.OrdemRetiradaRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,14 +30,25 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class OrdemRetiradaPdfService {
 
+    public static final String FASE_GERACAO = "GERACAO";
+    public static final String FASE_RETIRADA = "RETIRADA";
+    public static final String FASE_DEVOLUCAO = "DEVOLUCAO";
+    private static final String DIRETORIO_DOCUMENTOS_OR = "documentos/ordens-retirada";
     private static final Color AZUL = new Color(8, 57, 112);
     private static final Color AZUL_CLARO = new Color(229, 239, 250);
     private static final Color CINZA_CLARO = new Color(241, 245, 249);
@@ -46,12 +60,121 @@ public class OrdemRetiradaPdfService {
     private static final DateTimeFormatter DATA_HORA = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
     private final OrdemRetiradaRepository ordemRetiradaRepository;
+    private final OrdemRetiradaDocumentoRepository documentoRepository;
 
     @Transactional(readOnly = true)
     public byte[] gerarPdf(Long id) {
         OrdemRetirada ordem = ordemRetiradaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Ordem de retirada não encontrada."));
         return gerarPdf(ordem);
+    }
+
+    @Transactional
+    public OrdemRetiradaDocumento arquivar(OrdemRetirada ordem, String fase) {
+        if (ordem == null || ordem.getId() == null) {
+            throw new IllegalArgumentException("OR persistida é obrigatória para arquivar o documento.");
+        }
+        validarFase(fase);
+        return documentoRepository.findByOrdemRetiradaIdAndFase(ordem.getId(), fase)
+                .orElseGet(() -> criarArquivo(ordem, fase));
+    }
+
+    @Transactional
+    public byte[] obterPdfArquivado(Long ordemRetiradaId) {
+        OrdemRetirada ordem = ordemRetiradaRepository.findById(ordemRetiradaId)
+                .orElseThrow(() -> new IllegalArgumentException("Ordem de retirada não encontrada."));
+        OrdemRetiradaDocumento documento = documentoRepository
+                .findFirstByOrdemRetiradaIdOrderByGeradoEmDescIdDesc(ordemRetiradaId)
+                .orElseGet(() -> arquivar(ordem, faseAtual(ordem)));
+        return lerArquivo(documento);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] obterPdfArquivado(Long ordemRetiradaId, Long documentoId) {
+        OrdemRetiradaDocumento documento = documentoRepository.findById(documentoId)
+                .filter(item -> item.getOrdemRetirada().getId().equals(ordemRetiradaId))
+                .orElseThrow(() -> new IllegalArgumentException("Documento da OR não encontrado."));
+        return lerArquivo(documento);
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrdemRetiradaDocumento> listarDocumentos(Long ordemRetiradaId) {
+        if (!ordemRetiradaRepository.existsById(ordemRetiradaId)) {
+            throw new IllegalArgumentException("Ordem de retirada não encontrada.");
+        }
+        return documentoRepository.findByOrdemRetiradaIdOrderByGeradoEmAscIdAsc(ordemRetiradaId);
+    }
+
+    private OrdemRetiradaDocumento criarArquivo(OrdemRetirada ordem, String fase) {
+        try {
+            byte[] bytes = gerarPdf(ordem);
+            String hash = sha256(bytes);
+            Path pasta = UploadStorage.directory(DIRETORIO_DOCUMENTOS_OR);
+            Files.createDirectories(pasta);
+            String faseArquivo = fase.toLowerCase(Locale.ROOT);
+            String nome = "ordem-retirada-" + ordem.getId() + "-" + faseArquivo + "-"
+                    + hash.substring(0, 16) + ".pdf";
+            Path destino = pasta.resolve(nome).normalize();
+            if (!destino.startsWith(pasta)) {
+                throw new IllegalStateException("Caminho inválido para o documento da OR.");
+            }
+            if (Files.exists(destino)) {
+                if (!hash.equals(sha256(Files.readAllBytes(destino)))) {
+                    throw new IllegalStateException("O arquivo existente da OR falhou na verificação de integridade.");
+                }
+            } else {
+                Files.write(destino, bytes, StandardOpenOption.CREATE_NEW);
+            }
+
+            OrdemRetiradaDocumento documento = new OrdemRetiradaDocumento();
+            documento.setOrdemRetirada(ordem);
+            documento.setFase(fase);
+            documento.setStatusOr(ordem.getStatus());
+            documento.setPdfPath("/uploads/documentos/ordens-retirada/" + nome);
+            documento.setPdfHash(hash);
+            documento.setGeradoEm(LocalDateTime.now());
+            return documentoRepository.save(documento);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Não foi possível arquivar o documento da OR.", ex);
+        }
+    }
+
+    private byte[] lerArquivo(OrdemRetiradaDocumento documento) {
+        try {
+            String nome = Path.of(documento.getPdfPath()).getFileName().toString();
+            Path pasta = UploadStorage.directory(DIRETORIO_DOCUMENTOS_OR);
+            Path arquivo = pasta.resolve(nome).normalize();
+            if (!arquivo.startsWith(pasta) || !Files.isRegularFile(arquivo)) {
+                throw new IllegalStateException("Arquivo da OR não encontrado no armazenamento.");
+            }
+            byte[] bytes = Files.readAllBytes(arquivo);
+            if (!documento.getPdfHash().equals(sha256(bytes))) {
+                throw new IllegalStateException("O documento arquivado da OR falhou na verificação de integridade.");
+            }
+            return bytes;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Não foi possível ler o documento arquivado da OR.", ex);
+        }
+    }
+
+    private String faseAtual(OrdemRetirada ordem) {
+        if (ordem.getDataDevolucao() != null) {
+            return FASE_DEVOLUCAO;
+        }
+        if (ordem.getDataRetirada() != null) {
+            return FASE_RETIRADA;
+        }
+        return FASE_GERACAO;
+    }
+
+    private void validarFase(String fase) {
+        if (!List.of(FASE_GERACAO, FASE_RETIRADA, FASE_DEVOLUCAO).contains(fase)) {
+            throw new IllegalArgumentException("Fase documental da OR inválida.");
+        }
+    }
+
+    private String sha256(byte[] bytes) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
     byte[] gerarPdf(OrdemRetirada ordem) {
@@ -209,13 +332,20 @@ public class OrdemRetiradaPdfService {
         celula.setPadding(7);
         celula.setMinimumHeight(90);
         celula.addElement(new Paragraph(papel, ROTULO));
+        boolean imagemAdicionada = false;
         if (base64 != null && base64.contains(",")) {
-            byte[] bytes = Base64.getDecoder().decode(base64.substring(base64.indexOf(',') + 1));
-            Image imagem = Image.getInstance(bytes);
-            imagem.scaleToFit(170, 42);
-            imagem.setAlignment(Element.ALIGN_CENTER);
-            celula.addElement(imagem);
-        } else {
+            try {
+                byte[] bytes = Base64.getDecoder().decode(base64.substring(base64.indexOf(',') + 1));
+                Image imagem = Image.getInstance(bytes);
+                imagem.scaleToFit(170, 42);
+                imagem.setAlignment(Element.ALIGN_CENTER);
+                celula.addElement(imagem);
+                imagemAdicionada = true;
+            } catch (Exception ignored) {
+                // Registros legados inválidos não impedem a emissão do documento.
+            }
+        }
+        if (!imagemAdicionada) {
             celula.addElement(new Paragraph("\n\n________________________________________", TEXTO));
         }
         celula.addElement(new Paragraph(valor(nome), TEXTO));

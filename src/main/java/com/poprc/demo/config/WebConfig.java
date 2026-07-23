@@ -1,5 +1,6 @@
 package com.poprc.demo.config;
 
+import com.poprc.demo.storage.UploadStorage;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -18,9 +19,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String diretorioAbsoluto = System.getProperty("user.home") + "/rc_uploads/";
+        String diretorioAbsoluto = UploadStorage.root().toUri().toString();
 
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + diretorioAbsoluto);
+                .addResourceLocations(diretorioAbsoluto);
     }
 }

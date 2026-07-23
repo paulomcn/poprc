@@ -3,6 +3,7 @@ package com.poprc.demo.controller;
 import com.poprc.demo.dto.DevolverOrdemRetiradaRequest;
 import com.poprc.demo.dto.ExecutarOrdemRetiradaRequest;
 import com.poprc.demo.model.OrdemRetirada;
+import com.poprc.demo.model.OrdemRetiradaDocumento;
 import com.poprc.demo.service.OrdemRetiradaPdfService;
 import com.poprc.demo.service.OrdemRetiradaService;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,23 @@ public class OrdemRetiradaController {
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=ordem-retirada-" + id + ".pdf")
-                .body(ordemRetiradaPdfService.gerarPdf(id));
+                .body(ordemRetiradaPdfService.obterPdfArquivado(id));
+    }
+
+    @GetMapping("/{id}/documentos")
+    public ResponseEntity<List<OrdemRetiradaDocumento>> listarDocumentos(@PathVariable Long id) {
+        return ResponseEntity.ok(ordemRetiradaPdfService.listarDocumentos(id));
+    }
+
+    @GetMapping("/{id}/documentos/{documentoId}/pdf")
+    public ResponseEntity<byte[]> abrirPdfArquivado(
+            @PathVariable Long id,
+            @PathVariable Long documentoId) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=ordem-retirada-" + id + "-documento-" + documentoId + ".pdf")
+                .body(ordemRetiradaPdfService.obterPdfArquivado(id, documentoId));
     }
 
     @PostMapping("/os/{ordemServicoId}")

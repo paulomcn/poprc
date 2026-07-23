@@ -7,6 +7,7 @@ import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +32,7 @@ public class FotoService {
             "image/jpeg", "jpg",
             "image/jpg", "jpg",
             "image/png", "png");
-    private static final String DIRETORIO_EVIDENCIAS = "rc_uploads/evidencias";
+    private static final String DIRETORIO_EVIDENCIAS = "evidencias";
 
     private final EvidenciaFotoRepository fotoRepository;
     private final FuncionarioRepository funcionarioRepository;
@@ -50,7 +51,7 @@ public class FotoService {
                 .orElseThrow(() -> new IllegalArgumentException("Ordem de Serviço não encontrada."));
         validarOrdemEditavel(os);
 
-        Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_EVIDENCIAS)
+        Path pastaDestino = UploadStorage.directory(DIRETORIO_EVIDENCIAS)
                 .toAbsolutePath()
                 .normalize();
         String extensao = EXTENSAO_POR_MIME.get(arquivo.getContentType());
@@ -129,7 +130,7 @@ public class FotoService {
             return;
         }
 
-        Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_EVIDENCIAS)
+        Path pastaDestino = UploadStorage.directory(DIRETORIO_EVIDENCIAS)
                 .toAbsolutePath()
                 .normalize();
         Path arquivo = pastaDestino.resolve(Paths.get(caminhoArquivo).getFileName().toString())

@@ -55,3 +55,28 @@ function Invoke-WithPgPassword {
         $env:PGPASSWORD = $previous
     }
 }
+
+function Resolve-DatabasePassword {
+    param(
+        [string]$Password,
+        [Parameter(Mandatory = $true)][string]$ProjectRoot
+    )
+
+    if ($Password) {
+        return $Password
+    }
+    if ($env:DB_PASSWORD) {
+        return $env:DB_PASSWORD
+    }
+
+    $localProperties = Join-Path $ProjectRoot "application-local.properties"
+    if (Test-Path -LiteralPath $localProperties) {
+        $passwordLine = Get-Content -LiteralPath $localProperties |
+            Where-Object { $_ -match '^spring\.datasource\.password=' } |
+            Select-Object -First 1
+        if ($passwordLine) {
+            return $passwordLine.Substring($passwordLine.IndexOf('=') + 1)
+        }
+    }
+    return $null
+}

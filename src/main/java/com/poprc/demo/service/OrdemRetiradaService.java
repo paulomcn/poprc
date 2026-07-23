@@ -55,6 +55,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     private final OrdemRetiradaAlocacaoRepository alocacaoRepository;
     private final SaldoLocalService saldoLocalService;
     private final FluxoOrdemServicoService fluxoOrdemServicoService;
+    private final OrdemRetiradaPdfService ordemRetiradaPdfService;
 
     @Transactional
     public OrdemRetirada criarParaOrdemServico(OrdemServico ordemServico, Comarca comarca, String geradoPor) {
@@ -93,7 +94,9 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             throw new IllegalArgumentException("A OR precisa ter ao menos um item vinculado ao estoque.");
         }
 
-        return ordemRetiradaRepository.save(ordemRetirada);
+        OrdemRetirada salva = ordemRetiradaRepository.saveAndFlush(ordemRetirada);
+        ordemRetiradaPdfService.arquivar(salva, OrdemRetiradaPdfService.FASE_GERACAO);
+        return salva;
     }
 
     @Transactional
@@ -212,6 +215,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         OrdemRetirada salva = ordemRetiradaRepository.save(ordemRetirada);
         fluxoOrdemServicoService.registrarRetirada(
                 salva.getOrdemServico().getId(), request.getLevadoPor());
+        ordemRetiradaPdfService.arquivar(salva, OrdemRetiradaPdfService.FASE_RETIRADA);
         return salva;
     }
 
@@ -288,6 +292,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         OrdemRetirada salva = ordemRetiradaRepository.save(ordemRetirada);
         fluxoOrdemServicoService.registrarDevolucao(
                 salva.getOrdemServico().getId(), request.getRecebidoPor());
+        ordemRetiradaPdfService.arquivar(salva, OrdemRetiradaPdfService.FASE_DEVOLUCAO);
         return salva;
     }
 

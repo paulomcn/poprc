@@ -15,6 +15,7 @@ import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +27,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Base64;
@@ -37,7 +37,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DocumentoPdfService {
 
-    private static final String DIRETORIO_DOCUMENTOS = "rc_uploads/documentos";
+    private static final String DIRETORIO_DOCUMENTOS = "documentos";
     private static final Color AZUL = new Color(8, 57, 112);
     private static final Color AZUL_CLARO = new Color(229, 239, 250);
     private static final Color CINZA = new Color(71, 85, 105);
@@ -347,7 +347,7 @@ public class DocumentoPdfService {
         try {
             byte[] bytes = gerarPdf(documento);
             String hash = sha256(bytes);
-            Path pasta = Paths.get(System.getProperty("user.home"), DIRETORIO_DOCUMENTOS)
+            Path pasta = UploadStorage.directory(DIRETORIO_DOCUMENTOS)
                     .toAbsolutePath().normalize();
             Files.createDirectories(pasta);
             String nome = "documento-" + documento.getId() + "-" + hash.substring(0, 16) + ".pdf";
@@ -369,7 +369,7 @@ public class DocumentoPdfService {
         if (documento.getPdfPath() != null && !documento.getPdfPath().isBlank()) {
             try {
                 String nome = Path.of(documento.getPdfPath()).getFileName().toString();
-                Path arquivo = Paths.get(System.getProperty("user.home"), DIRETORIO_DOCUMENTOS, nome)
+                Path arquivo = UploadStorage.directory(DIRETORIO_DOCUMENTOS).resolve(nome)
                         .toAbsolutePath().normalize();
                 if (Files.exists(arquivo)) {
                     byte[] bytes = Files.readAllBytes(arquivo);

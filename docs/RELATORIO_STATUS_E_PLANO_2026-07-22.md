@@ -84,8 +84,9 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 - Fase C concluida: coerencia visual aplicada ao Dashboard, Projetos, Ordens de
   Servico, Gestao de Obras, Area do Tecnico e Auditoria, com homologacao desktop
   e celular registrada em `RESULTADO_FASE_C_INTERFACE_2026-07-22.md`.
-- Proxima execucao: Fase D, documentos e recuperacao. A impressao fisica aguarda
-  o retorno do time; as verificacoes digitais podem seguir separadamente.
+- Fase D digital concluida em 23/07/2026: OR versionada por marco, pacote
+  completo banco + uploads e restauracao real comprovada. A impressao fisica
+  continua aguardando o retorno do time.
 
 ## 6. Pendencias por prioridade
 
@@ -95,8 +96,8 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 | Concluida | Regressao do fluxo principal no modo sem autenticacao | Fase B aprovada com smoke test e 86 verificacoes automatizadas. |
 | P0 - antes de usuarios reais | Reimplementar e homologar autenticacao ponta a ponta | Hoje nao ha identidade comprovada nem protecao efetiva de rotas. |
 | P1 - alta | Homologar visualmente Dashboard, Projetos, OS, Obras, Tecnico e Auditoria | O feedback aponta inconsistencias, seletores escondidos e escalabilidade ruim das listas. |
-| P1 - alta | Executar e registrar uma restauracao real de backup | Scripts existem, mas recuperacao so e confiavel depois de um restore aprovado. |
-| P1 - alta | Confirmar arquivo imutavel da OR e politica de retencao de uploads/PDFs | Evita perda ou alteracao de documentos historicos. |
+| Concluida | Executar e registrar uma restauracao real de backup | Banco, uploads, Flyway e APIs foram validados na copia `_restore_test`. |
+| Concluida | Confirmar arquivo imutavel da OR e politica de retencao de uploads/PDFs | A OR agora gera snapshots append-only com SHA-256; o backup completo inclui os arquivos. |
 | P1 - alta | Repetir homologacao completa com duas ORs, devolucao parcial e material faltante | Cobre os caminhos mais sujeitos a regressao de estado. |
 | P2 - media | Imprimir OS, OR e encerramento em A4 | A camada digital foi aprovada; falta validar equipamento real. |
 | P2 - media | Padronizar mensagens, vazios, carregamento e confirmacoes | Reduz operacoes que parecem ter funcionado sem persistencia. |
@@ -151,14 +152,15 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 
 **Aceite:** screenshots aprovados em desktop e celular; sem sobreposicao, overflow ou controles escondidos; tarefas principais executadas sem orientacao externa.
 
-### Fase D - Documentos e recuperacao (2-4 dias)
+### Fase D - Documentos e recuperacao (digital concluida)
 
 1. Imprimir os quatro cenarios documentais em A4.
-2. Confirmar arquivamento imutavel da OR e retencao de fotos/PDFs.
-3. Gerar backup, restaurar em `_restore_test` e abrir o sistema contra a copia.
-4. Registrar versao Flyway, contagens e responsavel pelo teste.
+2. Confirmar arquivamento imutavel da OR e retencao de fotos/PDFs. **Concluido.**
+3. Gerar backup, restaurar em `_restore_test` e abrir o sistema contra a copia. **Concluido.**
+4. Registrar versao Flyway, contagens e responsavel pelo teste. **Concluido.**
 
-**Aceite:** impressao fisica assinada, restore comprovado e documentos recuperaveis.
+**Aceite digital:** aprovado em `RESULTADO_FASE_D_RECUPERACAO_2026-07-23.md`.
+O aceite fisico permanece separado ate o retorno do time.
 
 ### Fase E - Seguranca final isolada (5-8 dias)
 
@@ -217,4 +219,7 @@ O projeto ainda nao esta pronto para producao. Os principais motivos sao: altera
 
 ## 10. Proxima acao recomendada
 
-Executar a **Fase A - Baseline e checkpoint**. Ela reduz o risco imediato, registra a decisao de adiar autenticacao e cria uma base confiavel para a regressao operacional. Depois, seguir para a Fase B e implementar o modulo fiscal na Fase B.1, antes da revisao visual ampla da Fase C.
+Publicar o checkpoint da **Fase D digital**. Depois dele, o projeto fica no
+portao da Fase E: seguranca ponta a ponta em branch isolada, executada somente
+quando o ciclo funcional estiver congelado para a pre-producao. A impressao A4
+continua como homologacao fisica separada, aguardando o retorno do time.

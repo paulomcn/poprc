@@ -11,6 +11,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "PostgresTools.ps1")
+$projectRoot = Split-Path $PSScriptRoot -Parent
+$Password = Resolve-DatabasePassword -Password $Password -ProjectRoot $projectRoot
 
 $allowedSuffixes = @("_restore_test")
 if ($AllowDevTarget) {

@@ -1,6 +1,7 @@
 package com.poprc.demo.service;
 
 import com.poprc.demo.model.PrestacaoContas;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -8,7 +9,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.UUID;
 
@@ -17,7 +17,7 @@ import java.util.UUID;
 public class ComprovantePrestacaoService {
 
     private static final long TAMANHO_MAXIMO = 10L * 1024 * 1024;
-    private static final String DIRETORIO = "rc_uploads/financeiro/comprovantes";
+    private static final String DIRETORIO = "financeiro/comprovantes";
     private static final Map<String, String> EXTENSOES = Map.of(
             "application/pdf", "pdf",
             "image/jpeg", "jpg",
@@ -31,7 +31,7 @@ public class ComprovantePrestacaoService {
             java.math.BigDecimal custoReal,
             MultipartFile comprovante) {
         validar(comprovante);
-        Path pasta = Paths.get(System.getProperty("user.home"), DIRETORIO)
+        Path pasta = UploadStorage.directory(DIRETORIO)
                 .toAbsolutePath()
                 .normalize();
         String nome = UUID.randomUUID() + "." + EXTENSOES.get(comprovante.getContentType());

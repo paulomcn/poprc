@@ -19,6 +19,7 @@ import com.poprc.demo.repository.MovimentacaoEstoqueRepository;
 import com.poprc.demo.repository.DocumentoInternoRepository;
 import com.poprc.demo.repository.OrdemRetiradaRepository;
 import com.poprc.demo.repository.ProjetoRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,8 +46,8 @@ public class ComarcaService {
 
     private static final Set<String> EXTENSOES_FOTO_VISTORIA = Set.of("jpg", "jpeg", "png");
     private static final Set<String> MIME_FOTO_VISTORIA = Set.of("image/jpeg", "image/jpg", "image/png");
-    private static final String DIRETORIO_FOTO_VISTORIA = "rc_uploads/comarcas/vistoria";
-    private static final String DIRETORIO_PROVA_VIRADA_REDE = "rc_uploads/comarcas/virada-rede";
+    private static final String DIRETORIO_FOTO_VISTORIA = "comarcas/vistoria";
+    private static final String DIRETORIO_PROVA_VIRADA_REDE = "comarcas/virada-rede";
     private static final String AS_BUILT_PENDENTE = "PENDENTE";
     private static final String AS_BUILT_DIVERGENTE = "DIVERGENTE";
     private static final String AS_BUILT_HOMOLOGADO = "HOMOLOGADO";
@@ -1123,7 +1124,7 @@ public class ComarcaService {
             return;
         }
 
-        Path pastaPermitida = Paths.get(System.getProperty("user.home"), diretorio)
+        Path pastaPermitida = UploadStorage.directory(diretorio)
                 .toAbsolutePath().normalize();
         Path arquivo = pastaPermitida.resolve(Paths.get(arquivoUrl).getFileName().toString())
                 .toAbsolutePath().normalize();
@@ -1146,7 +1147,7 @@ public class ComarcaService {
             throw new ArquivoInvalidoException("Formato de arquivo não permitido. Envie apenas imagens .jpg, .jpeg ou .png.");
         }
 
-        Path pastaDestino = Paths.get(System.getProperty("user.home"), diretorio);
+        Path pastaDestino = UploadStorage.directory(diretorio);
         try {
             Files.createDirectories(pastaDestino);
         } catch (IOException e) {

@@ -27,6 +27,7 @@ import com.poprc.demo.model.OrdemRetirada;
 import com.poprc.demo.model.OrdemRetiradaItem;
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.repository.OrdemRetiradaDocumentoRepository;
 import com.poprc.demo.repository.OrdemRetiradaRepository;
 
 import tools.jackson.databind.ObjectMapper;
@@ -42,7 +43,8 @@ class DocumentoPdfVisualFixtureTest {
         DocumentoPdfService documentoService = new DocumentoPdfService(
                 new ObjectMapper(), mock(DocumentoInternoRepository.class));
         OrdemRetiradaPdfService retiradaService = new OrdemRetiradaPdfService(
-                mock(OrdemRetiradaRepository.class));
+                mock(OrdemRetiradaRepository.class),
+                mock(OrdemRetiradaDocumentoRepository.class));
 
         byte[] osVazia = documentoService.gerarPdf(documentoVazio());
         byte[] osPreenchida = documentoService.gerarPdf(documentoPreenchido());

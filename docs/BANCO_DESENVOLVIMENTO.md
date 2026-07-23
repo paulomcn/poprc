@@ -66,7 +66,7 @@ Para inspecionar o banco depois de uma falha, preserve-o deliberadamente:
 
 Remova esse banco antes da proxima execucao ou deixe o proprio script recria-lo.
 
-## Backup
+## Backup somente do PostgreSQL
 
 ```powershell
 .\scripts\backup-postgres.ps1 -Database poprc
@@ -75,7 +75,24 @@ Remova esse banco antes da proxima execucao ou deixe o proprio script recria-lo.
 O arquivo em formato custom do PostgreSQL e criado em `backups/`, pasta
 ignorada pelo Git. A senha pode ser informada por `DB_PASSWORD`.
 
-## Restauracao segura
+## Backup operacional completo
+
+O banco nao contem os bytes das fotos, comprovantes e PDFs. Para uma copia
+recuperavel do sistema, gere o pacote completo:
+
+```powershell
+.\scripts\backup-completo.ps1 -Database poprc
+```
+
+O `.zip` inclui o dump, a arvore de uploads e um `manifest.json` com tamanho e
+SHA-256 de cada arquivo. A raiz padrao dos uploads e
+`$env:USERPROFILE\rc_uploads`; defina `APP_UPLOAD_DIR` quando o armazenamento
+estiver em outro volume.
+
+Gere o pacote em uma janela curta sem novos uploads ou movimentacoes. Isso
+mantem o dump e os arquivos no mesmo ponto logico do fluxo.
+
+## Restauracao segura somente do PostgreSQL
 
 Teste sempre a restauracao em um banco descartavel:
 
@@ -88,11 +105,28 @@ Por padrao, o script aceita somente destinos terminados em `_restore_test`.
 Para restaurar deliberadamente sobre um banco `_dev`, use `-AllowDevTarget`.
 O banco principal `poprc` nunca e aceito como destino.
 
+## Restauracao operacional completa
+
+Restaure banco e arquivos em destinos descartaveis:
+
+```powershell
+.\scripts\restore-completo.ps1 `
+  -PackageFile .\backups\poprc-completo-AAAAMMDD-HHMMSS.zip `
+  -TargetDatabase poprc_restore_test `
+  -Force
+```
+
+Antes de restaurar, o script confere todos os hashes do manifesto. O banco deve
+terminar em `_restore_test` e os uploads sao gravados por padrao em
+`backups/restores/poprc_restore_test/rc_uploads`. O script recusa sobrescrever
+`$env:USERPROFILE\rc_uploads`.
+
 Depois da restauracao, valide o schema e os dados iniciando temporariamente a
 aplicacao contra o banco restaurado:
 
 ```powershell
 $env:DB_URL = "jdbc:postgresql://localhost:5432/poprc_restore_test"
+$env:APP_UPLOAD_DIR = "$PWD\backups\restores\poprc_restore_test\rc_uploads"
 .\mvnw.cmd -Dspring-boot.run.arguments="--server.port=0" spring-boot:run
 ```
 
@@ -100,6 +134,7 @@ Remova `DB_URL` da sessao ao terminar:
 
 ```powershell
 Remove-Item Env:DB_URL
+Remove-Item Env:APP_UPLOAD_DIR
 ```
 
 ## Regras
@@ -109,4 +144,5 @@ Remove-Item Env:DB_URL
 - Dados reproduziveis locais ficam em `src/main/resources/db/dev`.
 - Backups, senhas e arquivos restaurados nao devem ser versionados.
 - Uma restauracao so e considerada validada depois de abrir o sistema contra o
-  banco restaurado e conferir a versao do Flyway.
+  banco restaurado, conferir a versao do Flyway e abrir ao menos um upload e um
+  PDF pela API.
