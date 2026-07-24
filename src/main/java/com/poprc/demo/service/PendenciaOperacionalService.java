@@ -7,6 +7,7 @@ import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.ProjetoMembroRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -33,14 +34,18 @@ public class PendenciaOperacionalService {
     private final OrdemServicoRepository ordemServicoRepository;
     private final ComarcaRepository comarcaRepository;
     private final ProjetoRepository projetoRepository;
+    private final ProjetoMembroRepository projetoMembroRepository;
 
     @Transactional(readOnly = true)
     public List<PendenciaOperacionalDTO> listar(String area, Long funcionarioId) {
         String areaNormalizada = normalizarArea(area);
         Set<Long> projetosDoFuncionario = funcionarioId == null
                 ? Set.of()
-                : projetoRepository.findByResponsavelId(funcionarioId).stream()
-                        .map(Projeto::getId)
+                : java.util.stream.Stream.concat(
+                                projetoRepository.findByResponsavelId(funcionarioId).stream()
+                                        .map(Projeto::getId),
+                                projetoMembroRepository.findByFuncionarioId(funcionarioId).stream()
+                                        .map(membro -> membro.getProjeto().getId()))
                         .collect(Collectors.toSet());
         Map<Long, Comarca> comarcaPorOs = comarcaRepository.findAll().stream()
                 .filter(comarca -> comarca.getOrdemServico() != null

@@ -1,6 +1,7 @@
 package com.poprc.demo.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -10,6 +11,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.poprc.demo.DemoApplication;
+import com.poprc.demo.model.Funcionario;
+import com.poprc.demo.model.PerfilAcesso;
+import com.poprc.demo.repository.FuncionarioRepository;
+import com.poprc.demo.security.UsuarioAutenticado;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +23,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(classes = DemoApplication.class)
 @AutoConfigureMockMvc
@@ -26,9 +33,13 @@ import org.springframework.test.web.servlet.MockMvc;
         "app.security.enabled=true",
         "app.security.dev-login-enabled=false"
 })
+@Transactional
 class SecurityAuthorizationIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private FuncionarioRepository funcionarioRepository;
 
     @Test
     void apiSemSessaoRetornaNaoAutorizado() throws Exception {
@@ -107,6 +118,36 @@ class SecurityAuthorizationIntegrationTest {
     }
 
     @Test
+    void tecnicoNaoPodeAbrirComprovanteFinanceiroDiretamente() throws Exception {
+        mockMvc.perform(get("/uploads/financeiro/comprovantes/nota-fiscal.pdf")
+                        .with(user("tecnico").roles("TECNICO")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void estoqueNaoPodeAbrirEvidenciaDeCampoDiretamente() throws Exception {
+        mockMvc.perform(get("/uploads/evidencias/vistoria.png")
+                        .with(user("estoquista").roles("ESTOQUE")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void estoquePodeConsultarFilaOperacionalDaSuaArea() throws Exception {
+        mockMvc.perform(get("/api/pendencias-operacionais")
+                        .param("area", "ADMINISTRACAO")
+                        .with(authentication(autenticacao("ESTOQUE"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void tecnicoPodeConsultarFilaLimitadaAsSuasOrdens() throws Exception {
+        mockMvc.perform(get("/api/pendencias-operacionais")
+                        .param("funcionarioId", "999")
+                        .with(authentication(autenticacao("TECNICO"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void operacaoCriticaSemConfirmacaoRecenteSolicitaSenha() throws Exception {
         mockMvc.perform(post("/api/funcionarios")
                         .with(user("administrador").roles("ADMIN"))
@@ -115,5 +156,17 @@ class SecurityAuthorizationIntegrationTest {
                         .content("{}"))
                 .andExpect(status().is(428))
                 .andExpect(jsonPath("$.reautenticacaoNecessaria").value(true));
+    }
+
+    private UsernamePasswordAuthenticationToken autenticacao(String perfil) {
+        Funcionario funcionario = new Funcionario();
+        funcionario.setNome("Usuário " + perfil);
+        funcionario.setFuncao("Homologação");
+        funcionario.setCidade("João Pessoa");
+        funcionario.setPerfilAcesso(PerfilAcesso.valueOf(perfil));
+        funcionario = funcionarioRepository.saveAndFlush(funcionario);
+        UsuarioAutenticado usuario = new UsuarioAutenticado(
+                funcionario.getId(), funcionario.getNome(), null, perfil, "CPF_SENHA", false);
+        return new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
     }
 }

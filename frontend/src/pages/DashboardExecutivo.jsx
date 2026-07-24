@@ -20,6 +20,7 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import PageHeader from "../components/PageHeader";
+import { useAuth } from "../contexts/AuthContext";
 
 const indicadorClasses = {
   neutro: "border-slate-200 bg-white text-slate-700",
@@ -76,6 +77,7 @@ function Indicador({ icon: Icon, label, valor, detalhe, variante = "neutro" }) {
 }
 
 export default function DashboardExecutivo() {
+  const { usuario } = useAuth();
   const [data, setData] = useState(null);
   const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +86,17 @@ export default function DashboardExecutivo() {
   const [filtroContrato, setFiltroContrato] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
+  const acessosRapidos = useMemo(
+    () => [
+      { to: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
+      { to: "/projetos", icon: Briefcase, label: "Projetos", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
+      { to: "/obras", icon: Building2, label: "Gestão de Obras", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
+      { to: "/auditoria/tecnica", icon: Layers, label: "Auditoria de retirada/devolução", roles: ["ADMIN"] },
+      { to: "/financeiro/faturamento", icon: TrendingUp, label: "Gestão de faturamento", roles: ["ADMIN"] },
+      { to: "/logistica/viagens", icon: Plane, label: "Viagens e reembolsos", roles: ["ADMIN"] },
+    ].filter((item) => item.roles.includes(usuario?.perfil)),
+    [usuario?.perfil],
+  );
 
   useEffect(() => {
     api
@@ -317,12 +330,7 @@ export default function DashboardExecutivo() {
         <div className="rounded-lg border border-slate-200 bg-white p-5">
           <h2 className="font-bold text-slate-900">Acessos rápidos</h2>
           <div className="mt-4 divide-y divide-slate-100">
-            {[
-              { to: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço" },
-              { to: "/auditoria/tecnica", icon: Layers, label: "Auditoria de retirada/devolução" },
-              { to: "/financeiro/faturamento", icon: TrendingUp, label: "Gestão de faturamento" },
-              { to: "/logistica/viagens", icon: Plane, label: "Viagens e reembolsos" },
-            ].map((item) => (
+            {acessosRapidos.map((item) => (
               <Link key={item.to} to={item.to} className="flex min-h-12 items-center gap-3 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700">
                 <item.icon size={18} className="text-slate-400" />
                 <span className="flex-1">{item.label}</span>

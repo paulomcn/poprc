@@ -25,17 +25,33 @@ WHERE NOT EXISTS (
     SELECT 1 FROM funcionarios WHERE nome = 'Gestor Desenvolvimento'
 );
 
+INSERT INTO funcionarios (nome, funcao, cidade, perfil_acesso)
+SELECT 'Estoque Desenvolvimento', 'Almoxarife', 'Joao Pessoa', 'ESTOQUE'
+WHERE NOT EXISTS (
+    SELECT 1 FROM funcionarios WHERE nome = 'Estoque Desenvolvimento'
+);
+
+INSERT INTO funcionarios (nome, funcao, cidade, perfil_acesso)
+SELECT 'Auditor Desenvolvimento', 'Auditor Tecnico', 'Joao Pessoa', 'AUDITOR'
+WHERE NOT EXISTS (
+    SELECT 1 FROM funcionarios WHERE nome = 'Auditor Desenvolvimento'
+);
+
 UPDATE funcionarios
 SET perfil_acesso = CASE nome
     WHEN 'Gestor Desenvolvimento' THEN 'ADMIN'
     WHEN 'Supervisor Desenvolvimento' THEN 'SUPERVISOR_TECNICO'
+    WHEN 'Estoque Desenvolvimento' THEN 'ESTOQUE'
+    WHEN 'Auditor Desenvolvimento' THEN 'AUDITOR'
     ELSE 'TECNICO'
 END
 WHERE nome IN (
     'Gestor Desenvolvimento',
     'Supervisor Desenvolvimento',
     'Tecnico Campo A',
-    'Tecnico Campo B'
+    'Tecnico Campo B',
+    'Estoque Desenvolvimento',
+    'Auditor Desenvolvimento'
 );
 
 INSERT INTO contratos (

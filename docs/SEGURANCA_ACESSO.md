@@ -28,16 +28,18 @@ Cada operação autorizada gera um registro append-only com usuário, perfil, m�
 
 ## Ambiente local
 
-Por decisão de estabilização, a autenticação está suspensa no ambiente local. O frontend entra automaticamente como administrador de teste e o backend não exige sessão enquanto `APP_SECURITY_ENABLED=false`. Esse modo serve apenas para desenvolvimento do fluxo funcional e não pode ser usado em piloto ou produção.
+O ambiente local protegido usa os mesmos controles de sessão, perfil, CSRF e reautenticação da aplicação. O profile `dev` habilita uma lista explícita de usuários de teste para facilitar a troca entre os cinco perfis sem criar credenciais fictícias no código.
 
 ```properties
-APP_SECURITY_ENABLED=false
+APP_SECURITY_ENABLED=true
 DEV_LOGIN_ENABLED=true
 REAUTHENTICATION_MINUTES=5
 FRONTEND_URL=http://localhost:5173
 ```
 
-O código de CPF/senha, Zoho, perfis, CSRF e reautenticação foi preservado para retomada em uma fase isolada. Não use o login local como evidência de segurança enquanto a chave estiver desativada.
+O login de desenvolvimento não deve ser usado como evidência do fluxo CPF/senha nem permanecer habilitado em piloto ou produção. Para uma regressão funcional excepcional sem autenticação, `APP_SECURITY_ENABLED=false` precisa ser definido de forma consciente e temporária; esse não é mais o padrão do projeto.
+
+Os arquivos em `/uploads/**` também exigem sessão. Comprovantes financeiros são restritos ao administrador; evidências e fotos de obra aos perfis operacionais e de auditoria; documentos de retirada aos perfis envolvidos nesse fluxo.
 
 ## Publicação
 

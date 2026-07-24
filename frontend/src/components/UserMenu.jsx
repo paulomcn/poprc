@@ -30,7 +30,14 @@ export default function UserMenu({ compacto = false }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setAberto((valor) => !valor)} className="flex min-h-10 items-center gap-2 rounded border border-slate-200 px-2 text-left hover:bg-slate-50" aria-expanded={aberto}>
+      <button
+        type="button"
+        onClick={() => setAberto((valor) => !valor)}
+        className="flex min-h-10 items-center gap-2 rounded border border-slate-200 px-2 text-left hover:bg-slate-50"
+        aria-label={`Abrir menu de ${usuario?.nome || "usuário"}`}
+        aria-expanded={aberto}
+        aria-haspopup="menu"
+      >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600"><User size={16} /></span>
         {!compacto && <span className="hidden min-w-0 sm:block"><span className="block max-w-36 truncate text-sm font-semibold text-slate-800">{usuario?.nome || "Usuário"}</span><span className="block text-[10px] font-bold uppercase text-slate-400">{nomesPerfis[usuario?.perfil] || "Usuário"}</span></span>}
         <ChevronDown size={14} className="text-slate-400" />

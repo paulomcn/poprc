@@ -90,7 +90,15 @@ public class SecurityConfig {
                     }
 
                     authorize.requestMatchers("/api/auth/me", "/api/auth/reauth",
-                            "/api/auth/alterar-senha", "/api/auth/logout", "/uploads/**").authenticated();
+                            "/api/auth/alterar-senha", "/api/auth/logout").authenticated();
+                    authorize.requestMatchers("/uploads/financeiro/**").hasRole("ADMIN");
+                    authorize.requestMatchers("/uploads/evidencias/**", "/uploads/comarcas/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
+                    authorize.requestMatchers("/uploads/documentos/ordens-retirada/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "ESTOQUE", "AUDITOR");
+                    authorize.requestMatchers("/uploads/documentos/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
+                    authorize.requestMatchers("/uploads/**").authenticated();
                     authorize.requestMatchers(HttpMethod.GET, "/api/funcionarios/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
                     authorize.requestMatchers("/api/funcionarios/**").hasRole("ADMIN");
@@ -136,7 +144,7 @@ public class SecurityConfig {
                     authorize.requestMatchers("/api/materiais/**", "/api/materiais-projeto/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
                     authorize.requestMatchers("/api/pendencias-operacionais/**")
-                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "AUDITOR");
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "ESTOQUE", "AUDITOR");
                     authorize.anyRequest().denyAll();
                 })
                 .logout(logout -> logout
