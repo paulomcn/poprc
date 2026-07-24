@@ -66,8 +66,13 @@ api.interceptors.response.use(
         // A sessão pode ter expirado de fato; o fluxo abaixo encerra o acesso local.
       }
     }
-    if ((error.response?.status === 401 || sessaoExpirada) && !error.config?.url?.includes('/auth/me')) {
-      if (sessaoExpirada) sessionStorage.setItem('auth:reason', 'sessao')
+    const endpointAutenticacao = ['/auth/me', '/auth/login', '/auth/reauth']
+      .some((endpoint) => error.config?.url?.includes(endpoint))
+    const logoutIntencional = sessionStorage.getItem('auth:logout') === '1'
+    if ((error.response?.status === 401 || sessaoExpirada)
+      && !endpointAutenticacao
+      && !logoutIntencional) {
+      sessionStorage.setItem('auth:reason', 'sessao')
       window.dispatchEvent(new Event('auth:unauthorized'))
     }
     return Promise.reject(error)

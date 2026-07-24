@@ -40,6 +40,13 @@ public class FuncionarioController {
             funcionario.setTelefone(normalizarTelefone(funcionario.getTelefone()));
             String cpfNormalizado = normalizarCpf(funcionario.getCpf());
             funcionario.setCpf(cpfNormalizado);
+            String senhaTemporaria = funcionario.getSenha();
+            if (senhaTemporaria != null && !senhaTemporaria.isBlank()) {
+                if (cpfNormalizado == null) {
+                    throw new IllegalArgumentException("Informe o CPF para configurar o acesso por senha.");
+                }
+                autenticacaoLocalService.validarNovaSenha(senhaTemporaria);
+            }
             if (funcionario.getEmail() != null
                     && funcionarioRepository.findByEmailIgnoreCase(funcionario.getEmail()).isPresent()) {
                 response.put("erro", "Já existe um funcionário com este e-mail");
@@ -51,12 +58,9 @@ public class FuncionarioController {
             }
 
             Funcionario funcionarioSalvo = funcionarioRepository.save(funcionario);
-            if (funcionario.getSenha() != null && !funcionario.getSenha().isBlank()) {
-                if (cpfNormalizado == null) {
-                    throw new IllegalArgumentException("Informe o CPF para configurar o acesso por senha.");
-                }
+            if (senhaTemporaria != null && !senhaTemporaria.isBlank()) {
                 funcionarioSalvo = autenticacaoLocalService.definirSenhaTemporaria(
-                        funcionarioSalvo.getId(), funcionario.getSenha());
+                        funcionarioSalvo.getId(), senhaTemporaria);
             }
             response.put("funcionario", funcionarioSalvo);
             response.put("mensagem", "Funcionário inserido com sucesso");
@@ -85,7 +89,7 @@ public class FuncionarioController {
      * ️ PUT /{id}: Atualizar funcionário existente
      */
     @PutMapping("/{id}")
-    @Transactional // MÁGICA AQUI: Força o Spring a gravar as alterações no banco!
+    @Transactional
     public ResponseEntity<Map<String, Object>> atualizarFuncionario(@PathVariable Long id,
             @RequestBody Funcionario dadosAtualizados) {
         Map<String, Object> response = new HashMap<>();
@@ -104,7 +108,6 @@ public class FuncionarioController {
 
         return funcionarioRepository.findById(id)
                 .map(funcionario -> {
-                    // Atualiza os campos básicos
                     funcionario.setNome(dadosAtualizados.getNome());
                     funcionario.setFuncao(dadosAtualizados.getFuncao());
                     funcionario.setCidade(dadosAtualizados.getCidade());
@@ -118,7 +121,6 @@ public class FuncionarioController {
                             ? funcionario.getAtivo()
                             : dadosAtualizados.getAtivo());
 
-                    // MÁGICA 2: Pluga as listas que tavam de fora!
                     if (dadosAtualizados.getCertificacoes() != null) {
                         funcionario.setCertificacoes(dadosAtualizados.getCertificacoes());
                     }

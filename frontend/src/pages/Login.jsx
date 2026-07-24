@@ -22,10 +22,14 @@ export default function Login() {
     const codigo = new URLSearchParams(location.search).get("error");
     const senhaAlterada = new URLSearchParams(location.search).get("senhaAlterada");
     const motivoSessao = sessionStorage.getItem("auth:reason");
+    const logoutIntencional = sessionStorage.getItem("auth:logout") === "1";
     sessionStorage.removeItem("auth:reason");
+    sessionStorage.removeItem("auth:logout");
     if (codigo === "conta_nao_vinculada") setErro("Esta conta Zoho não está vinculada a um funcionário ativo. O administrador deve cadastrar o mesmo e-mail em Equipes.");
     if (codigo === "oauth") setErro("A Zoho não concluiu a autenticação. Verifique a configuração OAuth e tente novamente.");
-    if (codigo === "sessao" || motivoSessao === "sessao") setErro("Sua sessão expirou após a reinicialização do servidor. Entre novamente para continuar.");
+    if (!logoutIntencional && (codigo === "sessao" || motivoSessao === "sessao")) {
+      setErro("Sua sessão expirou. Entre novamente para continuar.");
+    }
     if (senhaAlterada === "1") setMensagem("Senha alterada e confirmada no banco. Entre com a nova senha.");
   }, [location.search]);
 

@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 
 @Service
 @RequiredArgsConstructor
@@ -73,8 +74,20 @@ public class NotificacaoOperacionalService {
 
     @Transactional
     public NotificacaoOperacional marcarComoLida(Long id) {
+        return marcarComoLida(id, null, true);
+    }
+
+    @Transactional
+    public NotificacaoOperacional marcarComoLida(
+            Long id,
+            Long funcionarioId,
+            boolean acessoGlobal) {
         NotificacaoOperacional notificacao = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Notificação não encontrada."));
+        if (!acessoGlobal && notificacao.getDestinatario() != null
+                && !notificacao.getDestinatario().getId().equals(funcionarioId)) {
+            throw new AccessDeniedException("O usuário só pode alterar as próprias notificações.");
+        }
         if (notificacao.getLidaEm() == null) {
             notificacao.setLidaEm(LocalDateTime.now());
         }

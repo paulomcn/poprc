@@ -10,6 +10,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
 public final class UsuarioAutenticado implements OAuth2User, Serializable {
+    private static final long serialVersionUID = 1L;
     private final Long funcionarioId;
     private final String nome;
     private final String email;

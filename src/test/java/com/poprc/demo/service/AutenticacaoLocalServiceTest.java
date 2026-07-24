@@ -6,6 +6,7 @@ import com.poprc.demo.security.UsuarioAutenticado;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authentication.BadCredentialsException;
 
 import java.util.Optional;
 
@@ -54,7 +55,7 @@ class AutenticacaoLocalServiceTest {
         when(encoder.matches("errada", "hash")).thenReturn(false);
 
         for (int tentativa = 0; tentativa < 5; tentativa++) {
-            assertThrows(IllegalArgumentException.class,
+            assertThrows(BadCredentialsException.class,
                     () -> service.autenticar("52998224725", "errada"));
         }
 

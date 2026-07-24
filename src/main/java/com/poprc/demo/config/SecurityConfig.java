@@ -3,6 +3,7 @@ package com.poprc.demo.config;
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.security.UsuarioAutenticado;
+import com.poprc.demo.security.ValidacaoSessaoFilter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,8 +22,10 @@ import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.InvalidCsrfTokenException;
 import org.springframework.security.web.csrf.MissingCsrfTokenException;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.context.annotation.Bean;
@@ -37,18 +40,24 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
     private static final String ZOHO_PROFILE_URL = "https://profile.zoho.com/api/v1/user/self/profile";
     private final FuncionarioRepository funcionarioRepository;
+    private final ValidacaoSessaoFilter validacaoSessaoFilter;
     private final boolean securityEnabled;
+    private final boolean zohoEnabled;
     private final String frontendUrl;
     private final List<String> allowedOriginPatterns;
 
     public SecurityConfig(
             FuncionarioRepository funcionarioRepository,
+            ValidacaoSessaoFilter validacaoSessaoFilter,
             @Value("${app.security.enabled:true}") boolean securityEnabled,
+            @Value("${app.security.zoho-enabled:false}") boolean zohoEnabled,
             @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl,
             @Value("${app.cors.allowed-origin-patterns:http://localhost:[*],http://127.0.0.1:[*],http://192.168.*:[*],http://10.*:[*]}")
             List<String> allowedOriginPatterns) {
         this.funcionarioRepository = funcionarioRepository;
+        this.validacaoSessaoFilter = validacaoSessaoFilter;
         this.securityEnabled = securityEnabled;
+        this.zohoEnabled = zohoEnabled;
         this.frontendUrl = frontendUrl;
         this.allowedOriginPatterns = allowedOriginPatterns;
     }
@@ -60,6 +69,7 @@ public class SecurityConfig {
                 .csrf(csrf -> {
                     if (securityEnabled) {
                         csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                                 .ignoringRequestMatchers("/api/auth/dev-login", "/api/auth/login");
                     } else {
                         csrf.disable();
@@ -67,31 +77,47 @@ public class SecurityConfig {
                 })
                 .authorizeHttpRequests(authorize -> {
                     authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    authorize.requestMatchers("/error", "/actuator/health", "/oauth2/**", "/login/**",
+                    authorize.requestMatchers("/error", "/actuator/health",
                             "/api/auth/csrf", "/api/auth/dev-login", "/api/auth/dev-usuarios").permitAll();
                     authorize.requestMatchers("/api/auth/config", "/api/auth/login").permitAll();
+                    if (zohoEnabled) {
+                        authorize.requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll();
+                    }
 
                     if (!securityEnabled) {
                         authorize.anyRequest().permitAll();
                         return;
                     }
 
-                    authorize.requestMatchers("/api/auth/me", "/uploads/**").authenticated();
+                    authorize.requestMatchers("/api/auth/me", "/api/auth/reauth",
+                            "/api/auth/alterar-senha", "/api/auth/logout", "/uploads/**").authenticated();
                     authorize.requestMatchers(HttpMethod.GET, "/api/funcionarios/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
                     authorize.requestMatchers("/api/funcionarios/**").hasRole("ADMIN");
                     authorize.requestMatchers(HttpMethod.GET, "/api/alertas/notificacoes")
                             .authenticated();
+                    authorize.requestMatchers(HttpMethod.PATCH, "/api/alertas/notificacoes/*/lida")
+                            .authenticated();
                     authorize.requestMatchers("/api/dashboard/**", "/api/alertas/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO");
                     authorize.requestMatchers("/api/faturamentos/**", "/api/financeiro/**", "/api/relatorios/**")
                             .hasRole("ADMIN");
-                    authorize.requestMatchers(HttpMethod.GET, "/api/**").authenticated();
                     authorize.requestMatchers("/api/contratos/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO");
-                    authorize.requestMatchers("/api/projetos/**", "/api/ordens-servico/**")
+                    authorize.requestMatchers("/api/projetos/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO");
+                    authorize.requestMatchers(HttpMethod.GET, "/api/ordens-servico/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
+                    authorize.requestMatchers(HttpMethod.PUT,
+                            "/api/ordens-servico/*/status", "/api/ordens-servico/*/checklist")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
+                    authorize.requestMatchers("/api/ordens-servico/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO");
+                    authorize.requestMatchers(HttpMethod.GET, "/api/atividades-padrao/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
                     authorize.requestMatchers("/api/atividades-padrao/**").hasRole("ADMIN");
+                    authorize.requestMatchers(HttpMethod.GET, "/api/ordens-retirada/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "ESTOQUE", "AUDITOR");
                     authorize.requestMatchers("/api/estoque/**", "/api/ordens-retirada/**")
                             .hasAnyRole("ADMIN", "ESTOQUE");
                     authorize.requestMatchers("/api/as-built/**")
@@ -99,35 +125,26 @@ public class SecurityConfig {
                     authorize.requestMatchers("/api/comarcas/*/as-built/**", "/api/comarcas/materiais/*/auditoria",
                             "/api/projetos/*/as-built/**")
                             .hasAnyRole("ADMIN", "AUDITOR");
-                    authorize.requestMatchers("/api/comarcas/**", "/api/campo/**")
+                    authorize.requestMatchers(HttpMethod.GET, "/api/comarcas/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "ESTOQUE", "AUDITOR");
+                    authorize.requestMatchers("/api/comarcas/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
+                    authorize.requestMatchers("/api/campo/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
+                    authorize.requestMatchers("/api/documentos-internos/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
-                    authorize.requestMatchers("/api/documentos-internos/**").authenticated();
-                    authorize.anyRequest().authenticated();
+                    authorize.requestMatchers("/api/materiais/**", "/api/materiais-projeto/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
+                    authorize.requestMatchers("/api/pendencias-operacionais/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "AUDITOR");
+                    authorize.anyRequest().denyAll();
                 })
-                .oauth2Login(oauth2 -> oauth2
-                        .successHandler((request, response, authentication) -> {
-                            request.getSession().setAttribute(
-                                    com.poprc.demo.security.SessaoAutenticacaoService.METODO_AUTENTICACAO, "ZOHO");
-                            request.getSession().setAttribute(
-                                    com.poprc.demo.security.SessaoAutenticacaoService.REAUTENTICADO_EM,
-                                    java.time.Instant.now());
-                            response.sendRedirect(frontendUrl);
-                        })
-                        .failureHandler((request, response, exception) -> {
-                            String codigo = exception instanceof OAuth2AuthenticationException oauthException
-                                    && "usuario_nao_autorizado".equals(oauthException.getError().getErrorCode())
-                                    ? "conta_nao_vinculada"
-                                    : "oauth";
-                            log.warn("Falha no login Zoho ({}): {}", codigo, exception.getMessage());
-                            response.sendRedirect(frontendUrl + "/login?error=" + codigo);
-                        })
-                        .userInfoEndpoint(userInfo -> userInfo.userService(zohoUserService())))
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")
                         .logoutSuccessHandler((request, response, authentication) -> response.setStatus(204))
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
-                        .deleteCookies("JSESSIONID"))
+                        .deleteCookies("SESSION", "JSESSIONID"))
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) -> {
                             response.setStatus(401);
@@ -145,7 +162,28 @@ public class SecurityConfig {
                             response.getWriter().write("{\"erro\":\"" + mensagem + "\"}");
                         }))
                 .sessionManagement(session -> session
-                        .sessionFixation(sessionFixation -> sessionFixation.migrateSession()));
+                        .sessionFixation(sessionFixation -> sessionFixation.migrateSession()))
+                .addFilterAfter(validacaoSessaoFilter, SecurityContextHolderFilter.class);
+        if (zohoEnabled) {
+            http.oauth2Login(oauth2 -> oauth2
+                    .successHandler((request, response, authentication) -> {
+                        request.getSession().setAttribute(
+                                com.poprc.demo.security.SessaoAutenticacaoService.METODO_AUTENTICACAO, "ZOHO");
+                        request.getSession().setAttribute(
+                                com.poprc.demo.security.SessaoAutenticacaoService.REAUTENTICADO_EM,
+                                java.time.Instant.now());
+                        response.sendRedirect(frontendUrl);
+                    })
+                    .failureHandler((request, response, exception) -> {
+                        String codigo = exception instanceof OAuth2AuthenticationException oauthException
+                                && "usuario_nao_autorizado".equals(oauthException.getError().getErrorCode())
+                                ? "conta_nao_vinculada"
+                                : "oauth";
+                        log.warn("Falha no login Zoho ({}): {}", codigo, exception.getMessage());
+                        response.sendRedirect(frontendUrl + "/login?error=" + codigo);
+                    })
+                    .userInfoEndpoint(userInfo -> userInfo.userService(zohoUserService())));
+        }
         return http.build();
     }
 

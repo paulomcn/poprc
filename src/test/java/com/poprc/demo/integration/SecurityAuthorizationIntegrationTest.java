@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.poprc.demo.DemoApplication;
@@ -54,5 +55,52 @@ class SecurityAuthorizationIntegrationTest {
                         .content("{}"))
                 .andReturn().getResponse().getStatus();
         assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
+    }
+
+    @Test
+    void tecnicoNaoPodeCriarOrdemDeServico() throws Exception {
+        int status = mockMvc.perform(post("/api/ordens-servico")
+                        .with(user("tecnico").roles("TECNICO"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andReturn().getResponse().getStatus();
+        assertThat(status).isEqualTo(403);
+    }
+
+    @Test
+    void tecnicoPodeConsultarAtividadesPadrao() throws Exception {
+        int status = mockMvc.perform(get("/api/atividades-padrao")
+                        .with(user("tecnico").roles("TECNICO")))
+                .andReturn().getResponse().getStatus();
+        assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
+    }
+
+    @Test
+    void auditorNaoPodeAlterarFluxoOperacionalDaObra() throws Exception {
+        int status = mockMvc.perform(patch("/api/comarcas/1/avancar-etapa")
+                        .with(user("auditor").roles("AUDITOR"))
+                        .with(csrf()))
+                .andReturn().getResponse().getStatus();
+        assertThat(status).isEqualTo(403);
+    }
+
+    @Test
+    void estoquePodeConsultarComarcasParaRastreabilidade() throws Exception {
+        int status = mockMvc.perform(get("/api/comarcas")
+                        .with(user("estoque").roles("ESTOQUE")))
+                .andReturn().getResponse().getStatus();
+        assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
+    }
+
+    @Test
+    void auditorNaoPodeRegistrarOperacoesDeCampo() throws Exception {
+        int status = mockMvc.perform(post("/api/campo/ponto")
+                        .with(user("auditor").roles("AUDITOR"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andReturn().getResponse().getStatus();
+        assertThat(status).isEqualTo(403);
     }
 }

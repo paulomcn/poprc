@@ -3,6 +3,7 @@ package com.poprc.demo.controller;
 import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.RegistroPonto;
 import com.poprc.demo.model.TipoPonto; // Mudou aqui
+import com.poprc.demo.service.AcessoOperacionalService;
 import com.poprc.demo.service.FotoService;
 import com.poprc.demo.service.PontoService;
 import com.poprc.demo.security.UsuarioAutenticado;
@@ -25,6 +26,7 @@ public class MobilidadeController {
 
     private final PontoService pontoService;
     private final FotoService fotoService;
+    private final AcessoOperacionalService acessoOperacionalService;
 
     @PostMapping("/ponto")
     public ResponseEntity<RegistroPonto> registrarPonto(
@@ -60,6 +62,7 @@ public class MobilidadeController {
             Authentication authentication) {
 
         validarOperacaoPropria(authentication, funcionarioId);
+        acessoOperacionalService.garantirAcessoOrdem(ordemServicoId, authentication);
 
         EvidenciaFoto novaEvidencia = fotoService.salvarEvidencia(
                 file,
@@ -73,7 +76,9 @@ public class MobilidadeController {
 
     @GetMapping("/evidencias/os/{ordemServicoId}")
     public ResponseEntity<List<EvidenciaFotoResponse>> listarEvidencias(
-            @PathVariable Long ordemServicoId) {
+            @PathVariable Long ordemServicoId,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdem(ordemServicoId, authentication);
         List<EvidenciaFotoResponse> evidencias = fotoService.listarPorOrdemServico(ordemServicoId)
                 .stream()
                 .map(EvidenciaFotoResponse::from)

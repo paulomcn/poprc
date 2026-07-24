@@ -79,11 +79,14 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    sessionStorage.setItem("auth:logout", "1");
     try {
       await refreshCsrfToken();
       await api.post("/auth/logout");
-    } finally {
       setUsuario(null);
+    } catch (error) {
+      sessionStorage.removeItem("auth:logout");
+      throw error;
     }
   };
 

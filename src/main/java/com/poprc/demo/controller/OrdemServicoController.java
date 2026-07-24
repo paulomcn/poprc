@@ -7,12 +7,14 @@ import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.HistoricoStatusOS;
 import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.service.OrdemServicoService;
+import com.poprc.demo.service.AcessoOperacionalService;
 import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.service.FluxoOrdemServicoService;
 import com.poprc.demo.repository.OrdemServicoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*; // 💥 Import simplificado para pegar o CrossOrigin
 
 import java.util.Map;
@@ -27,6 +29,7 @@ public class OrdemServicoController {
     private final OrdemServicoRepository ordemServicoRepository;
     private final ArquivamentoService arquivamentoService;
     private final FluxoOrdemServicoService fluxoOrdemServicoService;
+    private final AcessoOperacionalService acessoOperacionalService;
 
     /**
      * 🛠️ POST: Criar nova Ordem de Serviço amarrada ao contrato
@@ -47,7 +50,9 @@ public class OrdemServicoController {
      */
     @PutMapping("/{id}/status")
     public ResponseEntity<OrdemServico> atualizarStatus(@PathVariable Long id,
-            @RequestBody StatusUpdateRequest request) {
+            @RequestBody StatusUpdateRequest request,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdem(id, authentication);
         OrdemServico ordem = ordemServicoService.atualizarStatus(
                 id, request.getStatus(), request.getResponsavel());
         if (ordem != null) {
@@ -58,7 +63,9 @@ public class OrdemServicoController {
 
     @PutMapping("/{id}/checklist")
     public ResponseEntity<OrdemServico> atualizarChecklist(@PathVariable Long id,
-            @RequestBody ChecklistUpdateRequest request) {
+            @RequestBody ChecklistUpdateRequest request,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdem(id, authentication);
         OrdemServico ordem = ordemServicoService.atualizarChecklist(id, request.getChecklist());
         if (ordem != null) {
             return ResponseEntity.ok(ordem);
@@ -70,12 +77,12 @@ public class OrdemServicoController {
     public ResponseEntity<List<OrdemServico>> listarTodas(
             @RequestParam(required = false) String numeroOs,
             @RequestParam(required = false) String cliente,
-            @RequestParam(defaultValue = "false") boolean incluirArquivados) {
-        // Adeus findAll() genérico! Agora a busca vai blindada e cirúrgica
+            @RequestParam(defaultValue = "false") boolean incluirArquivados,
+            Authentication authentication) {
         List<OrdemServico> ordens = ordemServicoRepository.buscarComFiltros(numeroOs, cliente).stream()
                 .filter(item -> incluirArquivados || !Boolean.TRUE.equals(item.getArquivado()))
                 .toList();
-        return ResponseEntity.ok(ordens);
+        return ResponseEntity.ok(acessoOperacionalService.filtrarOrdensPermitidas(ordens, authentication));
     }
 
     @PatchMapping("/{id}/arquivar")
@@ -91,14 +98,20 @@ public class OrdemServicoController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<OrdemServico> buscarPorId(@PathVariable Long id) {
+    public ResponseEntity<OrdemServico> buscarPorId(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdem(id, authentication);
         return ordemServicoRepository.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}/historico-status")
-    public ResponseEntity<List<HistoricoStatusOS>> listarHistoricoStatus(@PathVariable Long id) {
+    public ResponseEntity<List<HistoricoStatusOS>> listarHistoricoStatus(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdem(id, authentication);
         return ResponseEntity.ok(fluxoOrdemServicoService.listarHistorico(id));
     }
 

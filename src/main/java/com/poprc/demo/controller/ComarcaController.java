@@ -6,11 +6,13 @@ import com.poprc.demo.dto.ArquivamentoRequest;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.service.ComarcaService;
+import com.poprc.demo.service.AcessoOperacionalService;
 import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.repository.ComarcaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,14 +41,17 @@ public class ComarcaController {
     private final ComarcaService comarcaService;
     private final ComarcaRepository comarcaRepository;
     private final ArquivamentoService arquivamentoService;
+    private final AcessoOperacionalService acessoOperacionalService;
 
     @GetMapping
     public ResponseEntity<List<Comarca>> listarTodas(
-            @RequestParam(defaultValue = "false") boolean incluirArquivados) {
+            @RequestParam(defaultValue = "false") boolean incluirArquivados,
+            Authentication authentication) {
         List<Comarca> comarcas = comarcaRepository.findAll().stream()
                 .filter(item -> incluirArquivados || !Boolean.TRUE.equals(item.getArquivado()))
                 .toList();
-        return ResponseEntity.ok(comarcas);
+        return ResponseEntity.ok(acessoOperacionalService.filtrarComarcasPermitidas(
+                comarcas, authentication));
     }
 
     @PatchMapping("/{id}/arquivar")
@@ -60,7 +65,10 @@ public class ComarcaController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Comarca> obterPorId(@PathVariable Long id) {
+    public ResponseEntity<Comarca> obterPorId(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         Optional<Comarca> comarca = comarcaService.obterPorId(id);
         return comarca.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }

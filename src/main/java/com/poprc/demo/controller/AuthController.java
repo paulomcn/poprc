@@ -33,6 +33,9 @@ public class AuthController {
     @Value("${app.security.enabled:true}")
     private boolean securityEnabled;
 
+    @Value("${app.security.zoho-enabled:false}")
+    private boolean zohoEnabled;
+
     @GetMapping("/csrf")
     public Map<String, String> csrf(CsrfToken token) {
         return Map.of("token", token.getToken(), "headerName", token.getHeaderName());
@@ -43,7 +46,7 @@ public class AuthController {
         return Map.of(
                 "securityEnabled", securityEnabled,
                 "devLoginEnabled", devLoginEnabled,
-                "zohoEnabled", securityEnabled);
+                "zohoEnabled", securityEnabled && zohoEnabled);
     }
 
     @GetMapping("/me")

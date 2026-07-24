@@ -7,6 +7,8 @@ import com.poprc.demo.security.UsuarioAutenticado;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +21,6 @@ public class AutenticacaoLocalService {
     private final FuncionarioRepository funcionarioRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Transactional
     public UsuarioAutenticado autenticar(String cpfInformado, String senha) {
         String cpf = CpfUtils.normalizar(cpfInformado);
         Funcionario funcionario = funcionarioRepository.findByCpf(cpf)
@@ -91,7 +92,7 @@ public class AutenticacaoLocalService {
     private void validarAtivoEBloqueio(Funcionario funcionario) {
         if (!Boolean.TRUE.equals(funcionario.getAtivo())) throw credenciaisInvalidas();
         if (funcionario.getBloqueadoAte() != null && funcionario.getBloqueadoAte().isAfter(LocalDateTime.now())) {
-            throw new IllegalStateException("Acesso temporariamente bloqueado. Tente novamente mais tarde.");
+            throw new LockedException("Acesso temporariamente bloqueado. Tente novamente mais tarde.");
         }
     }
 
@@ -105,7 +106,7 @@ public class AutenticacaoLocalService {
         funcionarioRepository.save(funcionario);
     }
 
-    private IllegalArgumentException credenciaisInvalidas() {
-        return new IllegalArgumentException("CPF ou senha inválidos.");
+    private BadCredentialsException credenciaisInvalidas() {
+        return new BadCredentialsException("CPF ou senha inválidos.");
     }
 }
