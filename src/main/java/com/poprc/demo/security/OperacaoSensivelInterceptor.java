@@ -7,7 +7,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -20,13 +19,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @RequiredArgsConstructor
 public class OperacaoSensivelInterceptor implements HandlerInterceptor {
     private static final String LOG_REQUEST = "RC_LOG_OPERACAO_SENSIVEL";
-    private static final List<String> PREFIXOS_SENSIVEIS = List.of(
-            "/api/estoque", "/api/ordens-retirada", "/api/funcionarios", "/api/faturamentos");
-    private static final List<String> TRECHOS_SENSIVEIS = List.of(
-            "/arquivar", "/restaurar", "/concluir", "/homologar", "/reabrir",
-            "/invalidar", "/assinaturas", "/executar", "/devolver");
 
     private final LogOperacaoSensivelRepository logRepository;
+    private final PoliticaOperacaoSensivel politica;
 
     @Value("${app.security.enabled:true}")
     private boolean securityEnabled;
@@ -36,7 +31,10 @@ public class OperacaoSensivelInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        if (!securityEnabled || !sensivel(request)) return true;
+        if (!securityEnabled
+                || !politica.exigeReautenticacao(request.getMethod(), request.getRequestURI())) {
+            return true;
+        }
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !(authentication.getPrincipal() instanceof UsuarioAutenticado usuario)) {
             return exigirSenha(response);
@@ -68,16 +66,6 @@ public class OperacaoSensivelInterceptor implements HandlerInterceptor {
         log.setEnderecoIp(request.getRemoteAddr());
         log.setRegistradoEm(LocalDateTime.now());
         logRepository.save(log);
-    }
-
-    private boolean sensivel(HttpServletRequest request) {
-        String metodo = request.getMethod();
-        if ("GET".equals(metodo) || "OPTIONS".equals(metodo)) return false;
-        String caminho = request.getRequestURI();
-        if (caminho.startsWith("/api/auth/")) return false;
-        return "DELETE".equals(metodo)
-                || PREFIXOS_SENSIVEIS.stream().anyMatch(caminho::startsWith)
-                || TRECHOS_SENSIVEIS.stream().anyMatch(caminho::contains);
     }
 
     private boolean exigirSenha(HttpServletResponse response) throws Exception {

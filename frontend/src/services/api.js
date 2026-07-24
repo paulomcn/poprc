@@ -49,7 +49,10 @@ api.interceptors.response.use(
       !config.url?.includes('/auth/reauth')
     ) {
       config.__reauthRetry = true
-      await reauthHandler()
+      const token = await reauthHandler()
+      if (token && config.headers) {
+        config.headers['X-XSRF-TOKEN'] = token
+      }
       return api(config)
     }
     const sessaoExpirada = error.response?.status === 403

@@ -6,6 +6,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.poprc.demo.DemoApplication;
 import org.junit.jupiter.api.Test;
@@ -102,5 +104,16 @@ class SecurityAuthorizationIntegrationTest {
                         .content("{}"))
                 .andReturn().getResponse().getStatus();
         assertThat(status).isEqualTo(403);
+    }
+
+    @Test
+    void operacaoCriticaSemConfirmacaoRecenteSolicitaSenha() throws Exception {
+        mockMvc.perform(post("/api/funcionarios")
+                        .with(user("administrador").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().is(428))
+                .andExpect(jsonPath("$.reautenticacaoNecessaria").value(true));
     }
 }

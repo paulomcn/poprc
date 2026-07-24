@@ -104,9 +104,9 @@ export function AuthProvider({ children }) {
     setReauthProcessando(true);
     setReauthErro("");
     try {
-      await refreshCsrfToken();
+      const token = await refreshCsrfToken();
       await api.post("/auth/reauth", { senha });
-      reauthPromise.current?.resolve();
+      reauthPromise.current?.resolve(token);
       reauthPromise.current = null;
       setReauthAberta(false);
     } catch (error) {
