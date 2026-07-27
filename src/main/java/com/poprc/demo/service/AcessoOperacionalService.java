@@ -4,6 +4,7 @@ import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.ProjetoMembroRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.security.UsuarioAutenticado;
 import java.util.List;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AcessoOperacionalService {
 
     private final ProjetoRepository projetoRepository;
+    private final ProjetoMembroRepository projetoMembroRepository;
     private final OrdemServicoRepository ordemServicoRepository;
     private final ComarcaRepository comarcaRepository;
 
@@ -74,9 +76,14 @@ public class AcessoOperacionalService {
     }
 
     private Set<Long> projetosPermitidos(Long funcionarioId) {
-        return projetoRepository.findByResponsavelId(funcionarioId).stream()
-                .map(projeto -> projeto.getId())
+        Set<Long> projetos = projetoMembroRepository.findByFuncionarioId(funcionarioId).stream()
+                .filter(membro -> membro.getProjeto() != null)
+                .map(membro -> membro.getProjeto().getId())
                 .collect(Collectors.toSet());
+        projetoRepository.findByResponsavelId(funcionarioId).stream()
+                .map(projeto -> projeto.getId())
+                .forEach(projetos::add);
+        return projetos;
     }
 
     private UsuarioAutenticado tecnico(Authentication authentication) {

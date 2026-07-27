@@ -2,7 +2,14 @@
 
 Data de preparacao: 27/07/2026
 
-Status: PENDENTE DE VALIDACAO FISICA
+Status: PARCIALMENTE CONCLUIDA
+
+Decisao de 27/07/2026: a estrutura digital, a geracao dos PDFs e a
+pre-visualizacao foram aceitas para continuidade do desenvolvimento. A
+homologacao fisica completa dos casos abaixo foi adiada para a fase de
+implantacao na AWS, quando serao definidos o ambiente final, os navegadores e
+os equipamentos de impressao usados pela empresa. Eventuais correcoes de
+impressao serao tratadas nessa fase sem bloquear as proximas entregas.
 
 ## Objetivo
 
@@ -99,4 +106,3 @@ Resultado: [ ] Aprovado  [ ] Reprovado
 
 Anexar fotos ou digitalizacoes das paginas impressas quando houver corte,
 desalinhamento, baixa legibilidade ou diferenca em relacao a tela.
-

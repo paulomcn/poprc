@@ -7,8 +7,10 @@ import static org.mockito.Mockito.when;
 
 import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.Projeto;
+import com.poprc.demo.model.ProjetoMembro;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.ProjetoMembroRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.security.UsuarioAutenticado;
 import java.util.List;
@@ -22,15 +24,18 @@ import org.springframework.security.core.Authentication;
 class AcessoOperacionalServiceTest {
 
     private ProjetoRepository projetoRepository;
+    private ProjetoMembroRepository projetoMembroRepository;
     private OrdemServicoRepository ordemServicoRepository;
     private AcessoOperacionalService service;
 
     @BeforeEach
     void setUp() {
         projetoRepository = mock(ProjetoRepository.class);
+        projetoMembroRepository = mock(ProjetoMembroRepository.class);
         ordemServicoRepository = mock(OrdemServicoRepository.class);
         service = new AcessoOperacionalService(
                 projetoRepository,
+                projetoMembroRepository,
                 ordemServicoRepository,
                 mock(ComarcaRepository.class));
     }
@@ -56,6 +61,20 @@ class AcessoOperacionalServiceTest {
 
         assertThatThrownBy(() -> service.garantirAcessoOrdem(2L, autenticacao("TECNICO")))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void tecnicoAdicionalDaEquipePodeAcessarOrdemDoProjeto() {
+        Projeto permitido = projeto(10L);
+        ProjetoMembro membro = new ProjetoMembro();
+        membro.setProjeto(permitido);
+        when(projetoMembroRepository.findByFuncionarioId(7L)).thenReturn(List.of(membro));
+
+        List<OrdemServico> resultado = service.filtrarOrdensPermitidas(
+                List.of(ordem(1L, permitido), ordem(2L, projeto(20L))),
+                autenticacao("TECNICO"));
+
+        assertThat(resultado).extracting(OrdemServico::getId).containsExactly(1L);
     }
 
     @Test
