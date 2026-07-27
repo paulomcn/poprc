@@ -11,7 +11,10 @@ import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.repository.ComarcaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -105,15 +108,27 @@ public class ComarcaController {
     @PostMapping("/{id}/vistoria/foto")
     public ResponseEntity<Comarca> salvarFotoVistoria(
             @PathVariable Long id,
-            @RequestParam("foto") MultipartFile foto) {
+            @RequestParam("foto") MultipartFile foto,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         Comarca comarca = comarcaService.salvarFotoVistoria(id, foto);
         return ResponseEntity.ok(comarca);
+    }
+
+    @GetMapping("/{id}/vistoria/foto")
+    public ResponseEntity<byte[]> abrirFotoVistoria(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
+        return respostaArquivo(comarcaService.carregarFotoVistoria(id));
     }
 
     @PatchMapping("/{id}/vistoria/assinatura")
     public ResponseEntity<Comarca> salvarAssinaturaVistoria(
             @PathVariable Long id,
-            @RequestBody AssinaturaVistoriaRequest request) {
+            @RequestBody AssinaturaVistoriaRequest request,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         Comarca comarca = comarcaService.salvarAssinaturaVistoria(id, request.getAssinaturaBase64());
         return ResponseEntity.ok(comarca);
     }
@@ -121,27 +136,49 @@ public class ComarcaController {
     @PostMapping("/{id}/virada-rede/prova")
     public ResponseEntity<Comarca> salvarProvaViradaRede(
             @PathVariable Long id,
-            @RequestParam("foto") MultipartFile foto) {
+            @RequestParam("foto") MultipartFile foto,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         return ResponseEntity.ok(comarcaService.salvarProvaViradaRede(id, foto));
     }
 
+    @GetMapping("/{id}/virada-rede/prova")
+    public ResponseEntity<byte[]> abrirProvaViradaRede(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
+        return respostaArquivo(comarcaService.carregarProvaViradaRede(id));
+    }
+
     @DeleteMapping("/{id}/vistoria/foto")
-    public ResponseEntity<Comarca> removerFotoVistoria(@PathVariable Long id) {
+    public ResponseEntity<Comarca> removerFotoVistoria(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         return ResponseEntity.ok(comarcaService.removerFotoVistoria(id));
     }
 
     @DeleteMapping("/{id}/vistoria/assinatura")
-    public ResponseEntity<Comarca> removerAssinaturaVistoria(@PathVariable Long id) {
+    public ResponseEntity<Comarca> removerAssinaturaVistoria(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         return ResponseEntity.ok(comarcaService.removerAssinaturaVistoria(id));
     }
 
     @DeleteMapping("/{id}/virada-rede/prova")
-    public ResponseEntity<Comarca> removerProvaViradaRede(@PathVariable Long id) {
+    public ResponseEntity<Comarca> removerProvaViradaRede(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         return ResponseEntity.ok(comarcaService.removerProvaViradaRede(id));
     }
 
     @PatchMapping("/{id}/avancar-etapa")
-    public ResponseEntity<Comarca> avancarEtapa(@PathVariable Long id) {
+    public ResponseEntity<Comarca> avancarEtapa(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         Comarca comarca = comarcaService.avancarParaInfraestrutura(id);
         return ResponseEntity.ok(comarca);
     }
@@ -149,7 +186,9 @@ public class ComarcaController {
     @PatchMapping("/{id}/virada-rede")
     public ResponseEntity<Comarca> salvarViradaRede(
             @PathVariable Long id,
-            @RequestBody ViradaRedeRequest request) {
+            @RequestBody ViradaRedeRequest request,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(id, authentication);
         return ResponseEntity.ok(comarcaService.salvarViradaRede(
                 id,
                 request.getProvasFuncionamento(),
@@ -463,6 +502,16 @@ public class ComarcaController {
         public void setDataHoraUso(LocalDateTime dataHoraUso) {
             this.dataHoraUso = dataHoraUso;
         }
+    }
+
+    private ResponseEntity<byte[]> respostaArquivo(ComarcaService.ArquivoObra arquivo) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(arquivo.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + arquivo.nomeArquivo() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=300")
+                .contentLength(arquivo.conteudo().length)
+                .body(arquivo.conteudo());
     }
 
     @ExceptionHandler({ ArquivoInvalidoException.class, IllegalArgumentException.class,

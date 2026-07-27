@@ -6,10 +6,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.OrdemRetirada;
+import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.ProjetoMembro;
 import com.poprc.demo.repository.ComarcaRepository;
+import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.OrdemRetiradaRepository;
 import com.poprc.demo.repository.ProjetoMembroRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.security.UsuarioAutenticado;
@@ -26,6 +30,8 @@ class AcessoOperacionalServiceTest {
     private ProjetoRepository projetoRepository;
     private ProjetoMembroRepository projetoMembroRepository;
     private OrdemServicoRepository ordemServicoRepository;
+    private OrdemRetiradaRepository ordemRetiradaRepository;
+    private EvidenciaFotoRepository evidenciaFotoRepository;
     private AcessoOperacionalService service;
 
     @BeforeEach
@@ -33,11 +39,15 @@ class AcessoOperacionalServiceTest {
         projetoRepository = mock(ProjetoRepository.class);
         projetoMembroRepository = mock(ProjetoMembroRepository.class);
         ordemServicoRepository = mock(OrdemServicoRepository.class);
+        ordemRetiradaRepository = mock(OrdemRetiradaRepository.class);
+        evidenciaFotoRepository = mock(EvidenciaFotoRepository.class);
         service = new AcessoOperacionalService(
                 projetoRepository,
                 projetoMembroRepository,
                 ordemServicoRepository,
-                mock(ComarcaRepository.class));
+                mock(ComarcaRepository.class),
+                ordemRetiradaRepository,
+                evidenciaFotoRepository);
     }
 
     @Test
@@ -85,6 +95,52 @@ class AcessoOperacionalServiceTest {
                 .isSameAs(ordens);
     }
 
+    @Test
+    void tecnicoRecebeSomenteOrdensRetiradaDosProjetosDaEquipe() {
+        Projeto permitido = projeto(10L);
+        ProjetoMembro membro = new ProjetoMembro();
+        membro.setProjeto(permitido);
+        when(projetoMembroRepository.findByFuncionarioId(7L)).thenReturn(List.of(membro));
+
+        List<OrdemRetirada> resultado = service.filtrarOrdensRetiradaPermitidas(
+                List.of(ordemRetirada(1L, permitido), ordemRetirada(2L, projeto(20L))),
+                autenticacao("TECNICO"));
+
+        assertThat(resultado).extracting(OrdemRetirada::getId).containsExactly(1L);
+    }
+
+    @Test
+    void tecnicoNaoAbrePdfDeOrdemRetiradaDeOutroProjeto() {
+        when(ordemRetiradaRepository.findById(2L))
+                .thenReturn(Optional.of(ordemRetirada(2L, projeto(20L))));
+
+        assertThatThrownBy(() -> service.garantirAcessoOrdemRetirada(2L, autenticacao("TECNICO")))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void tecnicoDaEquipePodeAbrirArquivoDeEvidenciaDaOrdem() {
+        Projeto permitido = projeto(10L);
+        ProjetoMembro membro = new ProjetoMembro();
+        membro.setProjeto(permitido);
+        EvidenciaFoto evidencia = new EvidenciaFoto();
+        evidencia.setOrdemServico(ordem(1L, permitido));
+        when(projetoMembroRepository.findByFuncionarioId(7L)).thenReturn(List.of(membro));
+        when(evidenciaFotoRepository.findById(11L)).thenReturn(Optional.of(evidencia));
+
+        service.garantirAcessoEvidencia(11L, autenticacao("TECNICO"));
+    }
+
+    @Test
+    void tecnicoNaoAbreArquivoDeEvidenciaDeOutroProjeto() {
+        EvidenciaFoto evidencia = new EvidenciaFoto();
+        evidencia.setOrdemServico(ordem(2L, projeto(20L)));
+        when(evidenciaFotoRepository.findById(11L)).thenReturn(Optional.of(evidencia));
+
+        assertThatThrownBy(() -> service.garantirAcessoEvidencia(11L, autenticacao("TECNICO")))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
     private Authentication autenticacao(String perfil) {
         UsuarioAutenticado usuario = new UsuarioAutenticado(
                 7L, "Usuario", null, perfil, "CPF_SENHA", false);
@@ -103,5 +159,12 @@ class AcessoOperacionalServiceTest {
         ordem.setId(id);
         ordem.setProjeto(projeto);
         return ordem;
+    }
+
+    private OrdemRetirada ordemRetirada(Long id, Projeto projeto) {
+        OrdemRetirada retirada = new OrdemRetirada();
+        retirada.setId(id);
+        retirada.setOrdemServico(ordem(id, projeto));
+        return retirada;
     }
 }

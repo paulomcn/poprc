@@ -70,6 +70,26 @@ public class ComarcaService {
         return comarcaRepository.findById(id);
     }
 
+    @Transactional(readOnly = true)
+    public ArquivoObra carregarFotoVistoria(Long id) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        return carregarArquivoObra(
+                comarca.getFotoVistoriaUrl(),
+                DIRETORIO_FOTO_VISTORIA,
+                "/uploads/comarcas/vistoria/");
+    }
+
+    @Transactional(readOnly = true)
+    public ArquivoObra carregarProvaViradaRede(Long id) {
+        Comarca comarca = comarcaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
+        return carregarArquivoObra(
+                comarca.getViradaRedeProvasFuncionamento(),
+                DIRETORIO_PROVA_VIRADA_REDE,
+                "/uploads/comarcas/virada-rede/");
+    }
+
     public Comarca atualizarProgresso(Long id, BigDecimal percentualConcluido, String situacao) {
         Optional<Comarca> comarcaOpt = comarcaRepository.findById(id);
         if (comarcaOpt.isPresent()) {
@@ -1119,6 +1139,36 @@ public class ComarcaService {
         }
     }
 
+    private ArquivoObra carregarArquivoObra(String arquivoUrl, String diretorio, String urlBase) {
+        if (arquivoUrl == null || arquivoUrl.isBlank() || !arquivoUrl.startsWith(urlBase)) {
+            throw new IllegalArgumentException("Arquivo da obra não encontrado.");
+        }
+        Path pastaPermitida = UploadStorage.directory(diretorio)
+                .toAbsolutePath().normalize();
+        Path arquivo = pastaPermitida.resolve(Paths.get(arquivoUrl).getFileName().toString())
+                .toAbsolutePath().normalize();
+        if (!arquivo.startsWith(pastaPermitida)) {
+            throw new IllegalStateException("Caminho de evidência inválido.");
+        }
+        try {
+            if (!Files.isRegularFile(arquivo)) {
+                throw new IllegalArgumentException("Arquivo da obra não encontrado.");
+            }
+            String contentType = Files.probeContentType(arquivo);
+            if (contentType == null || !contentType.startsWith("image/")) {
+                contentType = arquivo.getFileName().toString().toLowerCase().endsWith(".png")
+                        ? "image/png"
+                        : "image/jpeg";
+            }
+            return new ArquivoObra(
+                    arquivo.getFileName().toString(),
+                    contentType,
+                    Files.readAllBytes(arquivo));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Não foi possível ler o arquivo da obra.", ex);
+        }
+    }
+
     private void removerArquivoUpload(String arquivoUrl, String diretorio, String urlBase) {
         if (arquivoUrl == null || arquivoUrl.isBlank() || !arquivoUrl.startsWith(urlBase)) {
             return;
@@ -1184,6 +1234,9 @@ public class ComarcaService {
         } else if (percentual > 0 && (comarca.getEtapaAtual() == null || comarca.getEtapaAtual() == 1)) {
             comarca.setSituacao("VISTORIA_EM_ANDAMENTO");
         }
+    }
+
+    public record ArquivoObra(String nomeArquivo, String contentType, byte[] conteudo) {
     }
 
     private String extrairExtensao(String nomeArquivo) {

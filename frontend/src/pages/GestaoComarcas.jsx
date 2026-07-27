@@ -1640,7 +1640,10 @@ export default function GestaoComarcas() {
           const fotoVistoria = fotosVistoria[comarca.id];
           const assinaturaValida = assinaturasVistoria[comarca.id];
           const fotoVistoriaPreview =
-            fotoVistoria?.previewUrl || getArquivoUrl(comarca.fotoVistoriaUrl);
+            fotoVistoria?.previewUrl ||
+            (comarca.fotoVistoriaUrl
+              ? `${API_BASE_URL}/comarcas/${comarca.id}/vistoria/foto?v=${encodeURIComponent(comarca.fotoVistoriaUrl)}`
+              : null);
           const assinaturaPreview =
             assinaturaValida?.base64 || comarca.assinaturaBase64;
           const fotoVistoriaConcluida = !!fotoVistoriaPreview;
@@ -2046,9 +2049,7 @@ export default function GestaoComarcas() {
                         </span>
                         {comarca.viradaRedeProvasFuncionamento && (
                           <img
-                            src={getArquivoUrl(
-                              comarca.viradaRedeProvasFuncionamento,
-                            )}
+                            src={`${API_BASE_URL}/comarcas/${comarca.id}/virada-rede/prova?v=${encodeURIComponent(comarca.viradaRedeProvasFuncionamento)}`}
                             alt={`Prova de funcionamento ${comarca.nomeComarca}`}
                             className="h-24 w-full rounded-md object-cover border border-emerald-200"
                           />

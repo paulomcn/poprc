@@ -95,6 +95,30 @@ public class FotoService {
         return fotoRepository.findByOrdemServicoIdOrderByDataUploadDesc(ordemServicoId);
     }
 
+    @Transactional(readOnly = true)
+    public ArquivoEvidencia carregarArquivo(Long evidenciaId) {
+        EvidenciaFoto evidencia = fotoRepository.findById(evidenciaId)
+                .orElseThrow(() -> new IllegalArgumentException("Evidência fotográfica não encontrada."));
+        Path arquivo = resolverArquivoEvidencia(evidencia.getCaminhoArquivo());
+        try {
+            if (!Files.isRegularFile(arquivo)) {
+                throw new IllegalArgumentException("Arquivo da evidência não encontrado.");
+            }
+            String contentType = Files.probeContentType(arquivo);
+            if (contentType == null || !contentType.startsWith("image/")) {
+                contentType = arquivo.getFileName().toString().toLowerCase().endsWith(".png")
+                        ? "image/png"
+                        : "image/jpeg";
+            }
+            return new ArquivoEvidencia(
+                    arquivo.getFileName().toString(),
+                    contentType,
+                    Files.readAllBytes(arquivo));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Não foi possível ler a evidência no servidor.", ex);
+        }
+    }
+
     @Transactional
     public void removerEvidencia(Long evidenciaId, Long funcionarioId) {
         EvidenciaFoto evidencia = fotoRepository.findById(evidenciaId)
@@ -129,7 +153,19 @@ public class FotoService {
         if (caminhoArquivo == null || !caminhoArquivo.startsWith("/uploads/evidencias/")) {
             return;
         }
+        Path arquivo = resolverArquivoEvidencia(caminhoArquivo);
 
+        try {
+            Files.deleteIfExists(arquivo);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Não foi possível remover a evidência do servidor.", ex);
+        }
+    }
+
+    private Path resolverArquivoEvidencia(String caminhoArquivo) {
+        if (caminhoArquivo == null || !caminhoArquivo.startsWith("/uploads/evidencias/")) {
+            throw new IllegalStateException("Caminho de evidência inválido.");
+        }
         Path pastaDestino = UploadStorage.directory(DIRETORIO_EVIDENCIAS)
                 .toAbsolutePath()
                 .normalize();
@@ -139,12 +175,7 @@ public class FotoService {
         if (!arquivo.startsWith(pastaDestino)) {
             throw new IllegalStateException("Caminho de evidência inválido.");
         }
-
-        try {
-            Files.deleteIfExists(arquivo);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Não foi possível remover a evidência do servidor.", ex);
-        }
+        return arquivo;
     }
 
     private void validarArquivo(MultipartFile arquivo) {
@@ -175,5 +206,8 @@ public class FotoService {
         } catch (NullPointerException | NumberFormatException ex) {
             throw new IllegalArgumentException("Coordenada de " + nome + " inválida.");
         }
+    }
+
+    public record ArquivoEvidencia(String nomeArquivo, String contentType, byte[] conteudo) {
     }
 }

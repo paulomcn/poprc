@@ -1,9 +1,13 @@
 package com.poprc.demo.service;
 
 import com.poprc.demo.model.Comarca;
+import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.OrdemRetirada;
 import com.poprc.demo.repository.ComarcaRepository;
+import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.OrdemRetiradaRepository;
 import com.poprc.demo.repository.ProjetoMembroRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.security.UsuarioAutenticado;
@@ -24,6 +28,8 @@ public class AcessoOperacionalService {
     private final ProjetoMembroRepository projetoMembroRepository;
     private final OrdemServicoRepository ordemServicoRepository;
     private final ComarcaRepository comarcaRepository;
+    private final OrdemRetiradaRepository ordemRetiradaRepository;
+    private final EvidenciaFotoRepository evidenciaFotoRepository;
 
     @Transactional(readOnly = true)
     public List<OrdemServico> filtrarOrdensPermitidas(
@@ -69,10 +75,44 @@ public class AcessoOperacionalService {
         if (usuario == null) return;
         Comarca comarca = comarcaRepository.findById(comarcaId)
                 .orElseThrow(() -> new IllegalArgumentException("Obra não encontrada."));
-        if (comarca.getProjeto() == null
-                || !projetosPermitidos(usuario.getFuncionarioId()).contains(comarca.getProjeto().getId())) {
-            throw acessoNegado();
-        }
+        garantirAcessoProjeto(comarca.getProjeto() != null ? comarca.getProjeto().getId() : null, usuario);
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrdemRetirada> filtrarOrdensRetiradaPermitidas(
+            List<OrdemRetirada> ordens,
+            Authentication authentication) {
+        UsuarioAutenticado usuario = tecnico(authentication);
+        if (usuario == null) return ordens;
+        Set<Long> projetosPermitidos = projetosPermitidos(usuario.getFuncionarioId());
+        return ordens.stream()
+                .filter(ordem -> {
+                    Long projetoId = projetoId(ordem);
+                    return projetoId != null && projetosPermitidos.contains(projetoId);
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public void garantirAcessoOrdemRetirada(Long ordemRetiradaId, Authentication authentication) {
+        UsuarioAutenticado usuario = tecnico(authentication);
+        if (usuario == null) return;
+        OrdemRetirada ordem = ordemRetiradaRepository.findById(ordemRetiradaId)
+                .orElseThrow(() -> new IllegalArgumentException("Ordem de retirada não encontrada."));
+        garantirAcessoProjeto(projetoId(ordem), usuario);
+    }
+
+    @Transactional(readOnly = true)
+    public void garantirAcessoEvidencia(Long evidenciaId, Authentication authentication) {
+        UsuarioAutenticado usuario = tecnico(authentication);
+        if (usuario == null) return;
+        EvidenciaFoto evidencia = evidenciaFotoRepository.findById(evidenciaId)
+                .orElseThrow(() -> new IllegalArgumentException("Evidência fotográfica não encontrada."));
+        Long projetoId = evidencia.getOrdemServico() != null
+                && evidencia.getOrdemServico().getProjeto() != null
+                        ? evidencia.getOrdemServico().getProjeto().getId()
+                        : null;
+        garantirAcessoProjeto(projetoId, usuario);
     }
 
     private Set<Long> projetosPermitidos(Long funcionarioId) {
@@ -93,6 +133,21 @@ public class AcessoOperacionalService {
             return null;
         }
         return usuario;
+    }
+
+    private Long projetoId(OrdemRetirada ordem) {
+        if (ordem.getOrdemServico() != null && ordem.getOrdemServico().getProjeto() != null) {
+            return ordem.getOrdemServico().getProjeto().getId();
+        }
+        return ordem.getComarca() != null && ordem.getComarca().getProjeto() != null
+                ? ordem.getComarca().getProjeto().getId()
+                : null;
+    }
+
+    private void garantirAcessoProjeto(Long projetoId, UsuarioAutenticado usuario) {
+        if (projetoId == null || !projetosPermitidos(usuario.getFuncionarioId()).contains(projetoId)) {
+            throw acessoNegado();
+        }
     }
 
     private AccessDeniedException acessoNegado() {

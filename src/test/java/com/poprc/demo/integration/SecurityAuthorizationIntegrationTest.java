@@ -132,6 +132,27 @@ class SecurityAuthorizationIntegrationTest {
     }
 
     @Test
+    void tecnicoNaoPodeContornarEscopoUsandoUrlEstaticaDeEvidencia() throws Exception {
+        mockMvc.perform(get("/uploads/evidencias/vistoria.png")
+                        .with(user("tecnico").roles("TECNICO")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tecnicoNaoPodeContornarEscopoUsandoUrlEstaticaDeDocumento() throws Exception {
+        mockMvc.perform(get("/uploads/documentos/ordens-retirada/or.pdf")
+                        .with(user("tecnico").roles("TECNICO")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void estoqueNaoPodeAbrirFotoProtegidaDaVistoria() throws Exception {
+        mockMvc.perform(get("/api/comarcas/1/vistoria/foto")
+                        .with(user("estoquista").roles("ESTOQUE")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void estoquePodeConsultarFilaOperacionalDaSuaArea() throws Exception {
         mockMvc.perform(get("/api/pendencias-operacionais")
                         .param("area", "ADMINISTRACAO")

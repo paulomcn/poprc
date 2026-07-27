@@ -10,6 +10,8 @@ import com.poprc.demo.security.UsuarioAutenticado;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -86,12 +88,28 @@ public class MobilidadeController {
         return ResponseEntity.ok(evidencias);
     }
 
+    @GetMapping("/evidencias/{evidenciaId}/arquivo")
+    public ResponseEntity<byte[]> abrirArquivoEvidencia(
+            @PathVariable Long evidenciaId,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoEvidencia(evidenciaId, authentication);
+        FotoService.ArquivoEvidencia arquivo = fotoService.carregarArquivo(evidenciaId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(arquivo.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + arquivo.nomeArquivo() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=300")
+                .contentLength(arquivo.conteudo().length)
+                .body(arquivo.conteudo());
+    }
+
     @DeleteMapping("/evidencias/{evidenciaId}")
     public ResponseEntity<Void> removerEvidencia(
             @PathVariable Long evidenciaId,
             @RequestParam("funcionarioId") Long funcionarioId,
             Authentication authentication) {
         validarOperacaoPropria(authentication, funcionarioId);
+        acessoOperacionalService.garantirAcessoEvidencia(evidenciaId, authentication);
         fotoService.removerEvidencia(evidenciaId, funcionarioId);
         return ResponseEntity.noContent().build();
     }
@@ -146,7 +164,7 @@ public class MobilidadeController {
         static EvidenciaFotoResponse from(EvidenciaFoto evidencia) {
             EvidenciaFotoResponse response = new EvidenciaFotoResponse();
             response.setId(evidencia.getId());
-            response.setCaminhoArquivo(evidencia.getCaminhoArquivo());
+            response.setCaminhoArquivo("/api/campo/evidencias/" + evidencia.getId() + "/arquivo");
             response.setLatitude(evidencia.getLatitude());
             response.setLongitude(evidencia.getLongitude());
             response.setDataUpload(evidencia.getDataUpload());

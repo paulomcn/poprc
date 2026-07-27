@@ -6,10 +6,12 @@ import com.poprc.demo.model.OrdemRetirada;
 import com.poprc.demo.model.OrdemRetiradaDocumento;
 import com.poprc.demo.service.OrdemRetiradaPdfService;
 import com.poprc.demo.service.OrdemRetiradaService;
+import com.poprc.demo.service.AcessoOperacionalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,24 +30,33 @@ public class OrdemRetiradaController {
 
     private final OrdemRetiradaService ordemRetiradaService;
     private final OrdemRetiradaPdfService ordemRetiradaPdfService;
+    private final AcessoOperacionalService acessoOperacionalService;
 
     @GetMapping
-    public ResponseEntity<List<OrdemRetirada>> listarTodas() {
-        return ResponseEntity.ok(ordemRetiradaService.listarTodas());
+    public ResponseEntity<List<OrdemRetirada>> listarTodas(Authentication authentication) {
+        return ResponseEntity.ok(acessoOperacionalService.filtrarOrdensRetiradaPermitidas(
+                ordemRetiradaService.listarTodas(), authentication));
     }
 
     @GetMapping("/comarca/{comarcaId}")
-    public ResponseEntity<List<OrdemRetirada>> listarPorComarca(@PathVariable Long comarcaId) {
+    public ResponseEntity<List<OrdemRetirada>> listarPorComarca(
+            @PathVariable Long comarcaId,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoComarca(comarcaId, authentication);
         return ResponseEntity.ok(ordemRetiradaService.listarPorComarca(comarcaId));
     }
 
     @GetMapping("/os/{ordemServicoId}")
-    public ResponseEntity<List<OrdemRetirada>> listarPorOs(@PathVariable Long ordemServicoId) {
+    public ResponseEntity<List<OrdemRetirada>> listarPorOs(
+            @PathVariable Long ordemServicoId,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdem(ordemServicoId, authentication);
         return ResponseEntity.ok(ordemRetiradaService.listarPorOs(ordemServicoId));
     }
 
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> abrirPdf(@PathVariable Long id) {
+    public ResponseEntity<byte[]> abrirPdf(@PathVariable Long id, Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdemRetirada(id, authentication);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=ordem-retirada-" + id + ".pdf")
@@ -53,14 +64,19 @@ public class OrdemRetiradaController {
     }
 
     @GetMapping("/{id}/documentos")
-    public ResponseEntity<List<OrdemRetiradaDocumento>> listarDocumentos(@PathVariable Long id) {
+    public ResponseEntity<List<OrdemRetiradaDocumento>> listarDocumentos(
+            @PathVariable Long id,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdemRetirada(id, authentication);
         return ResponseEntity.ok(ordemRetiradaPdfService.listarDocumentos(id));
     }
 
     @GetMapping("/{id}/documentos/{documentoId}/pdf")
     public ResponseEntity<byte[]> abrirPdfArquivado(
             @PathVariable Long id,
-            @PathVariable Long documentoId) {
+            @PathVariable Long documentoId,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdemRetirada(id, authentication);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION,

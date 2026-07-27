@@ -93,11 +93,11 @@ public class SecurityConfig {
                             "/api/auth/alterar-senha", "/api/auth/logout").authenticated();
                     authorize.requestMatchers("/uploads/financeiro/**").hasRole("ADMIN");
                     authorize.requestMatchers("/uploads/evidencias/**", "/uploads/comarcas/**")
-                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "AUDITOR");
                     authorize.requestMatchers("/uploads/documentos/ordens-retirada/**")
-                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "ESTOQUE", "AUDITOR");
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE", "AUDITOR");
                     authorize.requestMatchers("/uploads/documentos/**")
-                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "AUDITOR");
                     authorize.requestMatchers("/uploads/**").authenticated();
                     authorize.requestMatchers(HttpMethod.GET, "/api/funcionarios/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
@@ -133,6 +133,9 @@ public class SecurityConfig {
                     authorize.requestMatchers("/api/comarcas/*/as-built/**", "/api/comarcas/materiais/*/auditoria",
                             "/api/projetos/*/as-built/**")
                             .hasAnyRole("ADMIN", "AUDITOR");
+                    authorize.requestMatchers(HttpMethod.GET,
+                            "/api/comarcas/*/vistoria/foto", "/api/comarcas/*/virada-rede/prova")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
                     authorize.requestMatchers(HttpMethod.GET, "/api/comarcas/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "ESTOQUE", "AUDITOR");
                     authorize.requestMatchers("/api/comarcas/**")
