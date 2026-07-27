@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 import rcLogo from "../assets/rclogo.jpg";
 import {
   Bell,
@@ -22,32 +23,32 @@ import {
 const secoesMenu = [
   {
     titulo: "Visão geral",
-    itens: [{ path: "/", icon: LayoutDashboard, label: "Central operacional", end: true, roles: ["ADMIN", "SUPERVISOR_TECNICO"] }],
+    itens: [{ path: "/", icon: LayoutDashboard, label: "Central operacional", end: true, permissao: PERMISSOES.DASHBOARD_VISUALIZAR }],
   },
   {
     titulo: "Operação",
     itens: [
-      { path: "/contratos", icon: FileText, label: "Contratos", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
-      { path: "/projetos", icon: Briefcase, label: "Projetos", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
-      { path: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço", roles: ["ADMIN", "SUPERVISOR_TECNICO", "TECNICO"] },
-      { path: "/obras", icon: Building2, label: "Gestão de Obras", roles: ["ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR"] },
-      { path: "/funcionarios", icon: Users, label: "Equipes", roles: ["ADMIN"] },
+      { path: "/contratos", icon: FileText, label: "Contratos", permissao: PERMISSOES.CONTRATOS_VISUALIZAR },
+      { path: "/projetos", icon: Briefcase, label: "Projetos", permissao: PERMISSOES.PROJETOS_VISUALIZAR },
+      { path: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço", permissao: PERMISSOES.OS_VISUALIZAR },
+      { path: "/obras", icon: Building2, label: "Gestão de Obras", permissao: PERMISSOES.OBRAS_VISUALIZAR },
+      { path: "/funcionarios", icon: Users, label: "Equipes", permissao: PERMISSOES.FUNCIONARIOS_VISUALIZAR },
     ],
   },
   {
     titulo: "Materiais e auditoria",
     itens: [
-      { path: "/estoque", icon: Package, label: "Estoque", roles: ["ADMIN", "ESTOQUE"] },
-      { path: "/auditoria/tecnica", icon: Layers, label: "Retirada e Devolução", roles: ["ADMIN", "AUDITOR"] },
+      { path: "/estoque", icon: Package, label: "Estoque", permissao: PERMISSOES.ESTOQUE_VISUALIZAR },
+      { path: "/auditoria/tecnica", icon: Layers, label: "Retirada e Devolução", permissao: PERMISSOES.AUDITORIA_VISUALIZAR },
     ],
   },
   {
     titulo: "Gestão",
     itens: [
-      { path: "/financeiro/lucratividade", icon: TrendingUp, label: "Lucratividade", roles: ["ADMIN"] },
-      { path: "/financeiro/faturamento", icon: DollarSign, label: "Faturamento", roles: ["ADMIN"] },
-      { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos", roles: ["ADMIN"] },
-      { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
+      { path: "/financeiro/lucratividade", icon: TrendingUp, label: "Lucratividade", permissao: PERMISSOES.FINANCEIRO_VISUALIZAR },
+      { path: "/financeiro/faturamento", icon: DollarSign, label: "Faturamento", permissao: PERMISSOES.FINANCEIRO_VISUALIZAR },
+      { path: "/logistica/viagens", icon: Plane, label: "Viagens e Reembolsos", permissao: PERMISSOES.FINANCEIRO_VISUALIZAR },
+      { path: "/configuracao-notificacoes", icon: Bell, label: "Notificações", permissao: PERMISSOES.NOTIFICACOES_VISUALIZAR },
     ],
   },
 ];
@@ -61,7 +62,7 @@ export default function Sidebar({ isOpen, onClose }) {
   };
 
   const secoesVisiveis = secoesMenu
-    .map((secao) => ({ ...secao, itens: secao.itens.filter((item) => item.roles.includes(usuario?.perfil)) }))
+    .map((secao) => ({ ...secao, itens: secao.itens.filter((item) => temPermissao(usuario?.perfil, item.permissao)) }))
     .filter((secao) => secao.itens.length > 0);
 
   return (
@@ -121,7 +122,7 @@ export default function Sidebar({ isOpen, onClose }) {
         </nav>
 
         <div className="border-t border-slate-800 p-3">
-          {["ADMIN", "SUPERVISOR_TECNICO", "TECNICO"].includes(usuario?.perfil) && (
+          {temPermissao(usuario?.perfil, PERMISSOES.PORTAL_TECNICO_VISUALIZAR) && (
             <NavLink
               to="/tecnico"
               onClick={onClose}

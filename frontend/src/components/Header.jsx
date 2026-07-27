@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { Bell, Menu } from "lucide-react";
 import UserMenu from "./UserMenu";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 
 const contextoRotas = [
   { teste: (path) => path === "/", area: "Visão geral", pagina: "Central operacional" },
@@ -43,7 +44,7 @@ export default function Header({ usuario, onMenuClick }) {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {["ADMIN", "SUPERVISOR_TECNICO"].includes(usuario?.perfil) && (
+        {temPermissao(usuario?.perfil, PERMISSOES.NOTIFICACOES_VISUALIZAR) && (
           <Link
             to="/configuracao-notificacoes"
             aria-label="Abrir notificações"

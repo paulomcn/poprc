@@ -25,6 +25,7 @@ import StatusModal from "../components/StatusModal";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 
 const STATUS_COLUMNS = [
   {
@@ -90,6 +91,7 @@ const podeTransicionarStatus = (statusAtual, novoStatus) =>
 
 export default function GestaoOrdensServico() {
   const { usuario } = useAuth();
+  const podeGerenciar = temPermissao(usuario?.perfil, PERMISSOES.OS_GERENCIAR);
   const [ordensServico, setOrdensServico] = useState([]);
   const [projetos, setProjetos] = useState([]);
   const [comarcas, setComarcas] = useState([]);
@@ -136,8 +138,8 @@ export default function GestaoOrdensServico() {
 
   // 💥 1. Carrega a lista estática de projetos/comarcas no mount da tela
   useEffect(() => {
-    carregarAlvosNovaOs();
-  }, []);
+    if (podeGerenciar) carregarAlvosNovaOs();
+  }, [podeGerenciar]);
 
   // 💥 2. ENGINE DE DEBOUNCE: Aguarda 400ms após o término da digitação para consultar o Postgres
   useEffect(() => {
@@ -505,9 +507,9 @@ export default function GestaoOrdensServico() {
         eyebrow="Operação"
         title="Ordens de Serviço"
         description="Emita, priorize e acompanhe cada ordem do planejamento ao faturamento."
-        actions={
+        actions={podeGerenciar ? (
           <button onClick={abrirModalCriacao} disabled={projetosComResponsavel.length === 0} className="flex items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"><Plus className="h-4 w-4" /> Nova OS</button>
-        }
+        ) : null}
       />
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -534,24 +536,24 @@ export default function GestaoOrdensServico() {
               />
             </div>
 
-            <button
+            {podeGerenciar && <button
               onClick={handleRepararVinculos}
               className="flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
               <RefreshCw className="w-4 h-4" /> Sincronizar
-            </button>
+            </button>}
 
-            <label className="flex items-center justify-center gap-2 rounded border border-slate-200 px-3 text-xs font-bold text-slate-600">
+            {podeGerenciar && <label className="flex items-center justify-center gap-2 rounded border border-slate-200 px-3 text-xs font-bold text-slate-600">
               <input
                 type="checkbox"
                 checked={incluirArquivados}
                 onChange={(event) => setIncluirArquivados(event.target.checked)}
               />
               Mostrar arquivadas
-            </label>
+            </label>}
           </div>
 
-          {projetosComResponsavel.length === 0 && (
+          {podeGerenciar && projetosComResponsavel.length === 0 && (
             <div className="mt-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               Nenhuma comarca livre com funcionário responsável. Edite o projeto,
               atribua um funcionário e depois retorne para emitir a OS.
@@ -584,9 +586,9 @@ export default function GestaoOrdensServico() {
         ))}
       </section>
 
-      <div>
+      {podeGerenciar && <div>
         <FilaPendenciasOperacionais area="ADMINISTRACAO" titulo="Validações administrativas pendentes" limite={4} recolhivel inicialmenteAberta={false} />
-      </div>
+      </div>}
 
       {/* Kanban Board */}
       <div className="flex gap-4 overflow-x-auto pb-3">
@@ -634,6 +636,7 @@ export default function GestaoOrdensServico() {
                       <span className="text-gray-400 font-mono text-[10px]">
                         OS #{ordem.id}{ordem.arquivado ? " · ARQUIVADA" : ""}
                       </span>
+                      <div className="flex items-center gap-3">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -644,7 +647,7 @@ export default function GestaoOrdensServico() {
                       >
                         <Eye size={12} /> <span>Ver Relatório</span>
                       </button>
-                      <button
+                      {podeGerenciar && <button
                         onClick={(event) => {
                           event.stopPropagation();
                           alterarArquivamento(ordem);
@@ -653,7 +656,8 @@ export default function GestaoOrdensServico() {
                         className={ordem.arquivado ? "text-emerald-600" : "text-red-600"}
                       >
                         {ordem.arquivado ? <RotateCcw size={13} /> : <Archive size={13} />}
-                      </button>
+                      </button>}
+                      </div>
                     </div>
                   </div>
                 ))

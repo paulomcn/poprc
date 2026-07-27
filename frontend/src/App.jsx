@@ -18,13 +18,15 @@ import PainelViagensEReembolso from "./pages/PainelViagensEReembolso";
 import PortalTecnicoDashboard from "./pages/PortalTecnicoDashboard";
 import Projetos from "./pages/Projetos";
 import MeuPerfil from "./pages/MeuPerfil";
+import { PERMISSOES, perfisComPermissao } from "./security/permissions";
 
-const ADMIN = ["ADMIN"];
-const GESTAO = ["ADMIN", "SUPERVISOR_TECNICO"];
-const CAMPO = ["ADMIN", "SUPERVISOR_TECNICO", "TECNICO"];
-const OBRAS = [...CAMPO, "AUDITOR"];
-const ESTOQUE = ["ADMIN", "ESTOQUE"];
-const AUDITORIA = ["ADMIN", "AUDITOR"];
+const ADMIN = perfisComPermissao(PERMISSOES.FINANCEIRO_VISUALIZAR);
+const GESTAO = perfisComPermissao(PERMISSOES.DASHBOARD_VISUALIZAR);
+const CAMPO = perfisComPermissao(PERMISSOES.OS_VISUALIZAR);
+const OBRAS = perfisComPermissao(PERMISSOES.OBRAS_VISUALIZAR);
+const ESTOQUE = perfisComPermissao(PERMISSOES.ESTOQUE_VISUALIZAR);
+const AUDITORIA = perfisComPermissao(PERMISSOES.AUDITORIA_VISUALIZAR);
+const EQUIPES = perfisComPermissao(PERMISSOES.FUNCIONARIOS_VISUALIZAR);
 
 function Pagina({ children, roles, layout = true }) {
   const conteudo = layout ? <Layout>{children}</Layout> : children;
@@ -41,7 +43,7 @@ function App() {
           <Route path="/" element={<Pagina roles={GESTAO}><DashboardExecutivo /></Pagina>} />
           <Route path="/contratos" element={<Pagina roles={GESTAO}><Contratos /></Pagina>} />
           <Route path="/projetos" element={<Pagina roles={GESTAO}><Projetos /></Pagina>} />
-          <Route path="/funcionarios" element={<Pagina roles={ADMIN}><Funcionarios /></Pagina>} />
+          <Route path="/funcionarios" element={<Pagina roles={EQUIPES}><Funcionarios /></Pagina>} />
           <Route path="/ordens-servico" element={<Pagina roles={CAMPO}><GestaoOrdensServico /></Pagina>} />
           <Route path="/obras" element={<Pagina roles={OBRAS}><GestaoComarcas /></Pagina>} />
           <Route path="/comarcas" element={<Navigate to="/obras" replace />} />

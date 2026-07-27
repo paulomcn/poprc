@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import api from "../services/api";
 import Alert from "../components/Alert";
+import { useAuth } from "../contexts/AuthContext";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 
 const atividadeFormInicial = {
   nome: "",
@@ -23,6 +25,8 @@ const atividadeFormInicial = {
 };
 
 export default function ConfiguracaoNotificacoes() {
+  const { usuario } = useAuth();
+  const podeGerenciarAtividades = temPermissao(usuario?.perfil, PERMISSOES.ATIVIDADES_GERENCIAR);
   const [settings, setSettings] = useState({
     emailGestor: "",
     whatsappGestor: "",
@@ -451,7 +455,7 @@ export default function ConfiguracaoNotificacoes() {
               Estas opções aparecem como checklist fechado na página do técnico.
             </p>
           </div>
-          {atividadeEditandoId && (
+          {podeGerenciarAtividades && atividadeEditandoId && (
             <button
               type="button"
               onClick={handleCancelarEdicaoAtividade}
@@ -462,7 +466,7 @@ export default function ConfiguracaoNotificacoes() {
           )}
         </div>
 
-        <form
+        {podeGerenciarAtividades && <form
           onSubmit={handleSalvarAtividadePadrao}
           className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_180px_120px_auto] gap-3 items-end"
         >
@@ -516,7 +520,7 @@ export default function ConfiguracaoNotificacoes() {
             {atividadeEditandoId ? <Save size={18} /> : <Plus size={18} />}
             {atividadeEditandoId ? "Salvar" : "Adicionar"}
           </button>
-        </form>
+        </form>}
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-sm">
@@ -526,13 +530,13 @@ export default function ConfiguracaoNotificacoes() {
                 <th className="text-left px-4 py-3">Categoria</th>
                 <th className="text-left px-4 py-3">Ordem</th>
                 <th className="text-left px-4 py-3">Status</th>
-                <th className="text-right px-4 py-3">Ações</th>
+                {podeGerenciarAtividades && <th className="text-right px-4 py-3">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {atividadesPadrao.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={podeGerenciarAtividades ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
                     Nenhuma atividade padrão cadastrada.
                   </td>
                 </tr>
@@ -560,7 +564,7 @@ export default function ConfiguracaoNotificacoes() {
                       {atividade.ativo ? "Ativa" : "Inativa"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  {podeGerenciarAtividades && <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -583,7 +587,7 @@ export default function ConfiguracaoNotificacoes() {
                         <Power size={16} />
                       </button>
                     </div>
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>

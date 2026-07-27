@@ -16,6 +16,9 @@ import com.poprc.demo.model.PerfilAcesso;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.security.UsuarioAutenticado;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -25,6 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.stream.Stream;
 
 @SpringBootTest(classes = DemoApplication.class)
 @AutoConfigureMockMvc
@@ -177,6 +181,102 @@ class SecurityAuthorizationIntegrationTest {
                         .content("{}"))
                 .andExpect(status().is(428))
                 .andExpect(jsonPath("$.reautenticacaoNecessaria").value(true));
+    }
+
+    @ParameterizedTest(name = "{0} consultando {1}: permitido={2}")
+    @MethodSource("matrizConsultas")
+    void matrizDeConsultaPorModulo(String perfil, String rota, boolean permitido) throws Exception {
+        int status = mockMvc.perform(get(rota).with(user("matriz").roles(perfil)))
+                .andReturn().getResponse().getStatus();
+
+        if (permitido) {
+            assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
+        } else {
+            assertThat(status).isEqualTo(403);
+        }
+    }
+
+    @ParameterizedTest(name = "{0} executando {1}: permitido={2}")
+    @MethodSource("matrizEscritas")
+    void matrizDeEscritaPorModulo(String perfil, String rota, boolean permitido) throws Exception {
+        int status = mockMvc.perform(post(rota)
+                        .with(user("matriz").roles(perfil))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andReturn().getResponse().getStatus();
+
+        if (permitido) {
+            assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
+        } else {
+            assertThat(status).isEqualTo(403);
+        }
+    }
+
+    private static Stream<Arguments> matrizConsultas() {
+        return Stream.of(
+                Arguments.of("ADMIN", "/api/dashboard/executivo", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/dashboard/executivo", true),
+                Arguments.of("TECNICO", "/api/dashboard/executivo", false),
+                Arguments.of("ADMIN", "/api/contratos", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/contratos", true),
+                Arguments.of("AUDITOR", "/api/contratos", false),
+                Arguments.of("ADMIN", "/api/projetos", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/projetos", true),
+                Arguments.of("ESTOQUE", "/api/projetos", false),
+                Arguments.of("ADMIN", "/api/funcionarios", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/funcionarios", true),
+                Arguments.of("ESTOQUE", "/api/funcionarios", true),
+                Arguments.of("TECNICO", "/api/funcionarios", false),
+                Arguments.of("ADMIN", "/api/ordens-servico", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/ordens-servico", true),
+                Arguments.of("TECNICO", "/api/ordens-servico", true),
+                Arguments.of("AUDITOR", "/api/ordens-servico", false),
+                Arguments.of("ADMIN", "/api/comarcas", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/comarcas", true),
+                Arguments.of("TECNICO", "/api/comarcas", true),
+                Arguments.of("ESTOQUE", "/api/comarcas", true),
+                Arguments.of("AUDITOR", "/api/comarcas", true),
+                Arguments.of("ADMIN", "/api/estoque/materiais", true),
+                Arguments.of("ESTOQUE", "/api/estoque/materiais", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/estoque/materiais", false),
+                Arguments.of("TECNICO", "/api/estoque/materiais", false),
+                Arguments.of("AUDITOR", "/api/estoque/materiais", false),
+                Arguments.of("ADMIN", "/api/ordens-retirada", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/ordens-retirada", true),
+                Arguments.of("TECNICO", "/api/ordens-retirada", true),
+                Arguments.of("ESTOQUE", "/api/ordens-retirada", true),
+                Arguments.of("AUDITOR", "/api/ordens-retirada", true),
+                Arguments.of("ADMIN", "/api/faturamentos", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/faturamentos", false),
+                Arguments.of("AUDITOR", "/api/faturamentos", false),
+                Arguments.of("ADMIN", "/api/atividades-padrao", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/atividades-padrao", true),
+                Arguments.of("TECNICO", "/api/atividades-padrao", true),
+                Arguments.of("ESTOQUE", "/api/atividades-padrao", false),
+                Arguments.of("AUDITOR", "/api/atividades-padrao", false));
+    }
+
+    private static Stream<Arguments> matrizEscritas() {
+        return Stream.of(
+                Arguments.of("ADMIN", "/api/contratos", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/contratos", true),
+                Arguments.of("TECNICO", "/api/contratos", false),
+                Arguments.of("ADMIN", "/api/funcionarios", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/funcionarios", false),
+                Arguments.of("ESTOQUE", "/api/funcionarios", false),
+                Arguments.of("ADMIN", "/api/atividades-padrao", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/atividades-padrao", false),
+                Arguments.of("ADMIN", "/api/ordens-retirada/os/999", true),
+                Arguments.of("ESTOQUE", "/api/ordens-retirada/os/999", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/ordens-retirada/os/999", false),
+                Arguments.of("TECNICO", "/api/ordens-retirada/os/999", false),
+                Arguments.of("AUDITOR", "/api/ordens-retirada/os/999", false),
+                Arguments.of("ADMIN", "/api/as-built", true),
+                Arguments.of("AUDITOR", "/api/as-built", true),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/as-built", false),
+                Arguments.of("TECNICO", "/api/as-built", false),
+                Arguments.of("ESTOQUE", "/api/as-built", false));
     }
 
     private UsernamePasswordAuthenticationToken autenticacao(String perfil) {

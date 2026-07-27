@@ -69,7 +69,7 @@ As operacoes abaixo devem exigir sessao valida e confirmacao recente da senha:
 - [x] Restringir arquivos e documentos pelo vinculo com projeto, OS ou obra.
 - [x] Restringir consultas de OR do tecnico ao seu escopo operacional.
 - [x] Cobrir as regras de escopo desta entrega com testes permitidos e negados.
-- [ ] Ampliar os testes de integracao para toda a matriz de modulos.
+- [x] Ampliar os testes de integracao para toda a matriz de modulos.
 - [ ] Alinhar todos os comandos visiveis no frontend com a matriz.
 - [ ] Projetar perfis personalizados e permissoes administraveis.
 

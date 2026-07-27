@@ -21,6 +21,7 @@ import Alert from "../components/Alert";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 
 const indicadorClasses = {
   neutro: "border-slate-200 bg-white text-slate-700",
@@ -88,13 +89,13 @@ export default function DashboardExecutivo() {
   const [dataFim, setDataFim] = useState("");
   const acessosRapidos = useMemo(
     () => [
-      { to: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
-      { to: "/projetos", icon: Briefcase, label: "Projetos", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
-      { to: "/obras", icon: Building2, label: "Gestão de Obras", roles: ["ADMIN", "SUPERVISOR_TECNICO"] },
-      { to: "/auditoria/tecnica", icon: Layers, label: "Auditoria de retirada/devolução", roles: ["ADMIN"] },
-      { to: "/financeiro/faturamento", icon: TrendingUp, label: "Gestão de faturamento", roles: ["ADMIN"] },
-      { to: "/logistica/viagens", icon: Plane, label: "Viagens e reembolsos", roles: ["ADMIN"] },
-    ].filter((item) => item.roles.includes(usuario?.perfil)),
+      { to: "/ordens-servico", icon: ClipboardList, label: "Ordens de Serviço", permissao: PERMISSOES.OS_VISUALIZAR },
+      { to: "/projetos", icon: Briefcase, label: "Projetos", permissao: PERMISSOES.PROJETOS_VISUALIZAR },
+      { to: "/obras", icon: Building2, label: "Gestão de Obras", permissao: PERMISSOES.OBRAS_VISUALIZAR },
+      { to: "/auditoria/tecnica", icon: Layers, label: "Auditoria de retirada/devolução", permissao: PERMISSOES.AUDITORIA_VISUALIZAR },
+      { to: "/financeiro/faturamento", icon: TrendingUp, label: "Gestão de faturamento", permissao: PERMISSOES.FINANCEIRO_VISUALIZAR },
+      { to: "/logistica/viagens", icon: Plane, label: "Viagens e reembolsos", permissao: PERMISSOES.FINANCEIRO_VISUALIZAR },
+    ].filter((item) => temPermissao(usuario?.perfil, item.permissao)),
     [usuario?.perfil],
   );
 

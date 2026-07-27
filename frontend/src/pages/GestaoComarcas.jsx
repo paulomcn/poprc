@@ -28,6 +28,7 @@ import PageHeader from "../components/PageHeader";
 import { API_BASE_URL, buildApiFileUrl } from "../services/runtimeConfig";
 import rcLogo from "../assets/rclogo.jpg";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 
 const DOCUMENTO_INICIAL = "VISTORIA_INICIAL_OS";
 const DOCUMENTO_FINAL = "ENCERRAMENTO_OS";
@@ -104,6 +105,10 @@ const ESTADO_FINAL_OPCOES = [
 
 export default function GestaoComarcas() {
   const { usuario } = useAuth();
+  const podeExecutarObra = temPermissao(usuario?.perfil, PERMISSOES.OBRAS_EXECUTAR);
+  const podeGerenciarObra = temPermissao(usuario?.perfil, PERMISSOES.OBRAS_GERENCIAR);
+  const podeGerarOr = temPermissao(usuario?.perfil, PERMISSOES.OR_GERENCIAR);
+  const podeEditarDocumento = temPermissao(usuario?.perfil, PERMISSOES.DOCUMENTOS_EDITAR);
   const USUARIO_ATUAL = usuario?.email || usuario?.nome || "Sistema";
   const [comarcas, setComarcas] = useState([]);
   const [filtroEtapa, setFiltroEtapa] = useState("TODAS");
@@ -172,9 +177,9 @@ export default function GestaoComarcas() {
 
   useEffect(() => {
     fetchComarcas();
-    fetchMateriaisEstoque();
+    if (usuario?.perfil === "ADMIN") fetchMateriaisEstoque();
     fetchOrdensRetirada();
-  }, [incluirArquivados]);
+  }, [incluirArquivados, usuario?.perfil]);
 
   useEffect(() => {
     return () => {
@@ -1575,14 +1580,14 @@ export default function GestaoComarcas() {
         description="Acompanhe vistoria, infraestrutura, virada de rede e encerramento por OS."
         actions={
         <div className="grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-[auto_minmax(12rem,1fr)_auto] sm:items-end">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-600 sm:pb-2">
+          {podeGerenciarObra && <label className="flex items-center gap-2 text-xs font-bold text-slate-600 sm:pb-2">
             <input
               type="checkbox"
               checked={incluirArquivados}
               onChange={(event) => setIncluirArquivados(event.target.checked)}
             />
             Mostrar arquivadas
-          </label>
+          </label>}
           <label className="block min-w-0">
             <span className="mb-1 block text-[10px] font-black uppercase text-slate-500">
               Filtrar por etapa
@@ -1661,7 +1666,7 @@ export default function GestaoComarcas() {
             key={comarca.id}
             className="relative flex flex-col justify-between overflow-hidden rounded border border-slate-200 bg-white shadow-sm"
           >
-            {comarca.arquivado && (
+            {podeGerenciarObra && comarca.arquivado && (
               <button
                 type="button"
                 onClick={() => alterarArquivamentoComarca(comarca)}
@@ -1712,21 +1717,21 @@ export default function GestaoComarcas() {
                     >
                       Visualizar Ordem de Retirada
                     </button>
-                    <button
+                    {podeGerarOr && <button
                       type="button"
                       onClick={() => gerarOrAdicional(comarca)}
                       disabled={!comarca.ordemServico?.id}
                       className="shrink-0 rounded-md border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
                     >
                       Gerar OR Adicional
-                    </button>
-                    <button
+                    </button>}
+                    {podeGerenciarObra && <button
                       type="button"
                       onClick={() => alterarArquivamentoComarca(comarca)}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-[10px] font-black uppercase text-red-700 hover:bg-red-50"
                     >
                       <Archive size={12} /> Arquivar obra
-                    </button>
+                    </button>}
                 </div>
               </div>
 
@@ -1774,14 +1779,14 @@ export default function GestaoComarcas() {
                         Painel de Previsão de Materiais
                       </p>
                       <div className="flex flex-wrap gap-1">
-                        <button
+                        {podeExecutarObra && <button
                           type="button"
                           onClick={() => abrirModalFaltantes(comarca)}
                           className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 hover:bg-amber-100"
                         >
                           <AlertTriangle size={12} />
                           Faltantes
-                        </button>
+                        </button>}
                       </div>
                     </div>
                     {materiaisPrevistos.length > 0 ? (
@@ -1928,14 +1933,14 @@ export default function GestaoComarcas() {
                 <div className="bg-amber-50/40 border border-amber-200/70 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-bold tracking-wide">
                   <div className="relative">
                     <label
-                      className={`h-full border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${fotoVistoriaConcluida ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white hover:border-blue-400 text-slate-500"}`}
+                      className={`h-full border border-dashed p-3 rounded-lg text-center transition flex flex-col items-center justify-center gap-2 ${podeExecutarObra ? "cursor-pointer hover:border-blue-400" : "cursor-default"} ${fotoVistoriaConcluida ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white text-slate-500"}`}
                     >
-                      <input
+                      {podeExecutarObra && <input
                         type="file"
                         accept="image/jpeg,image/png"
                         className="hidden"
                         onChange={(e) => handleFotoVistoriaChange(e, comarca.id)}
-                      />
+                      />}
                       <span className="flex items-center justify-center gap-1">
                         <Upload size={14} />{" "}
                         {fotoVistoriaConcluida
@@ -1950,7 +1955,7 @@ export default function GestaoComarcas() {
                         />
                       )}
                     </label>
-                    {fotoVistoriaConcluida && (
+                    {podeExecutarObra && fotoVistoriaConcluida && (
                       <button
                         type="button"
                         title="Remover foto da vistoria"
@@ -1962,8 +1967,8 @@ export default function GestaoComarcas() {
                     )}
                   </div>
                   <div
-                    onClick={() => abrirModalAssinatura(comarca)}
-                    className={`relative border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${assinaturaConcluida ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white hover:border-blue-400 text-slate-500"}`}
+                    onClick={() => podeExecutarObra && abrirModalAssinatura(comarca)}
+                    className={`relative border border-dashed p-3 rounded-lg text-center transition flex flex-col items-center justify-center gap-2 ${podeExecutarObra ? "cursor-pointer hover:border-blue-400" : "cursor-default"} ${assinaturaConcluida ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white text-slate-500"}`}
                   >
                     <span className="flex items-center justify-center gap-1">
                       <PenTool size={14} />{" "}
@@ -1978,7 +1983,7 @@ export default function GestaoComarcas() {
                         className="h-16 w-full rounded-md object-contain border border-emerald-200 bg-white"
                       />
                     )}
-                    {assinaturaConcluida && (
+                    {podeExecutarObra && assinaturaConcluida && (
                       <button
                         type="button"
                         title="Remover termo assinado"
@@ -2026,13 +2031,13 @@ export default function GestaoComarcas() {
                         Provas de funcionamento
                       </label>
                       <label
-                        className={`border border-dashed p-3 rounded-lg text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 text-xs font-bold ${
+                        className={`border border-dashed p-3 rounded-lg text-center transition flex flex-col items-center justify-center gap-2 text-xs font-bold ${podeExecutarObra ? "cursor-pointer" : "cursor-default"} ${
                           comarca.viradaRedeProvasFuncionamento
                             ? "bg-emerald-50 border-emerald-300 text-emerald-800"
                             : "bg-white hover:border-blue-400 text-slate-500"
                         }`}
                       >
-                        <input
+                        {podeExecutarObra && <input
                           type="file"
                           accept="image/jpeg,image/png"
                           disabled={obraConcluida}
@@ -2040,7 +2045,7 @@ export default function GestaoComarcas() {
                           onChange={(e) =>
                             handleProvaViradaRedeChange(e, comarca.id)
                           }
-                        />
+                        />}
                         <span className="flex items-center justify-center gap-1">
                           <Upload size={14} />
                           {comarca.viradaRedeProvasFuncionamento
@@ -2055,7 +2060,7 @@ export default function GestaoComarcas() {
                           />
                         )}
                       </label>
-                      {comarca.viradaRedeProvasFuncionamento &&
+                      {podeExecutarObra && comarca.viradaRedeProvasFuncionamento &&
                         !comarca.viradaRedeConcluida &&
                         !obraConcluida && (
                           <button
@@ -2074,7 +2079,7 @@ export default function GestaoComarcas() {
                       </label>
                       <textarea
                         rows="3"
-                        disabled={obraConcluida}
+                        disabled={obraConcluida || !podeExecutarObra}
                         value={viradaForm.checklist}
                         onChange={(e) =>
                           setViradaFormValue(comarca.id, "checklist", e.target.value)
@@ -2088,7 +2093,7 @@ export default function GestaoComarcas() {
                     <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
                       <input
                         type="checkbox"
-                        disabled={obraConcluida}
+                        disabled={obraConcluida || !podeExecutarObra}
                         checked={viradaForm.concluida}
                         onChange={(e) =>
                           setViradaFormValue(comarca.id, "concluida", e.target.checked)
@@ -2096,14 +2101,14 @@ export default function GestaoComarcas() {
                       />
                       Virada de Rede concluída
                     </label>
-                    <button
+                    {podeExecutarObra && <button
                       type="button"
                       onClick={() => handleSalvarViradaRede(comarca)}
                       disabled={obraConcluida}
                       className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
                     >
                       Salvar Virada
-                    </button>
+                    </button>}
                   </div>
                   <button
                     type="button"
@@ -2113,7 +2118,7 @@ export default function GestaoComarcas() {
                     <FileText size={14} />
                     Documento Final - Encerramento e Aceite
                   </button>
-                  {comarca.viradaRedeConcluida && (
+                  {podeExecutarObra && comarca.viradaRedeConcluida && (
                     <button
                       type="button"
                       onClick={() => handleConcluirObra(comarca)}
@@ -2606,7 +2611,7 @@ export default function GestaoComarcas() {
                     Histórico de documentos
                   </h3>
                 </div>
-                {["PARCIALMENTE_ASSINADO", "REGISTRADO"].includes(
+                {podeEditarDocumento && ["PARCIALMENTE_ASSINADO", "REGISTRADO"].includes(
                   documentoVistoria.documentoSalvo?.status,
                 ) && documentoVistoria.comarca?.situacao !== "CONCLUIDA" && (
                   <button
@@ -2659,6 +2664,7 @@ export default function GestaoComarcas() {
               </div>
             </div>
 
+            <fieldset disabled={!podeEditarDocumento} className="space-y-5">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {[
                 ["contrato", "Contrato"],
@@ -2958,25 +2964,26 @@ export default function GestaoComarcas() {
                       ) : (
                         <p className="my-3 text-xs text-amber-700">Assinatura pendente</p>
                       )}
-                      <button
+                      {podeEditarDocumento && <button
                         type="button"
                         onClick={() => assinarDocumentoVistoria(assinatura.papel)}
                         className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md bg-emerald-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
                       >
                         <ShieldCheck size={13} />
                         {imagem ? "Substituir" : "Assinar"}
-                      </button>
+                      </button>}
                     </div>
                   );
                 })}
               </div>
             </div>
+            </fieldset>
 
             <div className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:justify-end">
               <div className="mr-auto self-center text-xs font-semibold text-slate-500">
                 {documentoMensagem || (documentoVistoria.documentoSalvo ? "Versão salva." : "Documento ainda não salvo.")}
               </div>
-              <button
+              {podeEditarDocumento && <button
                 type="button"
                 onClick={() => salvarDocumentoVistoria().catch((err) =>
                   alert(err.response?.data?.erro || err.message || "Não foi possível salvar o documento."),
@@ -2986,8 +2993,8 @@ export default function GestaoComarcas() {
               >
                 <Save size={16} />
                 {salvandoDocumento ? "Salvando..." : "Salvar documento"}
-              </button>
-              <button
+              </button>}
+              {podeEditarDocumento && <button
                 type="button"
                 onClick={abrirPdfServidor}
                 title="Salva o conteúdo atual e abre o PDF gerado pelo backend. Após todas as assinaturas, essa versão fica arquivada e protegida por hash."
@@ -2995,7 +3002,7 @@ export default function GestaoComarcas() {
               >
                 <Printer size={16} />
                 Salvar e abrir PDF oficial
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={imprimirDocumentoVistoria}
