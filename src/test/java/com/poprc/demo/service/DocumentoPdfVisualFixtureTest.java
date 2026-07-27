@@ -51,8 +51,8 @@ class DocumentoPdfVisualFixtureTest {
         byte[] orVazia = retiradaService.gerarPdf(ordemRetirada(false));
         byte[] orPreenchida = retiradaService.gerarPdf(ordemRetirada(true));
 
-        gravarEValidar("os-vazia.pdf", osVazia, 5);
-        gravarEValidar("os-preenchida.pdf", osPreenchida, 5);
+        gravarEValidar("os-vazia.pdf", osVazia, 6);
+        gravarEValidar("os-preenchida.pdf", osPreenchida, 6);
         gravarEValidar("or-antes-retirada.pdf", orVazia, 1);
         gravarEValidar("or-concluida.pdf", orPreenchida, 1);
     }
@@ -89,6 +89,10 @@ class DocumentoPdfVisualFixtureTest {
                   "descricaoServicos":"Instalacao de cabeamento, organizacao do rack, identificacao dos pontos e testes finais de conectividade.",
                   "anomaliasPreExistentes":"Canaleta antiga com desgaste na sala administrativa, registrada antes do inicio.",
                   "protocoloComunicacao":"PROTOCOLO-HML-001",
+                  "rackNecessidade":"HA_NECESSIDADE",
+                  "rackDisponibilidade":"PRESENTE",
+                  "rackObservacoes":"Rack de substituicao disponivel e identificado para a equipe.",
+                  "rackLocalData":"Joao Pessoa, 17/07/2026",
                   "observacoesFinais":"Servicos concluidos e ambiente entregue limpo e organizado.",
                   "ressalvas":"Sem ressalvas pendentes.",
                   "tecnicoResponsavel":"Tecnico Desenvolvimento",
@@ -96,7 +100,11 @@ class DocumentoPdfVisualFixtureTest {
                   "recebidoPor":"Gerente do Forum",
                   "responsavelDesignadoNome":"Responsavel Local",
                   "responsavelDesignadoCargo":"Gerente Administrativo",
-                  "declaracaoDesignacao":"Declaro ter acompanhado a vistoria, a execucao e o recebimento dos servicos descritos.",
+                  "responsavelDesignadoData":"17/07/2026",
+                  "gerenteDesignanteNome":"Gerente do Forum",
+                  "declaracaoDesignacaoData":"17/07/2026",
+                  "dataGerenteForum":"17/07/2026",
+                  "carimboGerente":"TJ-PB",
                   "objetoServicos":["Instalação de cabeamento estruturado","Organização e identificação de racks"],
                   "estadoInicial":["Foi realizado registro fotográfico completo do ambiente"],
                   "estadoFinal":["O ambiente foi entregue limpo e organizado","Foi realizado registro fotográfico final antes e depois"]

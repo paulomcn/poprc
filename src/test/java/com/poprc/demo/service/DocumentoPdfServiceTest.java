@@ -30,7 +30,7 @@ class DocumentoPdfServiceTest {
         assertTrue(pdf.length > 500);
         assertTrue(new String(pdf, 0, 4, StandardCharsets.US_ASCII).startsWith("%PDF"));
         PdfReader reader = new PdfReader(pdf);
-        assertEquals(5, reader.getNumberOfPages());
+        assertEquals(6, reader.getNumberOfPages());
         assertTrue(reader.getPageSize(1).getWidth() > 590);
         assertTrue(new PdfTextExtractor(reader).getTextFromPage(1)
                 .contains("ABERTURA E VISTORIA TÉCNICA INICIAL"));

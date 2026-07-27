@@ -80,6 +80,16 @@ const ESTADO_INICIAL_OPCOES = [
   "Computadores, impressoras e telefones foram verificados",
 ];
 
+const RACK_NECESSIDADE_OPCOES = [
+  ["HA_NECESSIDADE", "HÁ necessidade de substituição do rack da comarca"],
+  ["NAO_HA_NECESSIDADE", "NÃO HÁ necessidade de substituição do rack da comarca"],
+];
+
+const RACK_DISPONIBILIDADE_OPCOES = [
+  ["PRESENTE", "O rack de substituição já está presente na comarca"],
+  ["NAO_EXISTE", "Não existe rack de substituição na comarca"],
+];
+
 const ESTADO_FINAL_OPCOES = [
   "O ambiente foi entregue limpo e organizado",
   "Não houve dano estrutural decorrente da execução",
@@ -578,11 +588,20 @@ export default function GestaoComarcas() {
       estadoInicial: [],
       anomaliasPreExistentes: "",
       protocoloComunicacao: "",
+      rackNecessidade: "",
+      rackDisponibilidade: "",
+      rackObservacoes: "",
+      rackLocalData: "",
       estadoFinal: [],
       observacoesFinais: "",
       ressalvas: "",
+      dataGerenteForum: "",
+      carimboGerente: "",
       responsavelDesignadoNome: "",
       responsavelDesignadoCargo: "",
+      responsavelDesignadoData: "",
+      gerenteDesignanteNome: "",
+      declaracaoDesignacaoData: "",
       declaracaoDesignacao: "",
       ...conteudoSalvo,
       tipoDocumento: tipo,
@@ -818,6 +837,8 @@ export default function GestaoComarcas() {
       (conteudo[campo] || []).includes(opcao) ? "X" : "";
     const opcao = (campo, texto) => `
       <div class="check-row"><span class="box">${marcado(campo, texto)}</span><span>${escaparHtml(texto)}</span></div>`;
+    const opcaoUnica = (campo, valorOpcao, texto) => `
+      <div class="check-row"><span class="box">${conteudo[campo] === valorOpcao ? "X" : ""}</span><span>${escaparHtml(texto)}</span></div>`;
     const cabecalho = `
       <header class="document-header">
         <img src="${new URL(rcLogo, window.location.origin).href}" alt="RC Technology" />
@@ -829,7 +850,7 @@ export default function GestaoComarcas() {
         <strong>FILIAIS:</strong><br/>Manaus/AM - Av. Djalma Batista, 3000 - LJ 43 - Parque 10 de Novembro - CEP:69055-038<br/>
         Boa Vista/RR - Av. Capitão Julio Bezerra, 272 - LJ 12 - Centro - CEP:69301-410<br/>
         Fone: +55 (84) 3343-1227 &nbsp; E-mail: comercial@rctechnology.com.br</div>
-        <strong>Página ${pagina} de 5</strong>
+        <strong>Página ${pagina} de 6</strong>
       </footer>`;
     const pagina = (numero, corpo, classe = "") => `
       <section class="page ${classe}">${cabecalho}<main>${corpo}</main>${rodape(numero)}</section>`;
@@ -878,30 +899,41 @@ export default function GestaoComarcas() {
         <p class="writing-label">Anomalias pré-existentes identificadas (se houver):</p>
         <div class="writing-lines compact">${valor(conteudo.anomaliasPreExistentes)}</div>
         <p>Protocolo de comunicação (se aplicável): ${linha(conteudo.protocoloComunicacao)}</p>
-        <h3>3. DECLARAÇÃO DE CONFORMIDADE TÉCNICA - ESTADO FINAL</h3>
-        <div class="checks">${ESTADO_FINAL_OPCOES.map((item) => opcao("estadoFinal", item)).join("")}</div>
+        <h3>3. NECESSIDADE DE SUBSTITUIÇÃO DO RACK DA COMARCA</h3>
+        <p>Após a realização da vistoria técnica, declaro que:</p>
+        <div class="checks">
+          ${RACK_NECESSIDADE_OPCOES.map(([valorOpcao, texto]) => opcaoUnica("rackNecessidade", valorOpcao, texto)).join("")}
+          ${RACK_DISPONIBILIDADE_OPCOES.map(([valorOpcao, texto]) => opcaoUnica("rackDisponibilidade", valorOpcao, texto)).join("")}
+        </div>
+        <p class="writing-label">Observações/Justificativa (quando aplicável):</p>
+        <div class="writing-lines compact">${valor(conteudo.rackObservacoes)}</div>
+        <p>Local e data: ${linha(conteudo.rackLocalData)}</p>
+        <h3>4. DECLARAÇÃO DE CONFORMIDADE TÉCNICA - ESTADO FINAL</h3>
+        <div class="checks">${ESTADO_FINAL_OPCOES.slice(0, 4).map((item) => opcao("estadoFinal", item)).join("")}</div>`),
+      pagina(4, `
+        <div class="checks">${ESTADO_FINAL_OPCOES.slice(4).map((item) => opcao("estadoFinal", item)).join("")}</div>
         <p class="writing-label">Observações finais:</p>
         <div class="writing-lines compact">${valor(conteudo.observacoesFinais)}</div>
-        <h3>4. DECLARAÇÃO DE ACEITE E CIÊNCIA</h3>
+        <h3>5. DECLARAÇÃO DE ACEITE E CIÊNCIA</h3>
         <p>O Gerente do Fórum declara que:</p>
         <p>- Acompanhou ou tomou ciência da conclusão dos serviços;</p>`),
-      pagina(4, `
+      pagina(5, `
         <p>- O ambiente foi vistoriado;</p>
         <p>- Os serviços foram executados conforme descrito;</p>
         <p>- Não há pendências aparentes no momento da vistoria.</p>
         <p class="writing-label">Ressalvas (caso existam):</p>
         <div class="writing-lines compact">${valor(conteudo.ressalvas)}</div>
-        <h3>5. CLÁUSULA DE RESGUARDO TÉCNICO</h3>
+        <h3>6. CLÁUSULA DE RESGUARDO TÉCNICO</h3>
         <p class="justified">A presente Ordem de Serviço e a vistoria prévia realizada conjuntamente têm como finalidade registrar as condições aparentes dos ambientes e equipamentos existentes antes da execução dos serviços, incluindo computadores, impressoras e telefones.</p>
         <p class="justified">Fica estabelecido que eventuais defeitos, falhas, vícios, desgastes naturais, irregularidades ou danos preexistentes não poderão ser imputados à equipe técnica da RC Technology, assim como qualquer dano futuro não poderá ser atribuído à execução dos serviços realizados, salvo mediante comprovação técnica de dolo ou culpa grave.</p>
         <p class="justified">A assinatura deste documento pelas partes envolvidas formaliza a ciência, concordância e validação das condições verificadas no ato da vistoria e da conclusão dos serviços executados.</p>
-        <h3>6. ASSINATURAS</h3>
+        <h3>7. ASSINATURAS</h3>
         <p><strong>Pela RC Technology:</strong></p>
         <p>Técnico Responsável:</p>
         <p>Nome: ${linha(conteudo.tecnicoResponsavel)}</p>
         <p>CPF: ${linha(conteudo.cpfTecnico)}</p>
         <p class="signature-space">Assinatura: ${assinaturaImpressa(documentoSalvo.assinaturaTecnicoBase64, documentoSalvo.tecnicoAssinadoPor)}</p>`),
-      pagina(5, `
+      pagina(6, `
         <p><strong>Gestor do Projeto RC Technology:</strong></p>
         <p>Nome: ${linha(conteudo.gestorProjetoRc)}</p>
         <p class="signature-space">Assinatura: ${assinaturaImpressa(documentoSalvo.assinaturaGestorBase64, documentoSalvo.gestorAssinadoPor)}</p>
@@ -910,17 +942,17 @@ export default function GestaoComarcas() {
         <p>Nome: ${linha(conteudo.gerenteForum)}</p>
         <p>Cargo: ${linha(conteudo.cargoGerente)}</p>
         <p class="signature-space">Assinatura: ${assinaturaImpressa(documentoSalvo.assinaturaGerenteBase64, documentoSalvo.gerenteAssinadoPor)}</p>
-        <p>Data: ${linha("", "date")} &nbsp;&nbsp; Carimbo (se aplicável): ${linha("")}</p>
+        <p>Data: ${linha(conteudo.dataGerenteForum, "date")} &nbsp;&nbsp; Carimbo (se aplicável): ${linha(conteudo.carimboGerente)}</p>
         <h4>RESPONSÁVEL DESIGNADO PARA ACOMPANHAMENTO DA VISTORIA:</h4>
         <p><em>(Preencher apenas caso a vistoria não seja acompanhada diretamente pelo(a) Gerente da Unidade)</em></p>
         <p>Nome: ${linha(conteudo.responsavelDesignadoNome)}</p>
         <p>Cargo/Função: ${linha(conteudo.responsavelDesignadoCargo)}</p>
         <p class="signature-space">Assinatura: ${linha("")}</p>
-        <p>Data: ${linha("", "date")}</p>
+        <p>Data: ${linha(conteudo.responsavelDesignadoData, "date")}</p>
         <h4>DECLARAÇÃO DE DESIGNAÇÃO:</h4>
-        <p class="justified">Eu, ${linha("", "medium")}, na condição de Gerente da Comarca/Unidade, declaro para os devidos fins que designo o(a) servidor(a)/colaborador(a) acima identificado(a) para acompanhar a vistoria prévia e os procedimentos relacionados à execução dos serviços, conferindo-lhe autorização para atuar em minha representação durante todo o processo de inspeção inicial dos ambientes.</p>
-        <p>Assinatura do(a) Gerente: ${linha("")}</p>
-        <p>Data: ${linha("", "date")}</p>`),
+        <p class="justified">Eu, ${linha(conteudo.gerenteDesignanteNome || conteudo.gerenteForum, "medium")}, na condição de Gerente da Comarca/Unidade, declaro para os devidos fins que designo o(a) servidor(a)/colaborador(a) acima identificado(a) para acompanhar a vistoria prévia e os procedimentos relacionados à execução dos serviços, conferindo-lhe autorização para atuar em minha representação durante todo o processo de inspeção inicial dos ambientes.</p>
+        <p>Assinatura do(a) Gerente: ${assinaturaImpressa(documentoSalvo.assinaturaGerenteBase64, documentoSalvo.gerenteAssinadoPor)}</p>
+        <p>Data: ${linha(conteudo.declaracaoDesignacaoData, "date")}</p>`),
     ].join("");
     const janela = window.open("", "_blank", "width=900,height=900");
     if (!janela) return;
@@ -2642,6 +2674,8 @@ export default function GestaoComarcas() {
                 ["cpfTecnico", "CPF do Técnico"],
                 ["gestorProjetoRc", "Gestor do Projeto RC"],
                 ["cargoGerente", "Cargo do Gerente"],
+                ["dataGerenteForum", "Data do aceite do Gerente", "date"],
+                ["carimboGerente", "Carimbo do Gerente (se aplicável)"],
               ].map(([campo, label, type = "text"]) => (
                 <label key={campo} className="block">
                   <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
@@ -2735,7 +2769,63 @@ export default function GestaoComarcas() {
 
             <div className="rounded-xl border border-slate-200 p-4">
               <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
-                3. Declaração de Conformidade Técnica - Estado Final
+                3. Necessidade de Substituição do Rack da Comarca
+              </h3>
+              <p className="mb-3 text-xs text-slate-500">
+                Após a realização da vistoria técnica, registre a necessidade e a disponibilidade do rack de substituição.
+              </p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-xs font-bold text-slate-700">Substituição necessária</legend>
+                  {RACK_NECESSIDADE_OPCOES.map(([valor, label]) => (
+                    <label key={valor} className="flex items-start gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="radio"
+                        name="rackNecessidade"
+                        checked={documentoVistoriaForm.rackNecessidade === valor}
+                        onChange={() => atualizarDocumentoVistoria("rackNecessidade", valor)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-xs font-bold text-slate-700">Rack de substituição</legend>
+                  {RACK_DISPONIBILIDADE_OPCOES.map(([valor, label]) => (
+                    <label key={valor} className="flex items-start gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="radio"
+                        name="rackDisponibilidade"
+                        checked={documentoVistoriaForm.rackDisponibilidade === valor}
+                        onChange={() => atualizarDocumentoVistoria("rackDisponibilidade", valor)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+              <textarea
+                rows="2"
+                value={documentoVistoriaForm.rackObservacoes}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("rackObservacoes", e.target.value)
+                }
+                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Observações/Justificativa, quando aplicável"
+              />
+              <input
+                value={documentoVistoriaForm.rackLocalData}
+                onChange={(e) =>
+                  atualizarDocumentoVistoria("rackLocalData", e.target.value)
+                }
+                className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Local e data"
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-600">
+                4. Declaração de Conformidade Técnica - Estado Final
               </h3>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {ESTADO_FINAL_OPCOES.map((opcao) => (
@@ -2796,16 +2886,45 @@ export default function GestaoComarcas() {
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   placeholder="Cargo/Função"
                 />
+                <input
+                  type="date"
+                  value={documentoVistoriaForm.responsavelDesignadoData}
+                  onChange={(e) =>
+                    atualizarDocumentoVistoria(
+                      "responsavelDesignadoData",
+                      e.target.value,
+                    )
+                  }
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  aria-label="Data do responsável designado"
+                />
+                <input
+                  value={documentoVistoriaForm.gerenteDesignanteNome}
+                  onChange={(e) =>
+                    atualizarDocumentoVistoria(
+                      "gerenteDesignanteNome",
+                      e.target.value,
+                    )
+                  }
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Gerente que realizou a designação"
+                />
+                <input
+                  type="date"
+                  value={documentoVistoriaForm.declaracaoDesignacaoData}
+                  onChange={(e) =>
+                    atualizarDocumentoVistoria(
+                      "declaracaoDesignacaoData",
+                      e.target.value,
+                    )
+                  }
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  aria-label="Data da declaração de designação"
+                />
               </div>
-              <textarea
-                rows="3"
-                value={documentoVistoriaForm.declaracaoDesignacao}
-                onChange={(e) =>
-                  atualizarDocumentoVistoria("declaracaoDesignacao", e.target.value)
-                }
-                className="mt-3 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Declaração de designação"
-              />
+              <p className="mt-3 text-xs text-slate-500">
+                A declaração de designação segue o texto institucional fixo do documento.
+              </p>
             </div>
 
             <div className="rounded-xl border border-slate-200 p-4">
