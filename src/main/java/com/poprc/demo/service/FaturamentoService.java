@@ -4,12 +4,15 @@ import com.poprc.demo.dto.FaturamentoPainelDTO;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Faturamento;
+import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.SituacaoFaturamento;
+import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.model.TipoContratante;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FaturamentoRepository;
+import com.poprc.demo.repository.OrdemServicoRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -30,16 +33,25 @@ public class FaturamentoService {
     private final ContratoRepository contratoRepository;
     private final ProjetoRepository projetoRepository;
     private final ComarcaRepository comarcaRepository;
+    private final OrdemServicoRepository ordemServicoRepository;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
 
     @Transactional
-    public Faturamento registrarMedicao(Faturamento faturamento, Long contratoId, Long projetoId) {
+    public Faturamento registrarMedicao(
+            Faturamento faturamento,
+            Long contratoId,
+            Long projetoId,
+            Long ordemServicoId) {
         Contrato contrato = buscarContrato(contratoId);
         Projeto projeto = buscarProjeto(projetoId);
+        OrdemServico ordemServico = buscarOrdemServico(ordemServicoId);
         validarProjetoDoContrato(projeto, contratoId);
+        validarOrdemServicoFaturavel(ordemServico, projetoId);
         validarValor(faturamento);
 
         faturamento.setContrato(contrato);
         faturamento.setProjeto(projeto);
+        faturamento.setOrdemServico(ordemServico);
         faturamento.setServicosExecutados(normalizarTexto(faturamento.getServicosExecutados()));
         faturamento.setSituacao(SituacaoFaturamento.A_FATURAR);
         limparDadosFiscais(faturamento);
@@ -47,18 +59,26 @@ public class FaturamentoService {
     }
 
     @Transactional
-    public Faturamento atualizarMedicao(Long id, Faturamento dados, Long contratoId, Long projetoId) {
+    public Faturamento atualizarMedicao(
+            Long id,
+            Faturamento dados,
+            Long contratoId,
+            Long projetoId,
+            Long ordemServicoId) {
         Faturamento faturamento = buscarPorId(id);
         if (faturamento.getSituacao() != SituacaoFaturamento.A_FATURAR) {
             throw new IllegalStateException("Somente medições ainda não faturadas podem ser editadas.");
         }
         Contrato contrato = buscarContrato(contratoId);
         Projeto projeto = buscarProjeto(projetoId);
+        OrdemServico ordemServico = buscarOrdemServico(ordemServicoId);
         validarProjetoDoContrato(projeto, contratoId);
+        validarOrdemServicoFaturavel(ordemServico, projetoId);
         validarValor(dados);
 
         faturamento.setContrato(contrato);
         faturamento.setProjeto(projeto);
+        faturamento.setOrdemServico(ordemServico);
         faturamento.setServicosExecutados(normalizarTexto(dados.getServicosExecutados()));
         faturamento.setValorMedicao(dados.getValorMedicao());
         return faturamentoRepository.save(faturamento);
@@ -107,6 +127,7 @@ public class FaturamentoService {
         faturamento.setImpostoPagar(impostoPagar);
         faturamento.setImpostoTotal(impostoRetido.add(impostoPagar));
         faturamento.setSituacao(SituacaoFaturamento.FATURADO);
+        marcarOrdemServicoComoFaturada(faturamento);
         return faturamentoRepository.save(faturamento);
     }
 
@@ -180,6 +201,7 @@ public class FaturamentoService {
     private FaturamentoPainelDTO paraPainel(Faturamento faturamento) {
         Contrato contrato = faturamento.getContrato();
         Projeto projeto = faturamento.getProjeto();
+        OrdemServico ordemServico = faturamento.getOrdemServico();
         TipoContratante tipo = contrato.getTipoContratante() == null
                 ? TipoContratante.SETOR_PUBLICO
                 : contrato.getTipoContratante();
@@ -194,6 +216,8 @@ public class FaturamentoService {
                 contrato.getCliente(),
                 tipo,
                 projeto != null ? projeto.getId() : null,
+                ordemServico != null ? ordemServico.getId() : null,
+                ordemServico != null ? ordemServico.getNumeroOs() : null,
                 destino,
                 faturamento.getServicosExecutados(),
                 faturamento.getValorMedicao(),
@@ -245,6 +269,11 @@ public class FaturamentoService {
                 .orElseThrow(() -> new IllegalArgumentException("Projeto não encontrado."));
     }
 
+    private OrdemServico buscarOrdemServico(Long ordemServicoId) {
+        return ordemServicoRepository.findById(ordemServicoId)
+                .orElseThrow(() -> new IllegalArgumentException("Ordem de Serviço não encontrada."));
+    }
+
     private void validarProjetoDoContrato(Projeto projeto, Long contratoId) {
         if (projeto.getContrato() == null || !contratoId.equals(projeto.getContrato().getId())) {
             throw new IllegalArgumentException("O projeto selecionado não pertence ao contrato informado.");
@@ -252,6 +281,27 @@ public class FaturamentoService {
         if (Boolean.TRUE.equals(projeto.getArquivado())) {
             throw new IllegalStateException("Não é possível faturar um projeto arquivado.");
         }
+    }
+
+    private void validarOrdemServicoFaturavel(OrdemServico ordemServico, Long projetoId) {
+        if (ordemServico.getProjeto() == null || !projetoId.equals(ordemServico.getProjeto().getId())) {
+            throw new IllegalArgumentException("A OS selecionada não pertence ao projeto informado.");
+        }
+        if (Boolean.TRUE.equals(ordemServico.getArquivado())) {
+            throw new IllegalStateException("Não é possível faturar uma OS arquivada.");
+        }
+        if (ordemServico.getStatus() != StatusOS.CONCLUIDA) {
+            throw new IllegalStateException("Somente uma OS concluída pode gerar um novo faturamento.");
+        }
+    }
+
+    private void marcarOrdemServicoComoFaturada(Faturamento faturamento) {
+        OrdemServico ordemServico = faturamento.getOrdemServico();
+        if (ordemServico == null || ordemServico.getId() == null) {
+            return;
+        }
+        fluxoOrdemServicoService.transicionarPorUsuario(
+                ordemServico.getId(), StatusOS.FATURADA, "Emissão da NF " + faturamento.getNumeroNotaFiscal());
     }
 
     private void validarValor(Faturamento faturamento) {

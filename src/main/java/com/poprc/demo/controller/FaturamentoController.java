@@ -43,8 +43,10 @@ public class FaturamentoController {
     public ResponseEntity<Faturamento> criarFaturamento(@RequestBody Faturamento faturamento) {
         Long contratoId = idContrato(faturamento);
         Long projetoId = idProjeto(faturamento);
+        Long ordemServicoId = idOrdemServico(faturamento);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(faturamentoService.registrarMedicao(faturamento, contratoId, projetoId));
+                .body(faturamentoService.registrarMedicao(
+                        faturamento, contratoId, projetoId, ordemServicoId));
     }
 
     @PutMapping("/{id}")
@@ -52,7 +54,7 @@ public class FaturamentoController {
             @PathVariable Long id,
             @RequestBody Faturamento dados) {
         return ResponseEntity.ok(faturamentoService.atualizarMedicao(
-                id, dados, idContrato(dados), idProjeto(dados)));
+                id, dados, idContrato(dados), idProjeto(dados), idOrdemServico(dados)));
     }
 
     @PutMapping("/{id}/emitir-nota")
@@ -89,5 +91,12 @@ public class FaturamentoController {
             throw new IllegalArgumentException("O projeto é obrigatório.");
         }
         return faturamento.getProjeto().getId();
+    }
+
+    private Long idOrdemServico(Faturamento faturamento) {
+        if (faturamento.getOrdemServico() == null || faturamento.getOrdemServico().getId() == null) {
+            throw new IllegalArgumentException("A Ordem de Serviço concluída é obrigatória.");
+        }
+        return faturamento.getOrdemServico().getId();
     }
 }

@@ -69,4 +69,9 @@ public class Faturamento {
     @JoinColumn(name = "projeto_id")
     @JsonIgnoreProperties({ "materiais", "equipe", "responsavel" })
     private Projeto projeto;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ordem_servico_id")
+    @JsonIgnoreProperties({ "contrato", "projeto" })
+    private OrdemServico ordemServico;
 }

@@ -12,6 +12,8 @@ public record FaturamentoPainelDTO(
         String cliente,
         TipoContratante tipoContratante,
         Long projetoId,
+        Long ordemServicoId,
+        String numeroOs,
         String destino,
         String servicosExecutados,
         BigDecimal valorMedicao,

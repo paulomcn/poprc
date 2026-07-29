@@ -31,6 +31,7 @@ import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.MovimentacaoEstoqueRepository;
 import com.poprc.demo.repository.OrdemRetiradaRepository;
+import com.poprc.demo.repository.OrdemServicoRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.repository.UnidadeEstoqueRastreavelRepository;
 import com.poprc.demo.service.ComarcaService;
@@ -96,6 +97,8 @@ class FluxoOperacionalIntegrationTest {
     private MaterialRepository materialRepository;
     @Autowired
     private OrdemRetiradaRepository ordemRetiradaRepository;
+    @Autowired
+    private OrdemServicoRepository ordemServicoRepository;
     @Autowired
     private DocumentoInternoRepository documentoInternoRepository;
     @Autowired
@@ -251,12 +254,12 @@ class FluxoOperacionalIntegrationTest {
         medicao.setServicosExecutados("Execucao e encerramento da obra");
         medicao.setValorMedicao(new BigDecimal("1500.00"));
         Faturamento faturamento = faturamentoService.registrarMedicao(
-                medicao, cenario.contratoId(), cenario.projetoId());
+                medicao, cenario.contratoId(), cenario.projetoId(), os.getId());
         faturamento = faturamentoService.emitirNotaFiscal(
                 faturamento.getId(), "NF-TESTE-001", LocalDate.now().plusDays(30));
         assertEquals(SituacaoFaturamento.FATURADO, faturamento.getSituacao());
         assertEquals(StatusOS.FATURADA,
-                ordemServicoService.atualizarStatus(os.getId(), StatusOS.FATURADA).getStatus());
+                ordemServicoRepository.findById(os.getId()).orElseThrow().getStatus());
         assertEquals(SituacaoFaturamento.PAGO,
                 faturamentoService.darBaixaPagamento(faturamento.getId()).getSituacao());
     }

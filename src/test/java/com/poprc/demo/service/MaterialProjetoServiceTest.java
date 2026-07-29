@@ -1,14 +1,17 @@
 package com.poprc.demo.service;
 
 import com.poprc.demo.model.MaterialProjeto;
+import com.poprc.demo.model.Material;
 import com.poprc.demo.repository.MaterialProjetoRepository;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -28,5 +31,23 @@ class MaterialProjetoServiceTest {
         assertEquals(7, metricas.getSaldo());
         assertNull(metricas.getCustoAcumulado());
         assertFalse(metricas.isCustoDisponivel());
+    }
+
+    @Test
+    void deveCalcularCustoAcumuladoComCustoMedioRealDoEstoque() {
+        MaterialProjetoRepository repository = mock(MaterialProjetoRepository.class);
+        MaterialProjetoService service = new MaterialProjetoService(repository);
+        Material material = new Material();
+        material.setCustoMedio(new BigDecimal("12.5000"));
+        MaterialProjeto materialProjeto = new MaterialProjeto();
+        materialProjeto.setQuantidadePrevista(12);
+        materialProjeto.setQuantidadeUtilizada(5);
+        materialProjeto.setMaterial(material);
+        when(repository.findById(4L)).thenReturn(Optional.of(materialProjeto));
+
+        MaterialProjetoService.MetricasMaterialDTO metricas = service.calcularMetricas(4L);
+
+        assertEquals(new BigDecimal("62.5000"), metricas.getCustoAcumulado());
+        assertTrue(metricas.isCustoDisponivel());
     }
 }

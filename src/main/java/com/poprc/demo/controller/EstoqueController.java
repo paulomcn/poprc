@@ -65,6 +65,7 @@ public class EstoqueController {
                 request.getMaterialId(),
                 request.getQuantidade(),
                 request.getMetragem(),
+                request.getCustoUnitarioEntrada(),
                 request.getFuncionarioId(),
                 request.getLocalEstoqueId());
         return ResponseEntity.status(HttpStatus.CREATED).body(movimentacao);
@@ -146,6 +147,7 @@ public class EstoqueController {
         private Long materialId;
         private Integer quantidade;
         private BigDecimal metragem;
+        private BigDecimal custoUnitarioEntrada;
         private Long funcionarioId;
         private Long localEstoqueId;
     }

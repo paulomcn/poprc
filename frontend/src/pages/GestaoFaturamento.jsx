@@ -26,6 +26,7 @@ const hoje = () => new Date().toISOString().slice(0, 10);
 const formularioInicial = {
   contratoId: "",
   projetoId: "",
+  ordemServicoId: "",
   valorMedicao: "",
   servicosExecutados: "",
 };
@@ -145,6 +146,7 @@ export default function GestaoFaturamento() {
   const [faturamentos, setFaturamentos] = useState([]);
   const [contratos, setContratos] = useState([]);
   const [projetos, setProjetos] = useState([]);
+  const [ordensServico, setOrdensServico] = useState([]);
   const [aba, setAba] = useState("faturamento");
   const [filtros, setFiltros] = useState(filtrosIniciais);
   const [loading, setLoading] = useState(true);
@@ -163,14 +165,20 @@ export default function GestaoFaturamento() {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const [resFaturamentos, resContratos, resProjetos] = await Promise.all([
+      const [resFaturamentos, resContratos, resProjetos, resOrdensServico] = await Promise.all([
         api.get("/faturamentos/painel"),
         api.get("/contratos"),
         api.get("/projetos"),
+        api.get("/ordens-servico"),
       ]);
       setFaturamentos(resFaturamentos.data || []);
       setContratos(resContratos.data || []);
       setProjetos((resProjetos.data || []).filter((projeto) => !projeto.arquivado));
+      setOrdensServico(
+        (resOrdensServico.data || []).filter(
+          (ordem) => !ordem.arquivado && ordem.status === "CONCLUIDA",
+        ),
+      );
     } catch (err) {
       setError(err.response?.data?.erro || "Não foi possível carregar os dados financeiros.");
     } finally {
@@ -259,14 +267,31 @@ export default function GestaoFaturamento() {
   }, [impostosFiltrados]);
 
   const projetosDoContrato = projetos.filter(
-    (projeto) => String(projeto.contrato?.id) === String(formData.contratoId),
+    (projeto) =>
+      String(projeto.contrato?.id) === String(formData.contratoId)
+      && ordensServico.some((ordem) => String(ordem.projeto?.id) === String(projeto.id)),
+  );
+  const ordensDoProjeto = ordensServico.filter(
+    (ordem) => String(ordem.projeto?.id) === String(formData.projetoId),
   );
 
   const abrirNovo = () => {
     const contratoId = contratos[0]?.id ? String(contratos[0].id) : "";
-    const projeto = projetos.find((item) => String(item.contrato?.id) === contratoId);
+    const projeto = projetos.find(
+      (item) =>
+        String(item.contrato?.id) === contratoId
+        && ordensServico.some((ordem) => String(ordem.projeto?.id) === String(item.id)),
+    );
+    const ordemServico = ordensServico.find(
+      (ordem) => String(ordem.projeto?.id) === String(projeto?.id),
+    );
     setEditandoId(null);
-    setFormData({ ...formularioInicial, contratoId, projetoId: projeto ? String(projeto.id) : "" });
+    setFormData({
+      ...formularioInicial,
+      contratoId,
+      projetoId: projeto ? String(projeto.id) : "",
+      ordemServicoId: ordemServico ? String(ordemServico.id) : "",
+    });
     setFormModal(true);
   };
 
@@ -275,6 +300,7 @@ export default function GestaoFaturamento() {
     setFormData({
       contratoId: String(item.contratoId || ""),
       projetoId: String(item.projetoId || ""),
+      ordemServicoId: String(item.ordemServicoId || ""),
       valorMedicao: item.valorMedicao || "",
       servicosExecutados: item.servicosExecutados || "",
     });
@@ -287,6 +313,7 @@ export default function GestaoFaturamento() {
       const payload = {
         contrato: { id: Number(formData.contratoId) },
         projeto: { id: Number(formData.projetoId) },
+        ordemServico: { id: Number(formData.ordemServicoId) },
         valorMedicao: Number(formData.valorMedicao),
         servicosExecutados: formData.servicosExecutados.trim() || null,
       };
@@ -461,12 +488,17 @@ export default function GestaoFaturamento() {
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-                <tr><th className="p-3">Contrato</th><th className="p-3">NF</th><th className="p-3">Emissão</th><th className="p-3">Valor</th><th className="p-3">Comarca / Cliente</th><th className="p-3">Vencimento</th><th className="p-3">Situação</th><th className="p-3 text-right">Ações</th></tr>
+                <tr><th className="p-3">Contrato / OS</th><th className="p-3">NF</th><th className="p-3">Emissão</th><th className="p-3">Valor</th><th className="p-3">Comarca / Cliente</th><th className="p-3">Vencimento</th><th className="p-3">Situação</th><th className="p-3 text-right">Ações</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {faturamentosFiltrados.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="p-3"><div className="font-bold text-slate-800">{item.numeroContrato}</div><div className="text-xs text-slate-500">{item.tipoContratante === "SETOR_PRIVADO" ? "Privado" : "Público"}</div></td>
+                    <td className="p-3">
+                      <div className="font-bold text-slate-800">{item.numeroContrato}</div>
+                      <div className="text-xs text-slate-500">
+                        {item.numeroOs || "OS legada não vinculada"} · {item.tipoContratante === "SETOR_PRIVADO" ? "Privado" : "Público"}
+                      </div>
+                    </td>
                     <td className="p-3 font-mono text-xs">{item.numeroNotaFiscal || "---"}</td>
                     <td className="p-3">{dataBr(item.dataEmissao)}</td>
                     <td className="p-3 font-semibold">{dinheiro(item.valorMedicao)}</td>
@@ -519,9 +551,84 @@ export default function GestaoFaturamento() {
             <div className="flex items-center justify-between border-b border-slate-200 p-4"><h2 className="font-bold text-slate-900">{editandoId ? "Editar lançamento" : "Novo lançamento"}</h2><button onClick={() => setFormModal(false)} aria-label="Fechar" className="rounded-md p-1 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
             <form onSubmit={salvarLancamento} className="space-y-4 p-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Contrato *</span><select required value={formData.contratoId} onChange={(e) => { const contratoId = e.target.value; const projeto = projetos.find((item) => String(item.contrato?.id) === contratoId); setFormData({ ...formData, contratoId, projetoId: projeto ? String(projeto.id) : "" }); }} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{contratos.map((item) => <option key={item.id} value={item.id}>{item.contrato} - {item.cliente}</option>)}</select></label>
-                <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Projeto / comarca *</span><select required value={formData.projetoId} onChange={(e) => setFormData({ ...formData, projetoId: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="">Selecione</option>{projetosDoContrato.map((item) => <option key={item.id} value={item.id}>Projeto #{item.id}{item.nomeComarcaVinculada ? ` - ${item.nomeComarcaVinculada}` : ""}</option>)}</select></label>
+                <label>
+                  <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Contrato *</span>
+                  <select
+                    required
+                    value={formData.contratoId}
+                    onChange={(e) => {
+                      const contratoId = e.target.value;
+                      const projeto = projetos.find(
+                        (item) =>
+                          String(item.contrato?.id) === contratoId
+                          && ordensServico.some(
+                            (ordem) => String(ordem.projeto?.id) === String(item.id),
+                          ),
+                      );
+                      const ordemServico = ordensServico.find(
+                        (ordem) => String(ordem.projeto?.id) === String(projeto?.id),
+                      );
+                      setFormData({
+                        ...formData,
+                        contratoId,
+                        projetoId: projeto ? String(projeto.id) : "",
+                        ordemServicoId: ordemServico ? String(ordemServico.id) : "",
+                      });
+                    }}
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                  >
+                    <option value="">Selecione</option>
+                    {contratos.map((item) => (
+                      <option key={item.id} value={item.id}>{item.contrato} - {item.cliente}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="mb-1 block text-xs font-bold uppercase text-slate-500">Projeto / comarca *</span>
+                  <select
+                    required
+                    value={formData.projetoId}
+                    onChange={(e) => {
+                      const projetoId = e.target.value;
+                      const ordemServico = ordensServico.find(
+                        (ordem) => String(ordem.projeto?.id) === projetoId,
+                      );
+                      setFormData({
+                        ...formData,
+                        projetoId,
+                        ordemServicoId: ordemServico ? String(ordemServico.id) : "",
+                      });
+                    }}
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                  >
+                    <option value="">Selecione</option>
+                    {projetosDoContrato.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        Projeto #{item.id}{item.nomeComarcaVinculada ? ` - ${item.nomeComarcaVinculada}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
+              <label>
+                <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                  Ordem de Serviço concluída *
+                </span>
+                <select
+                  required
+                  value={formData.ordemServicoId}
+                  onChange={(e) => setFormData({ ...formData, ordemServicoId: e.target.value })}
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                >
+                  <option value="">Selecione a OS encerrada</option>
+                  {ordensDoProjeto.map((ordem) => (
+                    <option key={ordem.id} value={ordem.id}>{ordem.numeroOs}</option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-slate-500">
+                  A emissão da nota fiscal marcará esta OS como faturada automaticamente.
+                </span>
+              </label>
               <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Valor *</span><input required min="0.01" step="0.01" type="number" value={formData.valorMedicao} onChange={(e) => setFormData({ ...formData, valorMedicao: e.target.value })} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
               <label><span className="mb-1 block text-xs font-bold uppercase text-slate-500">Serviços executados</span><textarea rows="3" value={formData.servicosExecutados} onChange={(e) => setFormData({ ...formData, servicosExecutados: e.target.value })} className="w-full rounded-lg border border-slate-300 p-3 text-sm" /></label>
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setFormModal(false)} className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700">Cancelar</button><button type="submit" className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Salvar</button></div>
@@ -558,7 +665,7 @@ export default function GestaoFaturamento() {
           <div className="w-full max-w-2xl overflow-hidden rounded-lg bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 p-4"><h2 className="font-bold text-slate-900">Detalhes do lançamento</h2><button onClick={() => setDetalhes(null)} aria-label="Fechar" className="rounded-md p-1 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
             <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2">
-              {[["Contrato", detalhes.numeroContrato], ["Destino", detalhes.destino], ["Nota fiscal", detalhes.numeroNotaFiscal || "Não emitida"], ["Situação", nomeSituacao[detalhes.situacao]], ["Emissão", dataBr(detalhes.dataEmissao)], ["Pagamento", dataBr(detalhes.dataPagamento)], ["Valor", dinheiro(detalhes.valorMedicao)], ["Total de impostos", dinheiro(detalhes.impostoTotal)]].map(([rotulo, valor]) => <div key={rotulo} className="bg-white p-4"><p className="text-xs font-bold uppercase text-slate-500">{rotulo}</p><p className="mt-1 text-sm font-semibold text-slate-800">{valor}</p></div>)}
+              {[["Contrato", detalhes.numeroContrato], ["Ordem de Serviço", detalhes.numeroOs || "Legado sem vínculo"], ["Destino", detalhes.destino], ["Nota fiscal", detalhes.numeroNotaFiscal || "Não emitida"], ["Situação", nomeSituacao[detalhes.situacao]], ["Emissão", dataBr(detalhes.dataEmissao)], ["Pagamento", dataBr(detalhes.dataPagamento)], ["Valor", dinheiro(detalhes.valorMedicao)], ["Total de impostos", dinheiro(detalhes.impostoTotal)]].map(([rotulo, valor]) => <div key={rotulo} className="bg-white p-4"><p className="text-xs font-bold uppercase text-slate-500">{rotulo}</p><p className="mt-1 text-sm font-semibold text-slate-800">{valor}</p></div>)}
             </div>
             <div className="border-t border-slate-200 p-4"><p className="text-xs font-bold uppercase text-slate-500">Serviços executados</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{detalhes.servicosExecutados || "Não informado"}</p></div>
           </div>

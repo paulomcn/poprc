@@ -198,6 +198,7 @@ export default function PainelEstoque() {
   const [formData, setFormData] = useState({
     materialId: "",
     quantidade: "",
+    custoUnitarioEntrada: "",
     funcionarioId: "",
     comarcaId: "",
     localEstoqueId: "",
@@ -220,6 +221,7 @@ export default function PainelEstoque() {
     comprimentoPorPeca: "",
     metragemDisponivel: "0",
     estoqueMinimo: "0",
+    custoMedio: "0",
   });
   const [orForm, setOrForm] = useState({
     conferidoPor: "",
@@ -320,7 +322,7 @@ export default function PainelEstoque() {
     setShowMinimoLocalModal(false);
     setMaterialEmEdicao(null);
     setOrdemRetiradaAtual(null);
-    setFormData({ materialId: "", quantidade: "", funcionarioId: "", comarcaId: "", localEstoqueId: "" });
+    setFormData({ materialId: "", quantidade: "", custoUnitarioEntrada: "", funcionarioId: "", comarcaId: "", localEstoqueId: "" });
     setOrForm({
       conferidoPor: "",
       levadoPor: "",
@@ -357,6 +359,7 @@ export default function PainelEstoque() {
       comprimentoPorPeca: "",
       metragemDisponivel: "0",
       estoqueMinimo: "0",
+      custoMedio: "0",
     });
     setFotoExpandida(null);
   };
@@ -379,6 +382,7 @@ export default function PainelEstoque() {
       comprimentoPorPeca: "",
       metragemDisponivel: "0",
       estoqueMinimo: "0",
+      custoMedio: "0",
     });
     setShowNovoMaterialModal(true);
   };
@@ -401,6 +405,7 @@ export default function PainelEstoque() {
       comprimentoPorPeca: String(material.comprimentoPorPeca ?? ""),
       metragemDisponivel: String(material.metragemDisponivel ?? 0),
       estoqueMinimo: String(material.estoqueMinimo ?? 0),
+      custoMedio: String(material.custoMedio ?? 0),
     });
     setShowNovoMaterialModal(true);
   };
@@ -454,6 +459,7 @@ export default function PainelEstoque() {
         metragemDisponivel:
           parseFloat(novoMaterialData.metragemDisponivel) || 0,
         estoqueMinimo: parseFloat(novoMaterialData.estoqueMinimo) || 0,
+        custoMedio: parseFloat(novoMaterialData.custoMedio) || 0,
       };
       if (materialEmEdicao) {
         await api.put(`/estoque/materiais/${materialEmEdicao.id}`, payload);
@@ -487,6 +493,10 @@ export default function PainelEstoque() {
           materialEntradaSelecionado?.tipoControle === "METRAGEM"
             ? parseFloat(formData.quantidade)
             : null,
+        custoUnitarioEntrada:
+          formData.custoUnitarioEntrada === ""
+            ? null
+            : parseFloat(formData.custoUnitarioEntrada),
         funcionarioId: parseInt(formData.funcionarioId),
         localEstoqueId: Number(formData.localEstoqueId),
       });
@@ -614,6 +624,19 @@ export default function PainelEstoque() {
     getLivre(material) <= Number(material.estoqueMinimo ?? 0);
   const formatarNumero = (valor) =>
     Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  const formatarMoeda = (valor) =>
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      minimumFractionDigits: 2,
+    }).format(Number(valor) || 0);
+  const valorTotalMaterial = (material) =>
+    Number(
+      material?.valorTotalEstoque ??
+      (controlaMetragem(material)
+        ? Number(material?.metragemDisponivel || 0)
+        : Number(material?.quantidadeDisponivel || 0)) * Number(material?.custoMedio || 0),
+    );
   const unidadeMaterial = (material) =>
     controlaMetragem(material)
       ? "m"
@@ -963,6 +986,51 @@ export default function PainelEstoque() {
       row.height = Math.min(90, Math.max(20, linhas * 15));
     });
 
+    const estoqueSheet = workbook.addWorksheet("Estoque Atual", {
+      views: [{ state: "frozen", ySplit: 1 }],
+    });
+    estoqueSheet.columns = [
+      { header: "Código", key: "codigo", width: 20 },
+      { header: "Produto", key: "produto", width: 34 },
+      { header: "Categoria", key: "categoria", width: 22 },
+      { header: "Saldo atual", key: "saldo", width: 16 },
+      { header: "Unidade", key: "unidade", width: 13 },
+      { header: "Custo médio unitário", key: "custoMedio", width: 22 },
+      { header: "Valor em estoque", key: "valorTotal", width: 20 },
+    ];
+    materiais.forEach((material) => {
+      const saldo = controlaMetragem(material)
+        ? Number(material.metragemDisponivel || 0)
+        : Number(material.quantidadeDisponivel || 0);
+      const row = estoqueSheet.addRow({
+        codigo: material.partNumber,
+        produto: material.nome,
+        categoria: getCategoriaMaterialLabel(material.categoria),
+        saldo,
+        unidade: controlaMetragem(material) ? "m" : unidadeMaterial(material),
+        custoMedio: Number(material.custoMedio || 0),
+      });
+      row.getCell("valorTotal").value = {
+        formula: `D${row.number}*F${row.number}`,
+        result: valorTotalMaterial(material),
+      };
+    });
+    const totalRow = estoqueSheet.addRow({
+      produto: "VALOR TOTAL DO ESTOQUE",
+    });
+    totalRow.getCell("valorTotal").value = materiais.length
+      ? {
+        formula: `SUM(G2:G${totalRow.number - 1})`,
+        result: valorTotalEstoque,
+      }
+      : 0;
+    totalRow.font = { bold: true };
+    totalRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDEAFE" } };
+    estoqueSheet.getColumn("saldo").numFmt = "#,##0.000";
+    estoqueSheet.getColumn("custoMedio").numFmt = 'R$ #,##0.0000';
+    estoqueSheet.getColumn("valorTotal").numFmt = 'R$ #,##0.00';
+    estoqueSheet.autoFilter = { from: "A1", to: "G1" };
+
     const consumoSheet = workbook.addWorksheet("Consumo por OS-OR");
     consumoSheet.columns = [
       { header: "OS", key: "os", width: 24 },
@@ -983,8 +1051,11 @@ export default function PainelEstoque() {
     ];
     alertasReposicao.forEach((item) => alertasSheet.addRow(item));
 
-    [consumoSheet, alertasSheet].forEach((sheet) => {
+    [estoqueSheet, consumoSheet, alertasSheet].forEach((sheet) => {
       sheet.autoFilter = { from: "A1", to: sheet === consumoSheet ? "E1" : "E1" };
+      if (sheet === estoqueSheet) {
+        sheet.autoFilter = { from: "A1", to: "G1" };
+      }
       sheet.views = [{ state: "frozen", ySplit: 1 }];
       sheet.getRow(1).height = 28;
       sheet.getRow(1).eachCell((cell) => {
@@ -1156,8 +1227,13 @@ export default function PainelEstoque() {
   };
 
   const inicioMesAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const valorTotalEstoque = materiais.reduce(
+    (total, material) => total + valorTotalMaterial(material),
+    0,
+  );
   const indicadoresEstoque = [
     { label: "Materiais cadastrados", valor: materiais.length },
+    { label: "Valor total em estoque", valor: formatarMoeda(valorTotalEstoque) },
     {
       label: "Metragem disponível",
       valor: `${formatarNumero(
@@ -1247,7 +1323,7 @@ export default function PainelEstoque() {
 
       {/* Tabela de Saldo Atual */}
       <div className="bg-white rounded-lg shadow-md overflow-x-auto border border-slate-200">
-        <table className="w-full min-w-[1120px]">
+        <table className="w-full min-w-[1400px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
@@ -1277,6 +1353,12 @@ export default function PainelEstoque() {
               <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
                 Disponível
               </th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-slate-700">
+                Custo médio
+              </th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-slate-700">
+                Valor em estoque
+              </th>
               <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
                 Ações
               </th>
@@ -1287,7 +1369,7 @@ export default function PainelEstoque() {
               <Fragment key={grupo.value}>
                 <tr className="bg-slate-100/70">
                   <td
-                    colSpan="10"
+                    colSpan="12"
                     className="px-6 py-2 text-xs font-black uppercase tracking-wide text-slate-600"
                   >
                     {grupo.label} ({grupo.materiais.length})
@@ -1389,6 +1471,17 @@ export default function PainelEstoque() {
                         {formatarNumero(getLivre(material))} {unidadeMaterial(material)}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <strong className="block text-sm text-slate-800">
+                        {formatarMoeda(material.custoMedio)}
+                      </strong>
+                      <span className="text-[11px] text-slate-500">
+                        por {controlaMetragem(material) ? "metro" : unidadeMaterial(material)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right text-sm font-bold text-slate-900">
+                      {formatarMoeda(valorTotalMaterial(material))}
+                    </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex justify-center gap-1">
                         <button
@@ -1425,7 +1518,7 @@ export default function PainelEstoque() {
             ))}
             {materiais.length === 0 && (
               <tr>
-                <td colSpan="10" className="px-6 py-8 text-center text-slate-400">
+                <td colSpan="12" className="px-6 py-8 text-center text-slate-400">
                   Nenhum produto cadastrado no estoque.
                 </td>
               </tr>
@@ -1434,7 +1527,7 @@ export default function PainelEstoque() {
         </table>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {indicadoresEstoque.map((indicador) => (
           <div key={indicador.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
             <span className="block text-xs font-semibold text-slate-500">{indicador.label}</span>
@@ -2350,6 +2443,27 @@ export default function PainelEstoque() {
               />
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
+              Custo médio unitário (R$)
+            </label>
+            <input
+              type="number"
+              name="custoMedio"
+              min="0"
+              step="0.0001"
+              required
+              value={novoMaterialData.custoMedio}
+              onChange={handleNovoMaterialChange}
+              className="w-full rounded-lg border border-slate-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500"
+              placeholder="0,0000"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {["METRAGEM", "BOBINA", "ROLO"].includes(novoMaterialData.tipoControle)
+                ? "Informe o custo médio por metro."
+                : "Informe o custo médio por unidade cadastrada."}
+            </p>
+          </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_96px] md:items-end">
             <div className="space-y-3">
               <div>
@@ -2505,6 +2619,28 @@ export default function PainelEstoque() {
               required
               className="w-full px-4 py-2 border border-slate-300 rounded-lg"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
+              Custo unitário desta entrada (R$)
+            </label>
+            <input
+              type="number"
+              name="custoUnitarioEntrada"
+              value={formData.custoUnitarioEntrada}
+              onChange={handleInputChange}
+              min="0"
+              step="0.0001"
+              className="w-full rounded-lg border border-slate-300 px-4 py-2"
+              placeholder={
+                materialEntradaSelecionado
+                  ? `Atual: ${formatarMoeda(materialEntradaSelecionado.custoMedio)}`
+                  : "Opcional"
+              }
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Em branco mantém o custo atual. Ao informar, o sistema recalcula a média ponderada.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">

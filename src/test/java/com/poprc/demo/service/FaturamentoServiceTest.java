@@ -2,12 +2,15 @@ package com.poprc.demo.service;
 
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Faturamento;
+import com.poprc.demo.model.OrdemServico;
 import com.poprc.demo.model.Projeto;
 import com.poprc.demo.model.SituacaoFaturamento;
+import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.model.TipoContratante;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ContratoRepository;
 import com.poprc.demo.repository.FaturamentoRepository;
+import com.poprc.demo.repository.OrdemServicoRepository;
 import com.poprc.demo.repository.ProjetoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,9 +35,12 @@ class FaturamentoServiceTest {
     private ContratoRepository contratoRepository;
     private ProjetoRepository projetoRepository;
     private ComarcaRepository comarcaRepository;
+    private OrdemServicoRepository ordemServicoRepository;
+    private FluxoOrdemServicoService fluxoOrdemServicoService;
     private FaturamentoService service;
     private Contrato contrato;
     private Projeto projeto;
+    private OrdemServico ordemServico;
 
     @BeforeEach
     void setUp() {
@@ -42,8 +48,11 @@ class FaturamentoServiceTest {
         contratoRepository = mock(ContratoRepository.class);
         projetoRepository = mock(ProjetoRepository.class);
         comarcaRepository = mock(ComarcaRepository.class);
+        ordemServicoRepository = mock(OrdemServicoRepository.class);
+        fluxoOrdemServicoService = mock(FluxoOrdemServicoService.class);
         service = new FaturamentoService(
-                faturamentoRepository, contratoRepository, projetoRepository, comarcaRepository);
+                faturamentoRepository, contratoRepository, projetoRepository, comarcaRepository,
+                ordemServicoRepository, fluxoOrdemServicoService);
 
         contrato = new Contrato();
         contrato.setId(1L);
@@ -52,8 +61,15 @@ class FaturamentoServiceTest {
         projeto.setId(10L);
         projeto.setContrato(contrato);
         projeto.setArquivado(false);
+        ordemServico = new OrdemServico();
+        ordemServico.setId(20L);
+        ordemServico.setNumeroOs("CTR-01 - OS 01");
+        ordemServico.setProjeto(projeto);
+        ordemServico.setStatus(StatusOS.CONCLUIDA);
+        ordemServico.setArquivado(false);
         when(contratoRepository.findById(1L)).thenReturn(Optional.of(contrato));
         when(projetoRepository.findById(10L)).thenReturn(Optional.of(projeto));
+        when(ordemServicoRepository.findById(20L)).thenReturn(Optional.of(ordemServico));
         when(faturamentoRepository.save(any(Faturamento.class)))
                 .thenAnswer(invocacao -> invocacao.getArgument(0));
     }
@@ -64,10 +80,11 @@ class FaturamentoServiceTest {
         medicao.setServicosExecutados(null);
         medicao.setNumeroNotaFiscal("não deve permanecer");
 
-        Faturamento salvo = service.registrarMedicao(medicao, 1L, 10L);
+        Faturamento salvo = service.registrarMedicao(medicao, 1L, 10L, 20L);
 
         assertEquals(contrato, salvo.getContrato());
         assertEquals(projeto, salvo.getProjeto());
+        assertEquals(ordemServico, salvo.getOrdemServico());
         assertEquals(SituacaoFaturamento.A_FATURAR, salvo.getSituacao());
         assertNull(salvo.getNumeroNotaFiscal());
         assertNull(salvo.getServicosExecutados());
@@ -80,7 +97,7 @@ class FaturamentoServiceTest {
         projeto.setContrato(outroContrato);
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.registrarMedicao(medicaoValida(), 1L, 10L));
+                () -> service.registrarMedicao(medicaoValida(), 1L, 10L, 20L));
     }
 
     @Test
@@ -90,7 +107,7 @@ class FaturamentoServiceTest {
         when(faturamentoRepository.findById(5L)).thenReturn(Optional.of(existente));
 
         assertThrows(IllegalStateException.class,
-                () -> service.atualizarMedicao(5L, medicaoValida(), 1L, 10L));
+                () -> service.atualizarMedicao(5L, medicaoValida(), 1L, 10L, 20L));
     }
 
     @Test
@@ -120,6 +137,8 @@ class FaturamentoServiceTest {
         assertEquals(new BigDecimal("1125.60"), emitido.getImpostoRetido());
         assertEquals(new BigDecimal("3501.09"), emitido.getImpostoPagar());
         assertEquals(new BigDecimal("4626.69"), emitido.getImpostoTotal());
+        verify(fluxoOrdemServicoService).transicionarPorUsuario(
+                20L, StatusOS.FATURADA, "Emissão da NF 14");
     }
 
     @Test
@@ -186,6 +205,7 @@ class FaturamentoServiceTest {
         faturamento.setValorMedicao(new BigDecimal(valor));
         faturamento.setContrato(contrato);
         faturamento.setProjeto(projeto);
+        faturamento.setOrdemServico(ordemServico);
         faturamento.setSituacao(SituacaoFaturamento.A_FATURAR);
         return faturamento;
     }
