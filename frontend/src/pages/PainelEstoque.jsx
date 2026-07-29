@@ -1847,7 +1847,11 @@ export default function PainelEstoque() {
                       {mov.tipo === "ENTRADA" ? "Adicionou" : "Lançou"}: {mov.lancadoPor || mov.funcionario?.nome || "Sistema"}
                     </span>
                     {mov.autorizadoPor && <span className="block">Autorizou: {mov.autorizadoPor}</span>}
-                    {mov.retiradoPor && <span className="block">Retirou: {mov.retiradoPor}</span>}
+                    {mov.retiradoPor && (
+                      <span className="block">
+                        {mov.tipo === "DEVOLUCAO_OR" ? "Devolveu" : "Retirou"}: {mov.retiradoPor}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-xs text-slate-500 max-w-sm">
                     {referencias.length > 0 && (
