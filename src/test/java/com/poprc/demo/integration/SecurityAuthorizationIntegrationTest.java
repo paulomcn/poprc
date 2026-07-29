@@ -239,7 +239,7 @@ class SecurityAuthorizationIntegrationTest {
                 Arguments.of("AUDITOR", "/api/comarcas", true),
                 Arguments.of("ADMIN", "/api/estoque/materiais", true),
                 Arguments.of("ESTOQUE", "/api/estoque/materiais", true),
-                Arguments.of("SUPERVISOR_TECNICO", "/api/estoque/materiais", false),
+                Arguments.of("SUPERVISOR_TECNICO", "/api/estoque/materiais", true),
                 Arguments.of("TECNICO", "/api/estoque/materiais", false),
                 Arguments.of("AUDITOR", "/api/estoque/materiais", false),
                 Arguments.of("ADMIN", "/api/ordens-retirada", true),

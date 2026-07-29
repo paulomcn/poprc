@@ -2201,28 +2201,28 @@ export default function GestaoComarcas() {
                 >
                   {carregandoResumoId === comarca.id ? "Carregando encerramento..." : "Consultar encerramento"}
                 </button>
-              ) : etapaAtual === 1 ? (
+              ) : podeExecutarObra && etapaAtual === 1 ? (
                 <button
                   onClick={() => handleAvancarFase(comarca)}
                   className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
                 >
                   Homologar Vistoria e Liberar Obras
                 </button>
-              ) : etapaAtual === 2 ? (
+              ) : podeExecutarObra && etapaAtual === 2 ? (
                 <button
                   onClick={() => handleAvancarFase(comarca)}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
                 >
                   Liberar Virada de Rede
                 </button>
-              ) : (
+              ) : podeExecutarObra ? (
                 <button
                   onClick={() => handleOpenModal(comarca)}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm"
                 >
                   Registrar Pendência/Ajustar Progresso
                 </button>
-              )}
+              ) : null}
               <button
                 onClick={() => setComarcaHistorico(comarca)}
                 className="flex-shrink-0 flex items-center justify-center gap-1 bg-white hover:bg-slate-100 border text-slate-700 font-bold py-2 px-4 rounded-lg text-xs transition-colors"

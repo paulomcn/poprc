@@ -26,6 +26,7 @@ logicamente, H = homologar ou aprovar.
 | Ordens de servico | C/I/A/X | C/I/A/X | C/A* | - | - |
 | Gestao de obras | C/I/A/X | C/I/A/X | C/A* | C | C |
 | Documentos da OS | C/I/A/X | C/I/A/X | C/I/A* | - | C |
+| Catalogo de materiais | C | C | - | C | - |
 | Estoque | C/I/A | - | - | C/I/A | - |
 | Ordens de retirada | C/I/A | C | C* | C/I/A | C |
 | Auditoria e As-Built | C/H | - | - | - | C/H |
