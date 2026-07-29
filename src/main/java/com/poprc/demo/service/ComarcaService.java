@@ -244,6 +244,7 @@ public class ComarcaService {
             return salva;
         }
 
+        validarRetiradaExecutada(comarca);
         comarca.setEtapaAtual(3);
         comarca.setPercentualConcluido(BigDecimal.valueOf(Boolean.TRUE.equals(comarca.getViradaRedeConcluida()) ? 90 : 85));
         comarca.setSituacao("VIRADA_DE_REDE");
@@ -258,6 +259,9 @@ public class ComarcaService {
         String provaAtual = provasFuncionamento != null && !provasFuncionamento.isBlank()
                 ? provasFuncionamento
                 : comarca.getViradaRedeProvasFuncionamento();
+        if (Boolean.TRUE.equals(concluida)) {
+            validarRetiradaExecutada(comarca);
+        }
         if (Boolean.TRUE.equals(concluida)
                 && (provaAtual == null || provaAtual.isBlank()
                         || checklist == null || checklist.isBlank())) {
@@ -277,6 +281,21 @@ public class ComarcaService {
             comarca.setSituacao("VIRADA_DE_REDE_EM_ANDAMENTO");
         }
         return comarcaRepository.save(comarca);
+    }
+
+    private void validarRetiradaExecutada(Comarca comarca) {
+        if (comarca.getOrdemServico() == null) {
+            throw new IllegalArgumentException(
+                    "Vincule uma Ordem de Serviço antes de iniciar a Virada de Rede.");
+        }
+
+        StatusOS status = comarca.getOrdemServico().getStatus();
+        if (status == StatusOS.ABERTA
+                || status == StatusOS.AGUARDANDO_VISTORIA
+                || status == StatusOS.AGUARDANDO_RETIRADA) {
+            throw new IllegalArgumentException(
+                    "Execute a retirada da Ordem de Retirada antes de iniciar a Virada de Rede.");
+        }
     }
 
     @Transactional(readOnly = true)

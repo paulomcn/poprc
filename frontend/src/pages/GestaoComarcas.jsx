@@ -1656,6 +1656,11 @@ export default function GestaoComarcas() {
           const percentualConcluido = getPercentualConcluido(comarca);
           const etapaAtual = comarca.etapaAtual || 1;
           const obraConcluida = comarca.situacao === "CONCLUIDA";
+          const retiradaExecutada =
+            !!comarca.ordemServico?.status &&
+            !["ABERTA", "AGUARDANDO_VISTORIA", "AGUARDANDO_RETIRADA"].includes(
+              comarca.ordemServico.status,
+            );
           const materiaisFaltantes = materiaisPrevistos.filter(
             (material) => material.materialFaltante,
           );
@@ -2211,9 +2216,17 @@ export default function GestaoComarcas() {
               ) : podeExecutarObra && etapaAtual === 2 ? (
                 <button
                   onClick={() => handleAvancarFase(comarca)}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider"
+                  disabled={!retiradaExecutada}
+                  title={
+                    retiradaExecutada
+                      ? "Liberar Virada de Rede"
+                      : "A Ordem de Retirada precisa ser executada no estoque."
+                  }
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm uppercase tracking-wider disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
                 >
-                  Liberar Virada de Rede
+                  {retiradaExecutada
+                    ? "Liberar Virada de Rede"
+                    : "Aguardando retirada da OR"}
                 </button>
               ) : podeExecutarObra ? (
                 <button

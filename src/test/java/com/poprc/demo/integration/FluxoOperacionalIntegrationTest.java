@@ -281,6 +281,29 @@ class FluxoOperacionalIntegrationTest {
     }
 
     @Test
+    void bloqueiaViradaDeRedeAntesDaRetiradaDaOr() {
+        Cenario cenario = prepararCenario(false);
+        OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(2), null);
+
+        assertEquals(StatusOS.AGUARDANDO_RETIRADA, os.getStatus());
+
+        IllegalArgumentException avancarSemRetirada = assertThrows(IllegalArgumentException.class,
+                () -> comarcaService.avancarParaInfraestrutura(cenario.comarcaId()));
+        assertTrue(avancarSemRetirada.getMessage().contains("retirada"));
+
+        IllegalArgumentException concluirSemRetirada = assertThrows(IllegalArgumentException.class,
+                () -> comarcaService.salvarViradaRede(
+                        cenario.comarcaId(), "/uploads/teste/prova.png", "Conectividade validada", true));
+        assertTrue(concluirSemRetirada.getMessage().contains("retirada"));
+
+        ordemRetiradaService.executarRetirada(unicaOrDaOs(os).getId(), retiradaAssinada());
+
+        Comarca viradaLiberada = comarcaService.avancarParaInfraestrutura(cenario.comarcaId());
+        assertEquals(3, viradaLiberada.getEtapaAtual());
+        assertEquals("VIRADA_DE_REDE", viradaLiberada.getSituacao());
+    }
+
+    @Test
     void bloqueiaRetiradaSemAsDuasAssinaturasSemBaixarEstoque() {
         Cenario cenario = prepararCenario(false);
         OrdemServico os = criarOrdemServico(cenario, BigDecimal.valueOf(4), null);
