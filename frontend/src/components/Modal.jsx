@@ -10,6 +10,8 @@ export default function Modal({ isOpen, onClose, title, children }) {
           <h2 className="text-xl font-semibold text-slate-800">{title}</h2>
           <button
             onClick={onClose}
+            type="button"
+            aria-label="Fechar modal"
             className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X size={24} className="text-slate-500" />

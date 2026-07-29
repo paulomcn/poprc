@@ -400,6 +400,46 @@ export default function GestaoOrdensServico() {
     if (textoChecklist.trim().startsWith("{")) {
       try {
         const dadosJson = JSON.parse(textoChecklist);
+        const renderValor = (valor) => {
+          if (typeof valor === "boolean") {
+            return valor ? "Conforme" : "Inconforme";
+          }
+          if (Array.isArray(valor)) {
+            if (valor.length === 0) return "Nenhum item registrado";
+            return (
+              <ul className="space-y-2 text-left">
+                {valor.map((item, index) => {
+                  if (item && typeof item === "object") {
+                    const descricao =
+                      item.titulo || item.descricao || item.nome || item.atividade || `Item ${index + 1}`;
+                    return (
+                      <li key={item.id || `${descricao}-${index}`} className="flex items-start gap-2">
+                        <span className={`mt-0.5 font-black ${item.concluida === false ? "text-amber-600" : "text-emerald-600"}`}>
+                          {item.concluida === false ? "Pendente" : "Concluída"}
+                        </span>
+                        <span>
+                          {descricao}
+                          {item.categoria && (
+                            <small className="ml-2 font-semibold uppercase text-gray-400">
+                              {item.categoria}
+                            </small>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  }
+                  return <li key={`${String(item)}-${index}`}>{String(item)}</li>;
+                })}
+              </ul>
+            );
+          }
+          if (valor && typeof valor === "object") {
+            return Object.entries(valor)
+              .map(([chave, conteudo]) => `${chave}: ${String(conteudo)}`)
+              .join(" | ");
+          }
+          return String(valor ?? "");
+        };
         return (
           <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
             {Object.entries(dadosJson).map(([chave, valor]) => (
@@ -411,11 +451,7 @@ export default function GestaoOrdensServico() {
                   {chave.replace(/_/g, " ")}
                 </span>
                 <span className="text-sm font-semibold text-gray-800">
-                  {typeof valor === "boolean"
-                    ? valor
-                      ? "✅ Conforme"
-                      : "❌ Inconforme"
-                    : String(valor)}
+                  {renderValor(valor)}
                 </span>
               </div>
             ))}

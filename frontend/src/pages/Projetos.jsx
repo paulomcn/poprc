@@ -189,7 +189,10 @@ export default function Projetos() {
     total: projetos.filter((projeto) => !projeto.arquivado).length,
     andamento: projetos.filter((projeto) => !projeto.arquivado && projeto.status === "EM_ANDAMENTO").length,
     semEquipe: projetos.filter((projeto) => !projeto.arquivado && !(projeto.equipe?.length)).length,
-    asBuiltPendente: projetos.filter((projeto) => !projeto.arquivado && projeto.asBuiltStatus !== "APROVADO").length,
+    asBuiltPendente: projetos.filter((projeto) => {
+      if (projeto.arquivado) return false;
+      return !["APROVADO", "HOMOLOGADO", "HOMOLOGADO_COM_DIVERGENCIA"].includes(projeto.asBuiltStatus);
+    }).length,
   }), [projetos]);
 
   const statusProjeto = (projeto) => projeto.arquivado

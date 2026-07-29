@@ -815,6 +815,18 @@ export default function GestaoComarcas() {
     }
   };
 
+  const handleSalvarDocumentoVistoria = async () => {
+    try {
+      await salvarDocumentoVistoria();
+    } catch (err) {
+      const mensagem =
+        err.response?.data?.erro ||
+        err.message ||
+        "Não foi possível salvar o documento.";
+      setDocumentoMensagem(`Erro ao salvar: ${mensagem}`);
+    }
+  };
+
   const fecharDocumentoVistoria = () => {
     if (documentoSujo && !window.confirm("Existem alterações não salvas. Deseja fechar e descartá-las?")) {
       return;
@@ -2998,9 +3010,7 @@ export default function GestaoComarcas() {
               </div>
               {podeEditarDocumento && <button
                 type="button"
-                onClick={() => salvarDocumentoVistoria().catch((err) =>
-                  alert(err.response?.data?.erro || err.message || "Não foi possível salvar o documento."),
-                )}
+                onClick={handleSalvarDocumentoVistoria}
                 disabled={salvandoDocumento || ["PARCIALMENTE_ASSINADO", "REGISTRADO", "INVALIDADO"].includes(documentoVistoria.documentoSalvo?.status)}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >

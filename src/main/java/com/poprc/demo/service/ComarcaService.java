@@ -538,6 +538,7 @@ public class ComarcaService {
         comarca.setAsBuiltStatus(conciliado ? AS_BUILT_HOMOLOGADO : AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA);
         comarca.setSituacao(conciliado ? "AS_BUILT_HOMOLOGADO" : "AS_BUILT_HOMOLOGADO_COM_DIVERGENCIA");
         Comarca comarcaSalva = comarcaRepository.save(comarca);
+        sincronizarAsBuiltDoProjeto(comarcaSalva);
         if (comarcaSalva.getOrdemServico() != null) {
             fluxoOrdemServicoService.registrarAsBuiltHomologado(
                     comarcaSalva.getOrdemServico().getId(), "Auditoria de Retirada/Devolução");
@@ -596,6 +597,7 @@ public class ComarcaService {
         Projeto projeto = comarca.getProjeto();
         if (projeto != null) {
             projeto.setStatus(ProjetoStatus.CONCLUIDO);
+            projeto.setAsBuiltStatus(comarca.getAsBuiltStatus());
             projetoRepository.save(projeto);
         }
 
@@ -632,7 +634,17 @@ public class ComarcaService {
         comarca.setAsBuiltStatus(AS_BUILT_REABERTO);
         comarca.setSituacao("AS_BUILT_REABERTO_PARA_AJUSTE");
         Comarca comarcaSalva = comarcaRepository.save(comarca);
+        sincronizarAsBuiltDoProjeto(comarcaSalva);
         return montarAuditoriaComarca(comarcaSalva);
+    }
+
+    private void sincronizarAsBuiltDoProjeto(Comarca comarca) {
+        Projeto projeto = comarca.getProjeto();
+        if (projeto == null) {
+            return;
+        }
+        projeto.setAsBuiltStatus(comarca.getAsBuiltStatus());
+        projetoRepository.save(projeto);
     }
 
     private EncerramentoObraResultado montarEncerramento(Comarca comarca) {

@@ -173,6 +173,8 @@ class FluxoOperacionalIntegrationTest {
         assertEquals("HOMOLOGADO_COM_DIVERGENCIA", auditoria.get("asBuiltStatus"));
         assertEquals("HOMOLOGADO_COM_DIVERGENCIA",
                 comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getAsBuiltStatus());
+        assertEquals("HOMOLOGADO_COM_DIVERGENCIA",
+                projetoRepository.findById(cenario.projetoId()).orElseThrow().getAsBuiltStatus());
     }
 
     @Test
@@ -230,6 +232,8 @@ class FluxoOperacionalIntegrationTest {
         assertNotNull(resultado.concluidaEm());
         assertEquals(ProjetoStatus.CONCLUIDO,
                 projetoRepository.findById(cenario.projetoId()).orElseThrow().getStatus());
+        assertEquals("HOMOLOGADO_COM_DIVERGENCIA",
+                projetoRepository.findById(cenario.projetoId()).orElseThrow().getAsBuiltStatus());
         assertEquals("CONCLUIDA",
                 comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getSituacao());
         assertEquals(0, BigDecimal.valueOf(100).compareTo(
