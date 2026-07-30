@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
+  Boxes,
   Briefcase,
   Building2,
   Calendar,
@@ -12,6 +13,7 @@ import {
   Filter,
   Layers,
   Plane,
+  Receipt,
   RefreshCw,
   TrendingUp,
 } from "lucide-react";
@@ -142,7 +144,8 @@ export default function DashboardExecutivo() {
     new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value || 0);
 
   const obrasAtivas =
@@ -154,10 +157,20 @@ export default function DashboardExecutivo() {
     ? Math.round(((data?.totalComarcasConcluidas || 0) / totalObras) * 100)
     : 0;
   const totalFinanceiro = Number(data?.valorTotalContratado || 0);
-  const faturado = Number(data?.valorFaturado || 0);
-  const percentualFaturado = totalFinanceiro
-    ? Math.min(100, Math.round((faturado / totalFinanceiro) * 100))
+  const receitaRegistrada = Number(data?.valorReceitaRegistrada || 0);
+  const valorRecebido = Number(data?.valorFaturado || 0);
+  const resultadoOperacional = Number(data?.resultadoOperacional || 0);
+  const percentualRecebido = receitaRegistrada
+    ? Math.min(100, Math.round((valorRecebido / receitaRegistrada) * 100))
     : 0;
+  const podeVerFinanceiro = temPermissao(
+    usuario?.perfil,
+    PERMISSOES.FINANCEIRO_VISUALIZAR,
+  );
+  const podeVerEstoque = temPermissao(
+    usuario?.perfil,
+    PERMISSOES.ESTOQUE_VISUALIZAR,
+  );
 
   const etapas = useMemo(
     () => [
@@ -296,41 +309,108 @@ export default function DashboardExecutivo() {
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 xl:col-span-2">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="rounded-lg border border-slate-200 bg-white xl:col-span-2">
+          <div className="flex flex-col gap-5 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <DollarSign size={20} className="text-emerald-700" />
                 <h2 className="font-bold text-slate-900">Posição financeira</h2>
               </div>
-              <p className="mt-4 text-3xl font-bold text-slate-900">{formatCurrency(data?.valorFaturado)}</p>
-              <p className="mt-1 text-xs text-slate-500">faturado de {formatCurrency(data?.valorTotalContratado)}</p>
+              <p className={`mt-4 text-3xl font-bold ${resultadoOperacional < 0 ? "text-red-700" : "text-slate-900"}`}>
+                {formatCurrency(data?.resultadoOperacional)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                resultado operacional, margem de {Number(data?.margemOperacional || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-6 text-sm sm:text-right">
               <div>
-                <p className="text-xs font-medium text-slate-500">A receber</p>
-                <p className="mt-1 font-bold text-amber-700">{formatCurrency(data?.valorPendenteFaturamento)}</p>
+                <p className="text-xs font-medium text-slate-500">Receita registrada</p>
+                <p className="mt-1 font-bold text-slate-900">{formatCurrency(data?.valorReceitaRegistrada)}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500">Viagens aprovadas</p>
-                <p className="mt-1 font-bold text-slate-800">{formatCurrency(data?.custosAcumuladosViagem)}</p>
+                <p className="text-xs font-medium text-slate-500">Valor contratado</p>
+                <p className="mt-1 font-bold text-slate-900">{formatCurrency(totalFinanceiro)}</p>
               </div>
             </div>
           </div>
-          <div className="mt-6">
-            <div className="mb-2 flex justify-between text-xs font-semibold text-slate-500">
-              <span>Execução financeira</span>
-              <span>{percentualFaturado}%</span>
+
+          <div className="grid grid-cols-2 divide-x divide-y divide-slate-200 sm:grid-cols-4 sm:divide-y-0">
+            <div className="p-4">
+              <p className="text-xs font-medium text-slate-500">Recebido</p>
+              <p className="mt-1 font-bold text-emerald-700">{formatCurrency(data?.valorFaturado)}</p>
             </div>
-            <div className="h-3 overflow-hidden rounded bg-slate-100">
-              <div className="h-full bg-emerald-600" style={{ width: `${percentualFaturado}%` }} />
+            <div className="p-4">
+              <p className="text-xs font-medium text-slate-500">Pendente</p>
+              <p className="mt-1 font-bold text-amber-700">{formatCurrency(data?.valorPendenteFaturamento)}</p>
             </div>
+            <div className="p-4">
+              <p className="text-xs font-medium text-slate-500">Materiais consumidos</p>
+              <p className="mt-1 font-bold text-slate-900">{formatCurrency(data?.custosMateriaisConsumidos)}</p>
+            </div>
+            <div className="p-4">
+              <p className="text-xs font-medium text-slate-500">Viagens aprovadas</p>
+              <p className="mt-1 font-bold text-slate-900">{formatCurrency(data?.custosAcumuladosViagem)}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4 border-t border-slate-200 p-5">
+            <div>
+              <div className="mb-2 flex justify-between text-xs font-semibold text-slate-500">
+                <span>Recebimento das cobranças registradas</span>
+                <span>{percentualRecebido}%</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded bg-slate-100">
+                <div className="h-full bg-emerald-600" style={{ width: `${percentualRecebido}%` }} />
+              </div>
+            </div>
+            {(data?.faturamentosEmAtraso || 0) > 0 && (
+              <div className="flex items-start gap-3 rounded border border-red-200 bg-red-50 p-3 text-red-800">
+                <Receipt size={18} className="mt-0.5 shrink-0" />
+                <p className="text-sm">
+                  <strong>{data.faturamentosEmAtraso} {data.faturamentosEmAtraso === 1 ? "cobrança vencida" : "cobranças vencidas"}</strong>
+                  {" "}somando {formatCurrency(data?.valorFaturamentoEmAtraso)}.
+                </p>
+              </div>
+            )}
+            {data?.custosMateriaisEstimados && (
+              <p className="text-xs text-amber-700">
+                Parte do custo de materiais usa valores históricos estimados.
+              </p>
+            )}
+            {podeVerFinanceiro && (
+              <Link
+                to="/financeiro/lucratividade"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900"
+              >
+                Abrir análise de lucratividade <ChevronRight size={16} />
+              </Link>
+            )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-5">
-          <h2 className="font-bold text-slate-900">Acessos rápidos</h2>
-          <div className="mt-4 divide-y divide-slate-100">
+        <div className="space-y-6">
+          <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase text-slate-500">Estoque atual</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{formatCurrency(data?.valorTotalEstoque)}</p>
+              </div>
+              <Boxes size={24} className="text-blue-700" />
+            </div>
+            <p className={`mt-3 text-xs ${(data?.itensEstoqueCritico || 0) > 0 ? "text-red-700" : "text-slate-500"}`}>
+              {data?.itensEstoqueCritico || 0} itens no nível crítico
+            </p>
+            {podeVerEstoque && (
+              <Link to="/estoque" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900">
+                Ver estoque <ChevronRight size={16} />
+              </Link>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <h2 className="font-bold text-slate-900">Acessos rápidos</h2>
+            <div className="mt-4 divide-y divide-slate-100">
             {acessosRapidos.map((item) => (
               <Link key={item.to} to={item.to} className="flex min-h-12 items-center gap-3 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700">
                 <item.icon size={18} className="text-slate-400" />
@@ -338,6 +418,7 @@ export default function DashboardExecutivo() {
                 <ChevronRight size={16} />
               </Link>
             ))}
+            </div>
           </div>
         </div>
       </section>
