@@ -40,6 +40,15 @@ public class MovimentacaoEstoque {
     @Column(precision = 14, scale = 3)
     private BigDecimal saldoPosterior;
 
+    @Column(name = "custo_unitario", precision = 15, scale = 4, nullable = false)
+    private BigDecimal custoUnitario = BigDecimal.ZERO;
+
+    @Column(name = "valor_total_movimentacao", precision = 19, scale = 4, nullable = false)
+    private BigDecimal valorTotalMovimentacao = BigDecimal.ZERO;
+
+    @Column(name = "custo_estimado", nullable = false)
+    private Boolean custoEstimado = false;
+
     @Enumerated(EnumType.STRING)
     private UnidadeMedida unidadeMedida;
 

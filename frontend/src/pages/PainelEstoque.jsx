@@ -926,6 +926,7 @@ export default function PainelEstoque() {
       ["Categoria", "categoria"], ["Quantidade", "quantidade"], ["Unidade", "unidade"],
       ["Metragem", "metragem"], ["Bobina ou rolo", "unidadeRastreavel"],
       ["Saldo anterior", "saldoAnterior"], ["Saldo posterior", "saldoPosterior"],
+      ["Custo unitário", "custoUnitario"], ["Valor total da movimentação", "valorTotalMovimentacao"],
       ["OS", "os"], ["OR", "or"], ["Autorizado por", "autorizadoPor"],
       ["Retirado por", "retiradoPor"], ["Adicionado/Lançado por", "lancadoPor"],
       ["Origem", "origem"], ["Destino", "destino"], ["Motivo", "motivo"],
@@ -948,6 +949,8 @@ export default function PainelEstoque() {
         unidadeRastreavel: mov.unidadeRastreavel?.codigo,
         saldoAnterior: mov.saldoAnterior,
         saldoPosterior: mov.saldoPosterior,
+        custoUnitario: Number(mov.custoUnitario || 0),
+        valorTotalMovimentacao: Number(mov.valorTotalMovimentacao || 0),
         os: mov.ordemServico?.numeroOs,
         or: mov.ordemRetirada?.numeroOr,
         autorizadoPor: mov.autorizadoPor,
@@ -966,7 +969,12 @@ export default function PainelEstoque() {
       cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     });
     worksheet.getRow(1).height = 30;
-    worksheet.autoFilter = { from: "A1", to: "V1" };
+    worksheet.autoFilter = {
+      from: "A1",
+      to: `${worksheet.getColumn(worksheet.columnCount).letter}1`,
+    };
+    worksheet.getColumn("custoUnitario").numFmt = "R$ #,##0.0000";
+    worksheet.getColumn("valorTotalMovimentacao").numFmt = "R$ #,##0.00";
 
     worksheet.columns.forEach((column) => {
       let maior = String(column.header || "").length;
@@ -1884,7 +1892,7 @@ export default function PainelEstoque() {
             </button>
           </div>
         </div>
-        <table className="w-full min-w-[1200px] text-left text-sm">
+        <table className="w-full min-w-[1420px] text-left text-sm">
           <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 text-xs font-bold uppercase">
             <tr>
               <th className="px-4 py-4">Data</th>
@@ -1892,6 +1900,8 @@ export default function PainelEstoque() {
               <th className="px-6 py-4">Material</th>
               <th className="px-4 py-4 text-center">Mov.</th>
               <th className="px-4 py-4 text-center">Saldo</th>
+              <th className="px-4 py-4 text-right">Custo unitário</th>
+              <th className="px-4 py-4 text-right">Valor total</th>
               <th className="px-4 py-4">Responsáveis</th>
               <th className="px-6 py-4">Referência</th>
             </tr>
@@ -1935,6 +1945,17 @@ export default function PainelEstoque() {
                       ? `${formatarNumero(mov.saldoAnterior)} → ${formatarNumero(mov.saldoPosterior)}`
                       : "Legado"}
                   </td>
+                  <td className="px-4 py-4 text-right text-xs text-slate-600">
+                    {formatarMoeda(mov.custoUnitario)}
+                  </td>
+                  <td className="px-4 py-4 text-right font-semibold text-slate-800">
+                    {formatarMoeda(mov.valorTotalMovimentacao)}
+                    {mov.custoEstimado && (
+                      <span className="block text-[10px] font-normal uppercase text-amber-700">
+                        estimado
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-4 text-xs text-slate-600">
                     <span className="block">
                       {mov.tipo === "ENTRADA" ? "Adicionou" : "Lançou"}: {mov.lancadoPor || mov.funcionario?.nome || "Sistema"}
@@ -1967,7 +1988,7 @@ export default function PainelEstoque() {
             {historicoFiltrado.length === 0 && (
               <tr>
                 <td
-                  colSpan="7"
+                  colSpan="9"
                   className="px-6 py-8 text-center text-slate-400"
                 >
                   Nenhuma movimentação encontrada para o filtro informado.

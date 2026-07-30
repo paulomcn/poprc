@@ -70,5 +70,7 @@ class EstoqueServiceTest {
         assertEquals(new BigDecimal("300.00"), material.getValorTotalEstoque());
         assertEquals(new BigDecimal("10"), movimentacao.getSaldoAnterior());
         assertEquals(new BigDecimal("20"), movimentacao.getSaldoPosterior());
+        assertEquals(new BigDecimal("20.0000"), movimentacao.getCustoUnitario());
+        assertEquals(new BigDecimal("200.0000"), movimentacao.getValorTotalMovimentacao());
     }
 }

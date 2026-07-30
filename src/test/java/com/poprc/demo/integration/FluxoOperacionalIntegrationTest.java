@@ -149,7 +149,13 @@ class FluxoOperacionalIntegrationTest {
                 .allMatch(movimento -> "Conferente Teste".equals(movimento.getAutorizadoPor())
                         && "Técnico Teste".equals(movimento.getRetiradoPor())
                         && movimento.getOrdemServico() != null
-                        && movimento.getOrdemRetirada() != null));
+                        && movimento.getOrdemRetirada() != null
+                        && movimento.getCustoUnitario().signum() > 0
+                        && !Boolean.TRUE.equals(movimento.getCustoEstimado())));
+        assertEquals(0, new BigDecimal("150.0000").compareTo(aposRetirada.stream()
+                .filter(movimento -> TipoMovimentacao.RETIRADA_OR.equals(movimento.getTipo()))
+                .map(MovimentacaoEstoque::getValorTotalMovimentacao)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)));
 
         or = ordemRetiradaService.devolver(or.getId(), devolucao(or, BigDecimal.valueOf(3), BigDecimal.ONE));
 
@@ -164,7 +170,13 @@ class FluxoOperacionalIntegrationTest {
         assertTrue(aposDevolucao.stream()
                 .filter(movimento -> TipoMovimentacao.DEVOLUCAO_OR.equals(movimento.getTipo()))
                 .allMatch(movimento -> "Almoxarife Teste".equals(movimento.getAutorizadoPor())
-                        && "Técnico Teste".equals(movimento.getRetiradoPor())));
+                        && "Técnico Teste".equals(movimento.getRetiradoPor())
+                        && movimento.getCustoUnitario().signum() > 0
+                        && !Boolean.TRUE.equals(movimento.getCustoEstimado())));
+        assertEquals(0, new BigDecimal("115.0000").compareTo(aposDevolucao.stream()
+                .filter(movimento -> TipoMovimentacao.DEVOLUCAO_OR.equals(movimento.getTipo()))
+                .map(MovimentacaoEstoque::getValorTotalMovimentacao)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)));
 
         MaterialItem consumo = itemDaOr(or, cenario.consumoId());
         MaterialItem ferramenta = itemDaOr(or, cenario.ferramentaId());
@@ -622,6 +634,9 @@ class FluxoOperacionalIntegrationTest {
         material.setTipoControle(TipoControleEstoque.UNIDADE);
         material.setUnidadeMedida(UnidadeMedida.UNIDADE);
         material.setQuantidadeDisponivel(quantidade);
+        material.setCustoMedio("FERRAMENTA".equals(categoria)
+                ? new BigDecimal("100.0000")
+                : new BigDecimal("5.0000"));
         material.setLocalizacao("Estoque Central");
         return estoqueService.cadastrarMaterial(material);
     }

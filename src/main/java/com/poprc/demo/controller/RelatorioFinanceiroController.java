@@ -17,4 +17,13 @@ public class RelatorioFinanceiroController {
     public ResponseEntity<RelatorioLucratividadeDTO> obterLucratividade(@PathVariable Long id) {
         return ResponseEntity.ok(service.gerarRelatorioLucratividade(id));
     }
+
+    @GetMapping("/lucratividade")
+    public ResponseEntity<RelatorioLucratividadeDTO> obterLucratividadeDetalhada(
+            @RequestParam(required = false) Long contratoId,
+            @RequestParam(required = false) Long projetoId,
+            @RequestParam(required = false) Long ordemServicoId) {
+        return ResponseEntity.ok(service.gerarRelatorioLucratividade(
+                contratoId, projetoId, ordemServicoId));
+    }
 }

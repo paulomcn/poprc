@@ -122,6 +122,13 @@ public class EstoqueService {
         movimentacao.setEstoqueDestino(localDestino.getNome());
         movimentacao.setLancadoPor(funcionario.getNome());
         movimentacao.setMotivo("Entrada de estoque");
+        BigDecimal custoEfetivoEntrada = custoUnitarioEntrada != null
+                ? custoUnitarioEntrada
+                : valor(material.getCustoMedio());
+        movimentacao.setCustoUnitario(custoEfetivoEntrada);
+        movimentacao.setValorTotalMovimentacao(custoEfetivoEntrada.multiply(valorEntrada)
+                .setScale(4, RoundingMode.HALF_UP));
+        movimentacao.setCustoEstimado(false);
 
         return movimentacaoEstoqueRepository.save(movimentacao);
     }

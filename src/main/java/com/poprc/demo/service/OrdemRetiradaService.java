@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -369,7 +370,37 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         movimentacao.setEstoqueDestino(destinoOverride != null ? destinoOverride : TipoMovimentacao.RETIRADA_OR.equals(tipo)
                 ? ordemRetirada.getComarca() != null ? ordemRetirada.getComarca().getNomeComarca() : null
                 : item.getMaterial().getLocalizacao());
+        CustoMovimentacao custo = resolverCustoMovimentacao(ordemRetirada, item, tipo, unidadeRastreavel);
+        movimentacao.setCustoUnitario(custo.unitario());
+        movimentacao.setValorTotalMovimentacao(custo.unitario().multiply(quantidade)
+                .setScale(4, RoundingMode.HALF_UP));
+        movimentacao.setCustoEstimado(custo.estimado());
         movimentacaoEstoqueRepository.save(movimentacao);
+    }
+
+    private CustoMovimentacao resolverCustoMovimentacao(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
+            TipoMovimentacao tipo, UnidadeEstoqueRastreavel unidadeRastreavel) {
+        if (TipoMovimentacao.DEVOLUCAO_OR.equals(tipo)) {
+            List<MovimentacaoEstoque> retiradas = movimentacaoEstoqueRepository
+                    .findByOrdemRetiradaIdAndMaterialIdAndTipoOrderByDataMovimentacaoAsc(
+                            ordemRetirada.getId(), item.getMaterial().getId(), TipoMovimentacao.RETIRADA_OR);
+            return retiradas.stream()
+                    .filter(movimentacao -> unidadeRastreavel == null
+                            || movimentacao.getUnidadeRastreavel() != null
+                                    && unidadeRastreavel.getId().equals(movimentacao.getUnidadeRastreavel().getId()))
+                    .filter(movimentacao -> movimentacao.getCustoUnitario() != null
+                            && movimentacao.getCustoUnitario().signum() >= 0)
+                    .map(movimentacao -> new CustoMovimentacao(
+                            movimentacao.getCustoUnitario(),
+                            Boolean.TRUE.equals(movimentacao.getCustoEstimado())))
+                    .findFirst()
+                    .orElseGet(() -> new CustoMovimentacao(
+                            valor(item.getMaterial().getCustoMedio()), true));
+        }
+        return new CustoMovimentacao(valor(item.getMaterial().getCustoMedio()), false);
+    }
+
+    private record CustoMovimentacao(BigDecimal unitario, boolean estimado) {
     }
 
     private void retirarDeUnidadesRastreaveis(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
