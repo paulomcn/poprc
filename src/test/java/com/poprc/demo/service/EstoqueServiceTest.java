@@ -5,12 +5,14 @@ import com.poprc.demo.model.LocalEstoque;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.model.TipoControleEstoque;
+import com.poprc.demo.model.TipoMovimentacao;
 import com.poprc.demo.model.UnidadeMedida;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.MovimentacaoEstoqueRepository;
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -72,5 +74,46 @@ class EstoqueServiceTest {
         assertEquals(new BigDecimal("20"), movimentacao.getSaldoPosterior());
         assertEquals(new BigDecimal("20.0000"), movimentacao.getCustoUnitario());
         assertEquals(new BigDecimal("200.0000"), movimentacao.getValorTotalMovimentacao());
+    }
+
+    @Test
+    void deveReconciliarReducaoDaPlanilhaComMovimentacaoAuditavel() {
+        Material material = new Material();
+        material.setId(1L);
+        material.setNome("Switch");
+        material.setTipoControle(TipoControleEstoque.UNIDADE);
+        material.setUnidadeMedida(UnidadeMedida.UNIDADE);
+        material.setQuantidadeDisponivel(10);
+        material.setCustoMedio(new BigDecimal("8.0000"));
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+
+        when(materialRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(material));
+        when(materialRepository.save(any(Material.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+        when(saldoLocalService.debitarDistribuido(material, new BigDecimal("4")))
+                .thenReturn(List.of(new SaldoLocalService.MovimentoLocal(
+                        local, new BigDecimal("4"))));
+        when(saldoLocalService.descreverMovimentos(any()))
+                .thenReturn("Estoque Principal (4)");
+        when(movimentacaoRepository.save(any(MovimentacaoEstoque.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+        MovimentacaoEstoque movimentacao = service.reconciliarSaldoPlanilha(
+                1L,
+                3L,
+                6,
+                new BigDecimal("3.5000"),
+                "Inventário importado",
+                "gestor");
+
+        assertEquals(6, material.getQuantidadeDisponivel());
+        assertEquals(new BigDecimal("3.5000"), material.getCustoMedio());
+        assertEquals(TipoMovimentacao.AJUSTE_NEGATIVO, movimentacao.getTipo());
+        assertEquals(new BigDecimal("10"), movimentacao.getSaldoAnterior());
+        assertEquals(new BigDecimal("6"), movimentacao.getSaldoPosterior());
+        assertEquals(new BigDecimal("14.0000"), movimentacao.getValorTotalMovimentacao());
+        assertEquals("Estoque Principal (4)", movimentacao.getEstoqueOrigem());
     }
 }

@@ -11,6 +11,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface MaterialRepository extends JpaRepository<Material, Long> {
+    boolean existsByPartNumberIgnoreCase(String partNumber);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from Material m where m.id = :id")
     Optional<Material> findByIdForUpdate(@Param("id") Long id);

@@ -1,0 +1,61 @@
+package com.poprc.demo.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import lombok.Data;
+
+@Entity
+@Table(name = "importacoes_estoque_planilha", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_importacao_estoque_hash", columnNames = "hash_sha256")
+})
+@Data
+public class ImportacaoEstoquePlanilha {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "nome_arquivo", nullable = false)
+    private String nomeArquivo;
+
+    @Column(name = "hash_sha256", nullable = false, length = 64)
+    private String hashSha256;
+
+    @Column(name = "data_importacao", nullable = false)
+    private LocalDateTime dataImportacao;
+
+    @Column(name = "importado_por", nullable = false)
+    private String importadoPor;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "local_estoque_id", nullable = false)
+    private LocalEstoque localEstoque;
+
+    @Column(name = "itens_processados", nullable = false)
+    private Integer itensProcessados = 0;
+
+    @Column(name = "materiais_criados", nullable = false)
+    private Integer materiaisCriados = 0;
+
+    @Column(name = "materiais_atualizados", nullable = false)
+    private Integer materiaisAtualizados = 0;
+
+    @Column(name = "ajustes_positivos", nullable = false)
+    private Integer ajustesPositivos = 0;
+
+    @Column(name = "ajustes_negativos", nullable = false)
+    private Integer ajustesNegativos = 0;
+
+    @Column(name = "valor_total_importado", precision = 19, scale = 2, nullable = false)
+    private BigDecimal valorTotalImportado = BigDecimal.ZERO;
+}

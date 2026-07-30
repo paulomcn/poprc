@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus,
   Minus,
@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   ArrowRightLeft,
   Download,
+  Upload,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
 import Modal from "../components/Modal";
@@ -48,6 +49,27 @@ const unidadePadraoPorControle = {
   METRAGEM: "METRO",
   ROLO: "ROLO",
   BOBINA: "BOBINA",
+};
+
+const normalizarTextoPlanilha = (valor) =>
+  String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const valorDaCelula = (celula) => {
+  const valor = celula?.value;
+  if (valor && typeof valor === "object") {
+    if (valor.result != null) return valor.result;
+    if (valor.text != null) return valor.text;
+    if (Array.isArray(valor.richText)) {
+      return valor.richText.map((item) => item.text || "").join("");
+    }
+  }
+  return valor;
 };
 
 function SignatureBox({ label, value, onChange }) {
@@ -268,6 +290,11 @@ export default function PainelEstoque() {
     autorizadoPor: "",
   });
   const [minimoLocalForm, setMinimoLocalForm] = useState({ saldoId: "", estoqueMinimo: "" });
+  const [abaEstoque, setAbaEstoque] = useState("geral");
+  const [importacaoPreview, setImportacaoPreview] = useState(null);
+  const [importacaoLocalId, setImportacaoLocalId] = useState("");
+  const [importacaoProcessando, setImportacaoProcessando] = useState(false);
+  const importacaoInputRef = useRef(null);
 
   useEffect(() => {
     fetchData();
@@ -320,6 +347,9 @@ export default function PainelEstoque() {
     setShowLocalEstoqueModal(false);
     setShowTransferenciaUnidadeModal(false);
     setShowMinimoLocalModal(false);
+    setImportacaoPreview(null);
+    setImportacaoLocalId("");
+    setImportacaoProcessando(false);
     setMaterialEmEdicao(null);
     setOrdemRetiradaAtual(null);
     setFormData({ materialId: "", quantidade: "", custoUnitarioEntrada: "", funcionarioId: "", comarcaId: "", localEstoqueId: "" });
@@ -362,6 +392,188 @@ export default function PainelEstoque() {
       custoMedio: "0",
     });
     setFotoExpandida(null);
+  };
+
+  const selecionarPlanilhaEstoque = async (event) => {
+    const arquivo = event.target.files?.[0];
+    event.target.value = "";
+    if (!arquivo) return;
+    if (!arquivo.name.toLowerCase().endsWith(".xlsx")) {
+      setError("Selecione uma planilha no formato .xlsx.");
+      return;
+    }
+    if (arquivo.size > 10 * 1024 * 1024) {
+      setError("A planilha excede o limite de 10 MB.");
+      return;
+    }
+
+    try {
+      setImportacaoProcessando(true);
+      setError(null);
+      const buffer = await arquivo.arrayBuffer();
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+
+      let origem = workbook.worksheets.find(
+        (sheet) => normalizarTextoPlanilha(sheet.name) === "estoque atual",
+      );
+      let cabecalho = null;
+      const localizarCabecalho = (sheet) => {
+        const limiteLinhas = Math.min(sheet.rowCount, 20);
+        const limiteColunas = Math.min(sheet.columnCount, 15);
+        for (let linha = 1; linha <= limiteLinhas; linha += 1) {
+          const mapa = {};
+          for (let coluna = 1; coluna <= limiteColunas; coluna += 1) {
+            const texto = normalizarTextoPlanilha(valorDaCelula(sheet.getCell(linha, coluna)));
+            if (texto === "produto") mapa.produto = coluna;
+            if (["estoque atual", "quantidade em estoque"].includes(texto)) mapa.quantidade = coluna;
+            if (texto === "valor unitario") mapa.custo = coluna;
+            if (texto === "quantidade da retirada") mapa.retirada = coluna;
+          }
+          if (mapa.produto && mapa.quantidade && mapa.custo) {
+            return { linha, ...mapa };
+          }
+        }
+        return null;
+      };
+
+      if (origem) cabecalho = localizarCabecalho(origem);
+      if (!cabecalho) {
+        for (const sheet of workbook.worksheets) {
+          const encontrado = localizarCabecalho(sheet);
+          if (encontrado) {
+            origem = sheet;
+            cabecalho = encontrado;
+            break;
+          }
+        }
+      }
+      if (!origem || !cabecalho) {
+        throw new Error(
+          "Não encontrei as colunas Produto, Estoque ATUAL e Valor unitário.",
+        );
+      }
+
+      const itens = [];
+      const avisos = [];
+      for (let linha = cabecalho.linha + 1; linha <= origem.rowCount; linha += 1) {
+        const nomeBruto = valorDaCelula(origem.getCell(linha, cabecalho.produto));
+        const nome = typeof nomeBruto === "string" ? nomeBruto.trim() : "";
+        const nomeNormalizado = normalizarTextoPlanilha(nome);
+        if (!nome || nomeNormalizado.startsWith("valor total") || nomeNormalizado === "total geral") {
+          continue;
+        }
+        const quantidade = Number(valorDaCelula(origem.getCell(linha, cabecalho.quantidade)));
+        const custoUnitario = Number(valorDaCelula(origem.getCell(linha, cabecalho.custo)));
+        if (!Number.isInteger(quantidade) || quantidade < 0) {
+          avisos.push(`Linha ${linha}: quantidade inválida para ${nome}.`);
+          continue;
+        }
+        if (!Number.isFinite(custoUnitario) || custoUnitario < 0) {
+          avisos.push(`Linha ${linha}: custo unitário inválido para ${nome}.`);
+          continue;
+        }
+        itens.push({ nome, quantidade, custoUnitario });
+      }
+      if (itens.length === 0) {
+        throw new Error("A aba de estoque não possui materiais válidos para importar.");
+      }
+
+      const nomesExistentes = materiais.reduce((mapa, material) => {
+        const chave = normalizarTextoPlanilha(material.nome);
+        mapa.set(chave, [...(mapa.get(chave) || []), material]);
+        return mapa;
+      }, new Map());
+      const nomesPlanilha = new Set();
+      const itensPreview = itens.map((item) => {
+        const chave = normalizarTextoPlanilha(item.nome);
+        const correspondencias = nomesExistentes.get(chave) || [];
+        const erros = [];
+        if (nomesPlanilha.has(chave)) erros.push("Nome duplicado na planilha");
+        nomesPlanilha.add(chave);
+        if (correspondencias.length > 1) erros.push("Nome duplicado no sistema");
+        const existente = correspondencias[0];
+        if (
+          existente &&
+          ["METRAGEM", "BOBINA", "ROLO"].includes(existente.tipoControle)
+        ) {
+          erros.push("Material controlado por metragem/bobina");
+        }
+        return {
+          ...item,
+          materialId: existente?.id,
+          saldoAtual: existente?.quantidadeDisponivel ?? 0,
+          acao: existente ? "ATUALIZAR" : "CRIAR",
+          erros,
+        };
+      });
+
+      const abasLegadas = workbook.worksheets
+        .filter((sheet) => sheet.id !== origem.id)
+        .filter((sheet) => localizarCabecalho(sheet)?.retirada)
+        .map((sheet) => sheet.name);
+      const digest = await crypto.subtle.digest("SHA-256", buffer);
+      const hashSha256 = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      const depositoPadrao =
+        locaisEstoque.find(
+          (local) => normalizarTextoPlanilha(local.nome) === "estoque principal",
+        ) || locaisEstoque.find((local) => local.ativo !== false);
+
+      setImportacaoLocalId(depositoPadrao?.id ? String(depositoPadrao.id) : "");
+      setImportacaoPreview({
+        nomeArquivo: arquivo.name,
+        hashSha256,
+        abaOrigem: origem.name,
+        abasLegadas,
+        itens: itensPreview,
+        avisos,
+        valorTotal: itens.reduce(
+          (total, item) => total + item.quantidade * item.custoUnitario,
+          0,
+        ),
+      });
+    } catch (err) {
+      setError(err.message || "Não foi possível ler a planilha.");
+    } finally {
+      setImportacaoProcessando(false);
+    }
+  };
+
+  const confirmarImportacaoPlanilha = async () => {
+    if (!importacaoPreview || !importacaoLocalId) return;
+    if (importacaoPreview.itens.some((item) => item.erros.length > 0)) {
+      setError("Corrija os itens bloqueados antes de importar.");
+      return;
+    }
+    try {
+      setImportacaoProcessando(true);
+      const response = await api.post("/estoque/importacoes/planilha", {
+        nomeArquivo: importacaoPreview.nomeArquivo,
+        hashSha256: importacaoPreview.hashSha256,
+        localEstoqueId: Number(importacaoLocalId),
+        itens: importacaoPreview.itens.map(({ nome, quantidade, custoUnitario }) => ({
+          nome,
+          quantidade,
+          custoUnitario,
+        })),
+      });
+      const resultado = response.data;
+      setSuccessMessage(
+        `Planilha importada: ${resultado.materiaisCriados} materiais criados, `
+          + `${resultado.materiaisAtualizados} atualizados e `
+          + `${resultado.ajustesPositivos + resultado.ajustesNegativos} ajustes registrados.`,
+      );
+      setImportacaoPreview(null);
+      setImportacaoLocalId("");
+      await fetchData();
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível importar a planilha."));
+    } finally {
+      setImportacaoProcessando(false);
+    }
   };
 
   const abrirModalNovoMaterial = () => {
@@ -1234,6 +1446,86 @@ export default function PainelEstoque() {
     return partes;
   };
 
+  const estoquePorComarca = useMemo(() => {
+    const agrupado = new Map(
+      comarcas.map((comarca) => [
+        String(comarca.id),
+        {
+          comarca,
+          itens: new Map(),
+          totalRetirado: 0,
+          totalDevolvido: 0,
+          valorLiquido: 0,
+        },
+      ]),
+    );
+
+    ordensRetirada.forEach((ordem) => {
+      const comarca = ordem.comarca;
+      if (!comarca?.id) return;
+      const chaveComarca = String(comarca.id);
+      if (!agrupado.has(chaveComarca)) {
+        agrupado.set(chaveComarca, {
+          comarca,
+          itens: new Map(),
+          totalRetirado: 0,
+          totalDevolvido: 0,
+          valorLiquido: 0,
+        });
+      }
+      const resumo = agrupado.get(chaveComarca);
+      (ordem.itens || []).forEach((item) => {
+        const retirada = Number(item.quantidadeRetirada || 0);
+        const devolvida = Number(item.quantidadeDevolvida || 0);
+        if (retirada === 0 && devolvida === 0) return;
+        const material = item.material
+          || materiais.find((atual) => atual.id === item.material?.id)
+          || materiais.find(
+            (atual) =>
+              normalizarTextoPlanilha(atual.nome)
+              === normalizarTextoPlanilha(item.nomeMaterial),
+          );
+        const chaveMaterial = String(material?.id || normalizarTextoPlanilha(item.nomeMaterial));
+        const atual = resumo.itens.get(chaveMaterial) || {
+          material,
+          nome: item.nomeMaterial || material?.nome || "Material",
+          retirada: 0,
+          devolvida: 0,
+          ordens: new Set(),
+        };
+        atual.retirada += retirada;
+        atual.devolvida += devolvida;
+        if (ordem.numeroOr) atual.ordens.add(ordem.numeroOr);
+        resumo.itens.set(chaveMaterial, atual);
+        resumo.totalRetirado += retirada;
+        resumo.totalDevolvido += devolvida;
+        resumo.valorLiquido +=
+          (retirada - devolvida) * Number(material?.custoMedio || 0);
+      });
+    });
+
+    return [...agrupado.values()]
+      .map((resumo) => ({
+        ...resumo,
+        itens: [...resumo.itens.values()]
+          .map((item) => ({
+            ...item,
+            saldoLiquido: item.retirada - item.devolvida,
+            ordens: [...item.ordens],
+          }))
+          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+      }))
+      .sort((a, b) =>
+        String(a.comarca?.nomeComarca || "").localeCompare(
+          String(b.comarca?.nomeComarca || ""),
+          "pt-BR",
+        ));
+  }, [comarcas, materiais, ordensRetirada]);
+
+  const estoqueComarcaSelecionada = estoquePorComarca.find(
+    (item) => String(item.comarca?.id) === String(abaEstoque),
+  );
+
   const inicioMesAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const valorTotalEstoque = materiais.reduce(
     (total, material) => total + valorTotalMaterial(material),
@@ -1280,7 +1572,7 @@ export default function PainelEstoque() {
 
       {/* Header */}
       <div>
-        <div className="flex justify-between items-start mb-6">
+        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-800">
               Estoque de Materiais
@@ -1289,7 +1581,24 @@ export default function PainelEstoque() {
               Gerenciamento de entrada e saída de materiais
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={importacaoInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={selecionarPlanilhaEstoque}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => importacaoInputRef.current?.click()}
+              disabled={importacaoProcessando}
+              className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50"
+              title="Importar inventário de uma planilha Excel"
+            >
+              <Upload size={18} />
+              {importacaoProcessando ? "Lendo..." : "Importar .xlsx"}
+            </button>
             {/*   BOTAO NOVO: Cadastrar no Catálogo */}
             <button
               onClick={abrirModalNovoMaterial}
@@ -1329,7 +1638,44 @@ export default function PainelEstoque() {
         {successMessage && <Alert type="success" message={successMessage} />}
       </div>
 
+      <div
+        role="tablist"
+        aria-label="Estoque geral e por obra"
+        className="flex gap-1 overflow-x-auto border-b border-slate-200"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={abaEstoque === "geral"}
+          onClick={() => setAbaEstoque("geral")}
+          className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
+            abaEstoque === "geral"
+              ? "border-blue-600 text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Estoque geral
+        </button>
+        {estoquePorComarca.map((item) => (
+          <button
+            key={item.comarca.id}
+            type="button"
+            role="tab"
+            aria-selected={String(abaEstoque) === String(item.comarca.id)}
+            onClick={() => setAbaEstoque(String(item.comarca.id))}
+            className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
+              String(abaEstoque) === String(item.comarca.id)
+                ? "border-blue-600 text-blue-700"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {item.comarca.nomeComarca}
+          </button>
+        ))}
+      </div>
+
       {/* Tabela de Saldo Atual */}
+      {abaEstoque === "geral" ? (
       <div className="bg-white rounded-lg shadow-md overflow-x-auto border border-slate-200">
         <table className="w-full min-w-[1400px]">
           <thead className="bg-slate-50 border-b border-slate-200">
@@ -1534,6 +1880,85 @@ export default function PainelEstoque() {
           </tbody>
         </table>
       </div>
+      ) : (
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold text-slate-900">
+                {estoqueComarcaSelecionada?.comarca?.nomeComarca || "Obra"}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {estoqueComarcaSelecionada?.comarca?.ordemServico?.numeroOs || "OS não vinculada"}
+                {" · "}Retiradas e devoluções executadas por OR
+              </p>
+            </div>
+            <div className="flex gap-5 text-sm">
+              <div>
+                <span className="block text-xs text-slate-500">Retirado</span>
+                <strong>{formatarNumero(estoqueComarcaSelecionada?.totalRetirado)}</strong>
+              </div>
+              <div>
+                <span className="block text-xs text-slate-500">Devolvido</span>
+                <strong>{formatarNumero(estoqueComarcaSelecionada?.totalDevolvido)}</strong>
+              </div>
+              <div>
+                <span className="block text-xs text-slate-500">Valor líquido</span>
+                <strong>{formatarMoeda(estoqueComarcaSelecionada?.valorLiquido)}</strong>
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-white text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-5 py-3">Material</th>
+                  <th className="px-5 py-3">ORs</th>
+                  <th className="px-5 py-3 text-right">Retirado</th>
+                  <th className="px-5 py-3 text-right">Devolvido</th>
+                  <th className="px-5 py-3 text-right">Retirada líquida</th>
+                  <th className="px-5 py-3 text-right">Valor atribuído</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(estoqueComarcaSelecionada?.itens || []).map((item) => (
+                  <tr key={`${abaEstoque}-${item.material?.id || item.nome}`}>
+                    <td className="px-5 py-3">
+                      <strong className="block text-slate-800">{item.nome}</strong>
+                      <span className="text-xs text-slate-500">
+                        {item.material?.partNumber || "Sem código"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-600">
+                      {item.ordens.join(", ") || "Sem OR"}
+                    </td>
+                    <td className="px-5 py-3 text-right">{formatarNumero(item.retirada)}</td>
+                    <td className="px-5 py-3 text-right">{formatarNumero(item.devolvida)}</td>
+                    <td className="px-5 py-3 text-right font-bold text-slate-900">
+                      {formatarNumero(item.saldoLiquido)}
+                    </td>
+                    <td className="px-5 py-3 text-right font-bold text-slate-900">
+                      {formatarMoeda(
+                        item.saldoLiquido * Number(item.material?.custoMedio || 0),
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {(estoqueComarcaSelecionada?.itens || []).length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="px-5 py-10 text-center text-slate-400">
+                      Esta obra ainda não possui retirada de material executada por OR.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-slate-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+            Retirada líquida representa o que saiu do estoque menos o que retornou. O consumo
+            efetivamente instalado continua sendo conciliado na auditoria e no As-Built.
+          </p>
+        </section>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {indicadoresEstoque.map((indicador) => (
@@ -2276,6 +2701,170 @@ export default function PainelEstoque() {
             <button type="submit" className="rounded-lg bg-cyan-700 px-5 py-2 font-bold text-white">Transferir</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(importacaoPreview)}
+        onClose={() => {
+          if (!importacaoProcessando) {
+            setImportacaoPreview(null);
+            setImportacaoLocalId("");
+          }
+        }}
+        title="Revisar importação do estoque"
+      >
+        {importacaoPreview && (
+          <div className="space-y-5">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <strong className="block text-sm text-blue-900">
+                {importacaoPreview.nomeArquivo}
+              </strong>
+              <span className="text-xs text-blue-700">
+                Fonte: aba {importacaoPreview.abaOrigem} · {importacaoPreview.itens.length} materiais
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded border border-slate-200 p-3">
+                <span className="block text-xs text-slate-500">Novos</span>
+                <strong className="text-lg text-slate-900">
+                  {importacaoPreview.itens.filter((item) => item.acao === "CRIAR").length}
+                </strong>
+              </div>
+              <div className="rounded border border-slate-200 p-3">
+                <span className="block text-xs text-slate-500">Atualizados</span>
+                <strong className="text-lg text-slate-900">
+                  {importacaoPreview.itens.filter((item) => item.acao === "ATUALIZAR").length}
+                </strong>
+              </div>
+              <div className="rounded border border-slate-200 p-3">
+                <span className="block text-xs text-slate-500">Bloqueados</span>
+                <strong className="text-lg text-red-700">
+                  {importacaoPreview.itens.filter((item) => item.erros.length > 0).length}
+                </strong>
+              </div>
+              <div className="rounded border border-slate-200 p-3">
+                <span className="block text-xs text-slate-500">Valor total</span>
+                <strong className="text-base text-slate-900">
+                  {formatarMoeda(importacaoPreview.valorTotal)}
+                </strong>
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-slate-700">
+                Depósito de referência
+              </span>
+              <select
+                value={importacaoLocalId}
+                onChange={(event) => setImportacaoLocalId(event.target.value)}
+                required
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Selecione o depósito</option>
+                {locaisEstoque
+                  .filter((local) => local.ativo !== false)
+                  .map((local) => (
+                    <option key={local.id} value={local.id}>
+                      {local.nome}
+                    </option>
+                  ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">
+                Saldos maiores serão creditados aqui. Reduções serão distribuídas pelos depósitos
+                que possuem saldo, sempre com registro de ajuste.
+              </span>
+            </label>
+
+            {importacaoPreview.abasLegadas.length > 0 && (
+              <Alert
+                type="warning"
+                message={`As abas ${importacaoPreview.abasLegadas.join(", ")} foram reconhecidas como controles antigos de retirada, mas não serão gravadas sem OS e OR válidas.`}
+              />
+            )}
+            {importacaoPreview.avisos.length > 0 && (
+              <Alert
+                type="warning"
+                message={`${importacaoPreview.avisos.length} linhas inválidas foram ignoradas. ${importacaoPreview.avisos.slice(0, 2).join(" ")}`}
+              />
+            )}
+
+            <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[580px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Material</th>
+                    <th className="px-3 py-2 text-right">Atual</th>
+                    <th className="px-3 py-2 text-right">Planilha</th>
+                    <th className="px-3 py-2 text-right">Custo</th>
+                    <th className="px-3 py-2">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {importacaoPreview.itens.map((item) => (
+                    <tr key={normalizarTextoPlanilha(item.nome)}>
+                      <td className="px-3 py-2">
+                        <strong className="block text-slate-800">{item.nome}</strong>
+                        {item.erros.map((erro) => (
+                          <span key={erro} className="block text-[11px] text-red-600">
+                            {erro}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatarNumero(item.saldoAtual)}</td>
+                      <td className="px-3 py-2 text-right font-bold">{formatarNumero(item.quantidade)}</td>
+                      <td className="px-3 py-2 text-right">{formatarMoeda(item.custoUnitario)}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded px-2 py-1 font-bold ${
+                            item.erros.length
+                              ? "bg-red-100 text-red-700"
+                              : item.acao === "CRIAR"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {item.erros.length ? "BLOQUEADO" : item.acao}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="rounded bg-slate-50 p-3 text-xs text-slate-600">
+              A importação substitui o saldo total dos materiais pelo valor da planilha. O arquivo
+              fica identificado pelo hash e não poderá ser importado novamente.
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setImportacaoPreview(null);
+                  setImportacaoLocalId("");
+                }}
+                disabled={importacaoProcessando}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarImportacaoPlanilha}
+                disabled={
+                  importacaoProcessando
+                  || !importacaoLocalId
+                  || importacaoPreview.itens.some((item) => item.erros.length > 0)
+                }
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {importacaoProcessando ? "Importando..." : "Confirmar importação"}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal
