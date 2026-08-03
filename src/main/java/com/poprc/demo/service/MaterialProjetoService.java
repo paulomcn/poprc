@@ -28,10 +28,12 @@ public class MaterialProjetoService {
 
         int saldo = mp.getQuantidadePrevista() - mp.getQuantidadeUtilizada();
         BigDecimal custoMedio = mp.getMaterial() != null ? mp.getMaterial().getCustoMedio() : null;
-        boolean custoDisponivel = custoMedio != null && custoMedio.signum() > 0;
-        BigDecimal custoAcumulado = custoDisponivel
-                ? custoMedio.multiply(BigDecimal.valueOf(mp.getQuantidadeUtilizada()))
-                : null;
+        boolean custoDisponivel = false;
+        BigDecimal custoAcumulado = null;
+        if (custoMedio != null && custoMedio.signum() > 0) {
+            custoDisponivel = true;
+            custoAcumulado = custoMedio.multiply(BigDecimal.valueOf(mp.getQuantidadeUtilizada()));
+        }
 
         return new MetricasMaterialDTO(saldo, custoAcumulado, custoDisponivel);
     }

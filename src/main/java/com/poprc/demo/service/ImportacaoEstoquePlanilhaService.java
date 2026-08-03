@@ -53,30 +53,35 @@ public class ImportacaoEstoquePlanilhaService {
         ImportacaoEstoquePlanilha importacaoExistente =
                 importacaoRepository.findByHashSha256(hash).orElse(null);
         boolean complementacao = importacaoExistente != null;
-        if (complementacao && (request.retiradas() == null || request.retiradas().isEmpty())) {
-            throw new IllegalArgumentException(
-                    "Esta planilha já foi importada. Nenhum saldo foi alterado.");
+        LocalEstoque local;
+        ImportacaoEstoquePlanilha importacao;
+        if (importacaoExistente != null) {
+            if (request.retiradas() == null || request.retiradas().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Esta planilha já foi importada. Nenhum saldo foi alterado.");
+            }
+            if (retiradaImportacaoRepository.existsByImportacaoId(importacaoExistente.getId())) {
+                throw new IllegalArgumentException(
+                        "O estoque e as retiradas desta planilha já foram importados.");
+            }
+            local = importacaoExistente.getLocalEstoque();
+            if (local == null) {
+                throw new IllegalStateException(
+                        "A importação existente não possui um depósito de destino válido.");
+            }
+            importacao = importacaoExistente;
+        } else {
+            local = localEstoqueRepository.findById(request.localEstoqueId())
+                    .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Depósito de destino não encontrado ou inativo."));
+            importacao = novaImportacao(request, hash, responsavel, local);
         }
-        if (complementacao && retiradaImportacaoRepository.existsByImportacaoId(importacaoExistente.getId())) {
-            throw new IllegalArgumentException(
-                    "O estoque e as retiradas desta planilha já foram importados.");
-        }
-
-        LocalEstoque local = complementacao
-                ? importacaoExistente.getLocalEstoque()
-                : localEstoqueRepository.findById(request.localEstoqueId())
-                        .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                        .orElseThrow(() -> new IllegalArgumentException(
-                                "Depósito de destino não encontrado ou inativo."));
 
         Map<String, List<Material>> materiaisPorNome = materialRepository.findAll().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         material -> normalizar(material.getNome())));
         Set<String> nomesRecebidos = new HashSet<>();
-
-        ImportacaoEstoquePlanilha importacao = complementacao
-                ? importacaoExistente
-                : novaImportacao(request, hash, responsavel, local);
 
         int criados = 0;
         int atualizados = 0;
