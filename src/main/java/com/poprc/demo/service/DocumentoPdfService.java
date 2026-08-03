@@ -15,6 +15,7 @@ import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +27,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Base64;
@@ -37,7 +37,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DocumentoPdfService {
 
-    private static final String DIRETORIO_DOCUMENTOS = "rc_uploads/documentos";
+    private static final String DIRETORIO_DOCUMENTOS = "documentos";
     private static final Color AZUL = new Color(8, 57, 112);
     private static final Color AZUL_CLARO = new Color(229, 239, 250);
     private static final Color CINZA = new Color(71, 85, 105);
@@ -69,6 +69,22 @@ public class DocumentoPdfService {
             "Foram registradas as condições de funcionamento dos equipamentos",
             "Computadores, impressoras e telefones foram verificados");
 
+    private static final List<String> RACK_NECESSIDADE = List.of(
+            "HÁ necessidade de substituição do rack da comarca",
+            "NÃO HÁ necessidade de substituição do rack da comarca");
+
+    private static final List<String> RACK_NECESSIDADE_VALORES = List.of(
+            "HA_NECESSIDADE",
+            "NAO_HA_NECESSIDADE");
+
+    private static final List<String> RACK_DISPONIBILIDADE = List.of(
+            "O rack de substituição já está presente na comarca",
+            "Não existe rack de substituição na comarca");
+
+    private static final List<String> RACK_DISPONIBILIDADE_VALORES = List.of(
+            "PRESENTE",
+            "NAO_EXISTE");
+
     private static final List<String> ESTADO_FINAL = List.of(
             "O ambiente foi entregue limpo e organizado",
             "Não houve dano estrutural decorrente da execução",
@@ -91,12 +107,14 @@ public class DocumentoPdfService {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             Document pdf = new Document(PageSize.A4, 42, 42, 72, 48);
             PdfWriter writer = PdfWriter.getInstance(pdf, output);
-            writer.setPageEvent(new CabecalhoRodape(5));
+            writer.setPageEvent(new CabecalhoRodape(6));
             pdf.open();
 
             adicionarCapa(pdf, conteudo, documentoInterno);
             pdf.newPage();
             adicionarObjetoEInicio(pdf, conteudo);
+            pdf.newPage();
+            adicionarRackEInicioConclusao(pdf, conteudo);
             pdf.newPage();
             adicionarConclusaoEAceite(pdf, conteudo);
             pdf.newPage();
@@ -117,7 +135,7 @@ public class DocumentoPdfService {
         titulo.setSpacingAfter(3);
         pdf.add(titulo);
 
-        Paragraph modelo = new Paragraph(texto(conteudo, "modelo", "ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA"), SUBTITULO);
+        Paragraph modelo = new Paragraph(texto(conteudo, "modelo", modeloPadrao(documento)), SUBTITULO);
         modelo.setAlignment(Element.ALIGN_CENTER);
         modelo.setSpacingAfter(15);
         pdf.add(modelo);
@@ -142,6 +160,12 @@ public class DocumentoPdfService {
         adicionarAuditoria(pdf, documento);
     }
 
+    private String modeloPadrao(DocumentoInterno documento) {
+        return "VISTORIA_INICIAL_OS".equals(documento.getTipo()) || "VISTORIA_OS".equals(documento.getTipo())
+                ? "ABERTURA E VISTORIA TÉCNICA INICIAL"
+                : "ENCERRAMENTO, ACEITE E CONFORMIDADE TÉCNICA";
+    }
+
     private void adicionarObjetoEInicio(Document pdf, JsonNode conteudo) throws Exception {
         adicionarTituloSecao(pdf, "1. OBJETO DA ORDEM DE SERVIÇO");
         adicionarTexto(pdf, "Execução de serviços de infraestrutura tecnológica, incluindo (marcar conforme aplicável):");
@@ -154,49 +178,88 @@ public class DocumentoPdfService {
         adicionarChecklist(pdf, conteudo, "estadoInicial", ESTADO_INICIAL.subList(0, 4));
     }
 
-    private void adicionarConclusaoEAceite(Document pdf, JsonNode conteudo) throws Exception {
+    private void adicionarRackEInicioConclusao(Document pdf, JsonNode conteudo) throws Exception {
         adicionarChecklist(pdf, conteudo, "estadoInicial", ESTADO_INICIAL.subList(4, ESTADO_INICIAL.size()));
         adicionarCaixa(pdf, "Anomalias pré-existentes identificadas (se houver)", texto(conteudo, "anomaliasPreExistentes", ""), 72);
         adicionarLinha(pdf, "Protocolo de comunicação (se aplicável)", texto(conteudo, "protocoloComunicacao", ""));
 
-        adicionarTituloSecao(pdf, "3. DECLARAÇÃO DE CONFORMIDADE TÉCNICA - ESTADO FINAL");
-        adicionarChecklist(pdf, conteudo, "estadoFinal", ESTADO_FINAL);
+        adicionarTituloSecao(pdf, "3. NECESSIDADE DE SUBSTITUIÇÃO DO RACK DA COMARCA");
+        adicionarTexto(pdf, "Após a realização da vistoria técnica, declaro que:");
+        adicionarChecklistEscalar(pdf, conteudo, "rackNecessidade",
+                RACK_NECESSIDADE_VALORES, RACK_NECESSIDADE);
+        adicionarChecklistEscalar(pdf, conteudo, "rackDisponibilidade",
+                RACK_DISPONIBILIDADE_VALORES, RACK_DISPONIBILIDADE);
+        adicionarCaixa(pdf, "Observações / Justificativa (quando aplicável)",
+                texto(conteudo, "rackObservacoes", ""), 45);
+        adicionarLinha(pdf, "Local e data", texto(conteudo, "rackLocalData", ""));
+
+        adicionarTituloSecao(pdf, "4. DECLARAÇÃO DE CONFORMIDADE TÉCNICA - ESTADO FINAL");
+        adicionarChecklist(pdf, conteudo, "estadoFinal", ESTADO_FINAL.subList(0, 4));
+    }
+
+    private void adicionarConclusaoEAceite(Document pdf, JsonNode conteudo) throws Exception {
+        adicionarChecklist(pdf, conteudo, "estadoFinal", ESTADO_FINAL.subList(4, ESTADO_FINAL.size()));
         adicionarCaixa(pdf, "Observações finais", texto(conteudo, "observacoesFinais", ""), 48);
 
-        adicionarTituloSecao(pdf, "4. DECLARAÇÃO DE ACEITE E CIÊNCIA");
-        adicionarTexto(pdf, "As partes abaixo identificadas declaram ciência das condições registradas e dos serviços executados, ressalvadas as observações formalmente descritas neste documento.");
+        adicionarTituloSecao(pdf, "5. DECLARAÇÃO DE ACEITE E CIÊNCIA");
+        adicionarTexto(pdf, "O Gerente do Fórum declara que:");
+        adicionarTexto(pdf, "- Acompanhou ou tomou ciência da conclusão dos serviços;");
     }
 
     private void adicionarSalvaguardaEAssinaturas(Document pdf, JsonNode conteudo, DocumentoInterno documento) throws Exception {
-        adicionarTituloSecao(pdf, "4. DECLARAÇÃO DE ACEITE E CIÊNCIA (CONTINUAÇÃO)");
-        adicionarCaixa(pdf, "Ressalvas ou pendências", texto(conteudo, "ressalvas", ""), 90);
+        adicionarTexto(pdf, "- O ambiente foi vistoriado;");
+        adicionarTexto(pdf, "- Os serviços foram executados conforme descrito;");
+        adicionarTexto(pdf, "- Não há pendências aparentes no momento da vistoria.");
+        adicionarCaixa(pdf, "Ressalvas (caso existam)", texto(conteudo, "ressalvas", ""), 62);
 
-        adicionarTituloSecao(pdf, "5. SALVAGUARDA TÉCNICA");
-        adicionarTexto(pdf, "O aceite deste documento não elimina obrigações contratuais, garantias técnicas ou responsabilidades por vícios posteriormente identificados. As evidências e assinaturas digitais ficam vinculadas ao registro eletrônico da OS.");
-        adicionarTexto(pdf, "Qualquer divergência deve ser registrada no campo de ressalvas e tratada pelos responsáveis antes do encerramento definitivo da ordem de serviço.");
+        adicionarTituloSecao(pdf, "6. CLÁUSULA DE RESGUARDO TÉCNICO");
+        adicionarTexto(pdf, "A presente Ordem de Serviço e a vistoria prévia realizada conjuntamente têm como finalidade registrar as condições aparentes dos ambientes e equipamentos existentes antes da execução dos serviços, incluindo computadores, impressoras e telefones.");
+        adicionarTexto(pdf, "Fica estabelecido que eventuais defeitos, falhas, vícios, desgastes naturais, irregularidades ou danos preexistentes não poderão ser imputados à equipe técnica da RC Technology, assim como qualquer dano futuro não poderá ser atribuído à execução dos serviços realizados, salvo mediante comprovação técnica de dolo ou culpa grave.");
+        adicionarTexto(pdf, "A assinatura deste documento pelas partes envolvidas formaliza a ciência, concordância e validação das condições verificadas no ato da vistoria e da conclusão dos serviços executados.");
 
-        adicionarTituloSecao(pdf, "6. ASSINATURAS");
-        PdfPTable tabela = new PdfPTable(2);
+        adicionarTituloSecao(pdf, "7. ASSINATURAS");
+        adicionarTexto(pdf, "Pela RC Technology:");
+        PdfPTable tabela = new PdfPTable(1);
         tabela.setWidthPercentage(100);
-        adicionarAssinatura(tabela, "Técnico responsável", texto(conteudo, "tecnicoResponsavel", documento.getTecnicoAssinadoPor()), documento.getAssinaturaTecnicoBase64());
-        adicionarAssinatura(tabela, "Gestor do projeto RC", texto(conteudo, "gestorProjetoRc", documento.getGestorAssinadoPor()), documento.getAssinaturaGestorBase64());
+        adicionarAssinatura(tabela,
+                "Técnico responsável - CPF: " + valorSimples(texto(conteudo, "cpfTecnico", "")),
+                texto(conteudo, "tecnicoResponsavel", documento.getTecnicoAssinadoPor()),
+                documento.getAssinaturaTecnicoBase64());
         pdf.add(tabela);
     }
 
     private void adicionarResponsavelDesignado(Document pdf, JsonNode conteudo, DocumentoInterno documento) throws Exception {
-        adicionarTituloSecao(pdf, "6. ASSINATURAS (CONTINUAÇÃO)");
+        adicionarTituloSecao(pdf, "7. ASSINATURAS (CONTINUAÇÃO)");
         PdfPTable tabela = new PdfPTable(2);
         tabela.setWidthPercentage(100);
-        adicionarAssinatura(tabela, "Gerente do Fórum / recebedor", texto(conteudo, "recebidoPor", documento.getGerenteAssinadoPor()), documento.getAssinaturaGerenteBase64());
-        adicionarAssinatura(tabela, "Responsável técnico", texto(conteudo, "tecnicoResponsavel", documento.getTecnicoAssinadoPor()), documento.getAssinaturaTecnicoBase64());
+        adicionarAssinatura(tabela, "Gestor do projeto RC Technology",
+                texto(conteudo, "gestorProjetoRc", documento.getGestorAssinadoPor()),
+                documento.getAssinaturaGestorBase64());
+        adicionarAssinatura(tabela,
+                "Gerente do Fórum / Unidade - " + texto(conteudo, "cargoGerente", ""),
+                texto(conteudo, "gerenteForum", documento.getGerenteAssinadoPor()),
+                documento.getAssinaturaGerenteBase64());
         pdf.add(tabela);
+        adicionarLinha(pdf, "Data do aceite", texto(conteudo, "dataGerenteForum", ""));
+        adicionarLinha(pdf, "Carimbo (se aplicável)", texto(conteudo, "carimboGerente", ""));
 
-        adicionarTituloSecao(pdf, "7. DECLARAÇÃO DO RESPONSÁVEL DESIGNADO");
-        adicionarTexto(pdf, "Declaro que recebi acesso às informações desta ordem de serviço, acompanhei ou fui informado sobre sua execução e tive oportunidade de registrar ressalvas.");
+        adicionarTituloSecao(pdf, "RESPONSÁVEL DESIGNADO PARA ACOMPANHAMENTO DA VISTORIA");
+        adicionarTexto(pdf, "(Preencher apenas caso a vistoria não seja acompanhada diretamente pelo(a) Gerente da Unidade)");
         adicionarLinha(pdf, "Nome", texto(conteudo, "responsavelDesignadoNome", ""));
         adicionarLinha(pdf, "Cargo / função", texto(conteudo, "responsavelDesignadoCargo", ""));
-        adicionarCaixa(pdf, "Declaração complementar", texto(conteudo, "declaracaoDesignacao", ""), 80);
-        adicionarAssinaturaUnica(pdf, "Assinatura do responsável designado", texto(conteudo, "responsavelDesignadoNome", ""));
+        adicionarLinha(pdf, "Assinatura", "");
+        adicionarLinha(pdf, "Data", texto(conteudo, "responsavelDesignadoData", ""));
+
+        adicionarTituloSecao(pdf, "DECLARAÇÃO DE DESIGNAÇÃO");
+        String gerenteDesignante = texto(conteudo, "gerenteDesignanteNome",
+                texto(conteudo, "gerenteForum", ""));
+        adicionarTexto(pdf, "Eu, " + valorLinha(gerenteDesignante)
+                + ", na condição de Gerente da Comarca/Unidade, declaro para os devidos fins que designo o(a) "
+                + "servidor(a)/colaborador(a) acima identificado(a) para acompanhar a vistoria prévia e os "
+                + "procedimentos relacionados à execução dos serviços, conferindo-lhe autorização para atuar "
+                + "em minha representação durante todo o processo de inspeção inicial dos ambientes.");
+        adicionarLinha(pdf, "Assinatura do(a) Gerente", "");
+        adicionarLinha(pdf, "Data", texto(conteudo, "declaracaoDesignacaoData", ""));
         adicionarAuditoria(pdf, documento);
     }
 
@@ -225,6 +288,34 @@ public class DocumentoPdfService {
             marcador.setPadding(1);
             linha.addCell(marcador);
             PdfPCell descricao = new PdfPCell(new Phrase(opcao, TEXTO_PEQUENO));
+            descricao.setBorder(Rectangle.NO_BORDER);
+            descricao.setPaddingLeft(5);
+            descricao.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            linha.addCell(descricao);
+            pdf.add(linha);
+        }
+    }
+
+    private void adicionarChecklistEscalar(
+            Document pdf,
+            JsonNode conteudo,
+            String campo,
+            List<String> valores,
+            List<String> opcoes) throws Exception {
+        String selecionado = texto(conteudo, campo, "");
+        for (int indice = 0; indice < opcoes.size(); indice++) {
+            PdfPTable linha = new PdfPTable(new float[] { 0.45f, 9.55f });
+            linha.setWidthPercentage(100);
+            linha.setKeepTogether(true);
+            PdfPCell marcador = new PdfPCell(new Phrase(
+                    valores.get(indice).equals(selecionado) ? "X" : " ",
+                    ROTULO));
+            marcador.setHorizontalAlignment(Element.ALIGN_CENTER);
+            marcador.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            marcador.setFixedHeight(14);
+            marcador.setPadding(1);
+            linha.addCell(marcador);
+            PdfPCell descricao = new PdfPCell(new Phrase(opcoes.get(indice), TEXTO_PEQUENO));
             descricao.setBorder(Rectangle.NO_BORDER);
             descricao.setPaddingLeft(5);
             descricao.setVerticalAlignment(Element.ALIGN_MIDDLE);
@@ -309,15 +400,6 @@ public class DocumentoPdfService {
         tabela.addCell(celula);
     }
 
-    private void adicionarAssinaturaUnica(Document pdf, String papel, String nome) throws Exception {
-        PdfPTable tabela = new PdfPTable(1);
-        tabela.setWidthPercentage(55);
-        tabela.setHorizontalAlignment(Element.ALIGN_LEFT);
-        tabela.setSpacingBefore(12);
-        adicionarAssinatura(tabela, papel, nome, null);
-        pdf.add(tabela);
-    }
-
     private Image imagemAssinatura(String base64) throws Exception {
         if (base64 == null || !base64.contains(",")) {
             return null;
@@ -341,7 +423,7 @@ public class DocumentoPdfService {
         try {
             byte[] bytes = gerarPdf(documento);
             String hash = sha256(bytes);
-            Path pasta = Paths.get(System.getProperty("user.home"), DIRETORIO_DOCUMENTOS)
+            Path pasta = UploadStorage.directory(DIRETORIO_DOCUMENTOS)
                     .toAbsolutePath().normalize();
             Files.createDirectories(pasta);
             String nome = "documento-" + documento.getId() + "-" + hash.substring(0, 16) + ".pdf";
@@ -363,7 +445,7 @@ public class DocumentoPdfService {
         if (documento.getPdfPath() != null && !documento.getPdfPath().isBlank()) {
             try {
                 String nome = Path.of(documento.getPdfPath()).getFileName().toString();
-                Path arquivo = Paths.get(System.getProperty("user.home"), DIRETORIO_DOCUMENTOS, nome)
+                Path arquivo = UploadStorage.directory(DIRETORIO_DOCUMENTOS).resolve(nome)
                         .toAbsolutePath().normalize();
                 if (Files.exists(arquivo)) {
                     byte[] bytes = Files.readAllBytes(arquivo);

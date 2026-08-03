@@ -4,12 +4,17 @@ import com.poprc.demo.model.NotificacaoOperacional;
 import com.poprc.demo.repository.NotificacaoOperacionalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
+import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,6 +33,8 @@ class NotificacaoOperacionalServiceTest {
 
     @Test
     void deveCriarNotificacaoQuandoChaveAindaNaoExiste() {
+        when(repository.findFirstByChaveBaseAndResolvidaEmIsNull("OS_ATRASADA:10"))
+                .thenReturn(Optional.empty());
         when(repository.existsByChave("OS_ATRASADA:10")).thenReturn(false);
 
         boolean criada = service.registrarSeAusente(
@@ -39,13 +46,63 @@ class NotificacaoOperacionalServiceTest {
 
     @Test
     void naoDeveDuplicarNotificacaoComMesmaChave() {
-        when(repository.existsByChave("OS_ATRASADA:10")).thenReturn(true);
+        NotificacaoOperacional ativa = new NotificacaoOperacional();
+        when(repository.findFirstByChaveBaseAndResolvidaEmIsNull("OS_ATRASADA:10"))
+                .thenReturn(Optional.of(ativa));
 
         boolean criada = service.registrarSeAusente(
                 "OS_ATRASADA:10", "OS_ATRASADA", "CRITICA", "OS atrasada", "Prazo vencido", null, null);
 
         assertFalse(criada);
         verify(repository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deveResolverNotificacaoQuandoCondicaoDeixarDeExistir() {
+        NotificacaoOperacional notificacao = new NotificacaoOperacional();
+        notificacao.setChaveBase("ESTOQUE_CRITICO:10:20");
+        when(repository.findAllByTipoAndResolvidaEmIsNull("ESTOQUE_CRITICO"))
+                .thenReturn(java.util.List.of(notificacao));
+
+        int quantidade = service.resolverAusentesDoTipo(
+                "ESTOQUE_CRITICO", Set.of(), "Saldo normalizado.");
+
+        assertEquals(1, quantidade);
+        assertNotNull(notificacao.getResolvidaEm());
+        assertEquals("Saldo normalizado.", notificacao.getMotivoResolucao());
+        verify(repository).saveAll(anyList());
+    }
+
+    @Test
+    void naoDeveResolverNotificacaoQueContinuaAtiva() {
+        NotificacaoOperacional notificacao = new NotificacaoOperacional();
+        notificacao.setChaveBase("ESTOQUE_CRITICO:10:20");
+        when(repository.findAllByTipoAndResolvidaEmIsNull("ESTOQUE_CRITICO"))
+                .thenReturn(java.util.List.of(notificacao));
+
+        int quantidade = service.resolverAusentesDoTipo(
+                "ESTOQUE_CRITICO", Set.of("ESTOQUE_CRITICO:10:20"), "Saldo normalizado.");
+
+        assertEquals(0, quantidade);
+        assertNull(notificacao.getResolvidaEm());
+        verify(repository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void deveCriarNovaOcorrenciaDepoisDaResolucaoAnterior() {
+        String chaveBase = "OS_ATRASADA:10";
+        when(repository.findFirstByChaveBaseAndResolvidaEmIsNull(chaveBase))
+                .thenReturn(Optional.empty());
+        when(repository.existsByChave(chaveBase)).thenReturn(true);
+        ArgumentCaptor<NotificacaoOperacional> captor = ArgumentCaptor.forClass(NotificacaoOperacional.class);
+
+        boolean criada = service.registrarSeAusente(
+                chaveBase, "OS_ATRASADA", "CRITICA", "OS atrasada", "Prazo vencido", null, null);
+
+        assertTrue(criada);
+        verify(repository).save(captor.capture());
+        assertEquals(chaveBase, captor.getValue().getChaveBase());
+        assertTrue(captor.getValue().getChave().startsWith(chaveBase + ":OCORRENCIA:"));
     }
 
     @Test

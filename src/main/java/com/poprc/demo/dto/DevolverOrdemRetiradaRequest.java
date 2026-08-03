@@ -23,5 +23,7 @@ public class DevolverOrdemRetiradaRequest {
     public static class AlocacaoDevolucaoRequest {
         private Long alocacaoId;
         private BigDecimal metragemDevolvida;
+        private String evidenciaFotoBase64;
+        private String evidenciaFotoNome;
     }
 }

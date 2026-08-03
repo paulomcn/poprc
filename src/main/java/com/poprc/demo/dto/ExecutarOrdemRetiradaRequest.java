@@ -17,5 +17,7 @@ public class ExecutarOrdemRetiradaRequest {
         private Long itemId;
         private Long unidadeRastreavelId;
         private BigDecimal metragem;
+        private String evidenciaFotoBase64;
+        private String evidenciaFotoNome;
     }
 }

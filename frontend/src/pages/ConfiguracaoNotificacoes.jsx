@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import api from "../services/api";
 import Alert from "../components/Alert";
+import { useAuth } from "../contexts/AuthContext";
+import { PERMISSOES, temPermissao } from "../security/permissions";
 
 const atividadeFormInicial = {
   nome: "",
@@ -23,6 +25,8 @@ const atividadeFormInicial = {
 };
 
 export default function ConfiguracaoNotificacoes() {
+  const { usuario } = useAuth();
+  const podeGerenciarAtividades = temPermissao(usuario?.perfil, PERMISSOES.ATIVIDADES_GERENCIAR);
   const [settings, setSettings] = useState({
     emailGestor: "",
     whatsappGestor: "",
@@ -38,6 +42,13 @@ export default function ConfiguracaoNotificacoes() {
   const [atividadeEditandoId, setAtividadeEditandoId] = useState(null);
   const [loadingTest, setLoadingTest] = useState(false);
   const [notificacoes, setNotificacoes] = useState([]);
+  const [filtroNotificacoes, setFiltroNotificacoes] = useState("ATIVAS");
+  const [canais, setCanais] = useState({
+    emailHabilitado: false,
+    emailRemetente: "",
+    whatsappHabilitado: false,
+    whatsappDetalhe: "",
+  });
   const [successMessage, setSuccessMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -45,6 +56,7 @@ export default function ConfiguracaoNotificacoes() {
     loadDbSettings();
     loadAtividadesPadrao();
     loadNotificacoes();
+    loadCanais();
   }, []);
 
   const showSuccess = (message) => {
@@ -82,6 +94,15 @@ export default function ConfiguracaoNotificacoes() {
       setNotificacoes(response.data || []);
     } catch (err) {
       showError("Erro ao carregar o histórico de notificações.");
+    }
+  }
+
+  async function loadCanais() {
+    try {
+      const response = await api.get("/alertas/canais");
+      setCanais(response.data);
+    } catch (err) {
+      showError("Erro ao consultar os canais de notificação.");
     }
   }
 
@@ -166,7 +187,13 @@ export default function ConfiguracaoNotificacoes() {
       const response = await api.post("/alertas/disparar-todos");
       const criadas = response.data.notificacoesCriadas || 0;
       const encontradas = response.data.alertasEncontrados || 0;
-      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s) notificação(ões).`);
+      const enviados = response.data.emailsEnviados || 0;
+      const falhos = response.data.emailsFalhos || 0;
+      const resolvidas = response.data.notificacoesResolvidas || 0;
+      const email = response.data.emailHabilitado
+        ? `${enviados} e-mail(s) enviado(s)${falhos ? ` e ${falhos} com falha` : ""}`
+        : "canal de e-mail desabilitado";
+      showSuccess(`Varredura concluída: ${encontradas} alerta(s), ${criadas} nova(s), ${resolvidas} resolvida(s) e ${email}.`);
       await loadNotificacoes();
     } catch (err) {
       showError("Falha ao acionar o motor de alertas.");
@@ -183,6 +210,11 @@ export default function ConfiguracaoNotificacoes() {
       showError("Falha ao marcar a notificação como lida.");
     }
   };
+
+  const notificacoesAtivas = notificacoes.filter((notificacao) => notificacao.ativa !== false);
+  const notificacoesFiltradas = filtroNotificacoes === "ATIVAS"
+    ? notificacoesAtivas
+    : notificacoes;
 
   return (
     <div className="space-y-8">
@@ -212,12 +244,15 @@ export default function ConfiguracaoNotificacoes() {
             Parâmetros de alertas
           </h2>
           <p className="text-sm text-slate-500">
-            Os alertas são registrados no sistema. E-mail e WhatsApp ficam reservados para uma integração externa com credenciais válidas.
+            Os alertas sempre são registrados no sistema. O envio externo ocorre somente quando o canal estiver habilitado no servidor.
           </p>
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <Mail size={18} /> E-mail
+              <span className={`ml-auto text-xs font-bold ${canais.emailHabilitado ? "text-emerald-600" : "text-slate-400"}`}>
+                {canais.emailHabilitado ? "Habilitado" : "Desabilitado"}
+              </span>
             </label>
             <input
               type="email"
@@ -226,19 +261,26 @@ export default function ConfiguracaoNotificacoes() {
               onChange={handleInputChange}
               className="w-full px-4 py-2 border rounded-lg"
             />
+            {canais.emailHabilitado && canais.emailRemetente && (
+              <p className="text-xs text-slate-500">Remetente: {canais.emailRemetente}</p>
+            )}
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <MessageSquare size={18} /> WhatsApp
+              <span className="ml-auto text-xs font-bold text-slate-400">Indisponível</span>
             </label>
             <input
               type="text"
               name="whatsappGestor"
               value={settings.whatsappGestor}
               onChange={handleInputChange}
+              disabled={!canais.whatsappHabilitado}
+              placeholder="Aguardando integração com provedor"
               className="w-full px-4 py-2 border rounded-lg"
             />
+            <p className="text-xs text-slate-500">{canais.whatsappDetalhe}</p>
           </div>
 
           <h2 className="text-lg font-bold text-slate-800 border-b pt-4 pb-3">
@@ -338,17 +380,37 @@ export default function ConfiguracaoNotificacoes() {
             </h2>
             <p className="text-sm text-slate-500 mt-1">Registros persistidos pela varredura de prazos, estoque e contratos.</p>
           </div>
-          <button type="button" onClick={loadNotificacoes} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-            Atualizar
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <button
+                type="button"
+                onClick={() => setFiltroNotificacoes("ATIVAS")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filtroNotificacoes === "ATIVAS" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
+              >
+                Ativas ({notificacoesAtivas.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroNotificacoes("TODAS")}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filtroNotificacoes === "TODAS" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
+              >
+                Histórico ({notificacoes.length})
+              </button>
+            </div>
+            <button type="button" onClick={loadNotificacoes} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+              Atualizar
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2">
-          {notificacoes.length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">Nenhuma notificação registrada.</p>
+          {notificacoesFiltradas.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">
+              {filtroNotificacoes === "ATIVAS" ? "Nenhum alerta ativo." : "Nenhuma notificação registrada."}
+            </p>
           )}
-          {notificacoes.map((notificacao) => (
-            <div key={notificacao.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 ${notificacao.lidaEm ? "border-slate-200 bg-slate-50" : "border-amber-200 bg-amber-50"}`}>
+          {notificacoesFiltradas.map((notificacao) => (
+            <div key={notificacao.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 ${notificacao.ativa === false ? "border-slate-200 bg-white" : notificacao.lidaEm ? "border-slate-200 bg-slate-50" : "border-amber-200 bg-amber-50"}`}>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${notificacao.severidade === "CRITICA" ? "bg-rose-100 text-rose-700" : notificacao.severidade === "ALERTA" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
@@ -356,12 +418,21 @@ export default function ConfiguracaoNotificacoes() {
                   </span>
                   {notificacao.numeroOs && <span className="text-xs font-bold text-slate-600">{notificacao.numeroOs}</span>}
                   {notificacao.destinatarioNome && <span className="text-xs text-slate-500">Para: {notificacao.destinatarioNome}</span>}
+                  <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${notificacao.ativa === false ? "bg-slate-100 text-slate-500" : "bg-emerald-100 text-emerald-700"}`}>
+                    {notificacao.ativa === false ? "Resolvido" : "Ativo"}
+                  </span>
                 </div>
                 <p className="mt-2 font-bold text-slate-800">{notificacao.titulo}</p>
                 <p className="mt-1 text-sm text-slate-600">{notificacao.mensagem}</p>
                 <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
                   <Clock size={13} /> {new Date(notificacao.criadaEm).toLocaleString("pt-BR")}
                 </p>
+                {notificacao.resolvidaEm && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Resolvido em {new Date(notificacao.resolvidaEm).toLocaleString("pt-BR")}
+                    {notificacao.motivoResolucao ? `: ${notificacao.motivoResolucao}` : ""}
+                  </p>
+                )}
               </div>
               {!notificacao.lidaEm && (
                 <button type="button" onClick={() => handleMarcarComoLida(notificacao.id)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50">
@@ -384,7 +455,7 @@ export default function ConfiguracaoNotificacoes() {
               Estas opções aparecem como checklist fechado na página do técnico.
             </p>
           </div>
-          {atividadeEditandoId && (
+          {podeGerenciarAtividades && atividadeEditandoId && (
             <button
               type="button"
               onClick={handleCancelarEdicaoAtividade}
@@ -395,7 +466,7 @@ export default function ConfiguracaoNotificacoes() {
           )}
         </div>
 
-        <form
+        {podeGerenciarAtividades && <form
           onSubmit={handleSalvarAtividadePadrao}
           className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_180px_120px_auto] gap-3 items-end"
         >
@@ -449,7 +520,7 @@ export default function ConfiguracaoNotificacoes() {
             {atividadeEditandoId ? <Save size={18} /> : <Plus size={18} />}
             {atividadeEditandoId ? "Salvar" : "Adicionar"}
           </button>
-        </form>
+        </form>}
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-sm">
@@ -459,13 +530,13 @@ export default function ConfiguracaoNotificacoes() {
                 <th className="text-left px-4 py-3">Categoria</th>
                 <th className="text-left px-4 py-3">Ordem</th>
                 <th className="text-left px-4 py-3">Status</th>
-                <th className="text-right px-4 py-3">Ações</th>
+                {podeGerenciarAtividades && <th className="text-right px-4 py-3">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {atividadesPadrao.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={podeGerenciarAtividades ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
                     Nenhuma atividade padrão cadastrada.
                   </td>
                 </tr>
@@ -493,7 +564,7 @@ export default function ConfiguracaoNotificacoes() {
                       {atividade.ativo ? "Ativa" : "Inativa"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  {podeGerenciarAtividades && <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -516,7 +587,7 @@ export default function ConfiguracaoNotificacoes() {
                         <Power size={16} />
                       </button>
                     </div>
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>

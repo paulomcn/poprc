@@ -1,5 +1,8 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
+import com.poprc.demo.dto.ImportacaoEstoquePlanilhaDetalheDTO;
+import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.repository.MaterialRepository;
@@ -10,6 +13,7 @@ import com.poprc.demo.model.UnidadeEstoqueRastreavel;
 import com.poprc.demo.model.LocalEstoque;
 import com.poprc.demo.model.SaldoMaterialLocal;
 import com.poprc.demo.service.SaldoLocalService;
+import com.poprc.demo.service.ImportacaoEstoquePlanilhaService;
 import lombok.RequiredArgsConstructor;
 import lombok.Data;
 import org.springframework.http.HttpStatus;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.math.BigDecimal;
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/estoque")
@@ -29,6 +34,7 @@ public class EstoqueController {
     private final MovimentacaoEstoqueRepository movimentacaoEstoqueRepository; // INJEÇÃO DIRETA
     private final UnidadeEstoqueRastreavelService unidadeRastreavelService;
     private final SaldoLocalService saldoLocalService;
+    private final ImportacaoEstoquePlanilhaService importacaoPlanilhaService;
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> tratarRequisicaoInvalida(IllegalArgumentException exception) {
@@ -65,6 +71,7 @@ public class EstoqueController {
                 request.getMaterialId(),
                 request.getQuantidade(),
                 request.getMetragem(),
+                request.getCustoUnitarioEntrada(),
                 request.getFuncionarioId(),
                 request.getLocalEstoqueId());
         return ResponseEntity.status(HttpStatus.CREATED).body(movimentacao);
@@ -120,6 +127,32 @@ public class EstoqueController {
     public record EstoqueMinimoLocalRequest(BigDecimal estoqueMinimo) {
     }
 
+    @PostMapping("/importacoes/planilha")
+    public ResponseEntity<ImportacaoEstoquePlanilhaResultadoDTO> importarPlanilha(
+            @RequestBody ImportacaoEstoquePlanilhaRequest request,
+            Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(importacaoPlanilhaService.importar(request, usuario));
+    }
+
+    @GetMapping("/importacoes/planilha")
+    public ResponseEntity<List<ImportacaoEstoquePlanilhaDetalheDTO>> listarImportacoesPlanilha() {
+        return ResponseEntity.ok(importacaoPlanilhaService.listarHistorico());
+    }
+
+    @GetMapping("/importacoes/planilha/{id}")
+    public ResponseEntity<ImportacaoEstoquePlanilhaDetalheDTO> detalharImportacaoPlanilha(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(importacaoPlanilhaService.detalhar(id));
+    }
+
+    @GetMapping("/importacoes/planilha/retiradas")
+    public ResponseEntity<List<ImportacaoEstoquePlanilhaDetalheDTO.Retirada>>
+            listarRetiradasImportadas() {
+        return ResponseEntity.ok(importacaoPlanilhaService.listarRetiradasImportadas());
+    }
+
     @GetMapping("/unidades-rastreaveis")
     public ResponseEntity<List<UnidadeEstoqueRastreavel>> listarUnidadesRastreaveis(
             @RequestParam(required = false) Long materialId) {
@@ -146,6 +179,7 @@ public class EstoqueController {
         private Long materialId;
         private Integer quantidade;
         private BigDecimal metragem;
+        private BigDecimal custoUnitarioEntrada;
         private Long funcionarioId;
         private Long localEstoqueId;
     }

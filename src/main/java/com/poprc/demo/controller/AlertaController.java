@@ -4,9 +4,13 @@ import com.poprc.demo.model.ConfiguracaoNotificacao;
 import com.poprc.demo.model.NotificacaoOperacional;
 import com.poprc.demo.repository.ConfiguracaoNotificacaoRepository;
 import com.poprc.demo.service.AgendadorAlertasService;
+import com.poprc.demo.service.EmailService;
 import com.poprc.demo.service.NotificacaoOperacionalService;
+import com.poprc.demo.security.UsuarioAutenticado;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +23,7 @@ public class AlertaController {
     private final AgendadorAlertasService agendadorAlertasService;
     private final ConfiguracaoNotificacaoRepository configRepository;
     private final NotificacaoOperacionalService notificacaoService;
+    private final EmailService emailService;
 
     /**
      * GET: Busca as configurações do banco. Se não existir, cria o padrão.
@@ -60,17 +65,49 @@ public class AlertaController {
         return ResponseEntity.ok(agendadorAlertasService.executarVarreduraDiariaDeAlertas());
     }
 
+    @GetMapping("/canais")
+    public ResponseEntity<CanaisResponse> obterCanais() {
+        return ResponseEntity.ok(new CanaisResponse(
+                emailService.isHabilitado(),
+                emailService.getRemetente(),
+                false,
+                "Integração com provedor de WhatsApp ainda não configurada."));
+    }
+
     @GetMapping("/notificacoes")
     public ResponseEntity<List<NotificacaoResponse>> listarNotificacoes(
-            @RequestParam(required = false) Long funcionarioId) {
-        return ResponseEntity.ok(notificacaoService.listar(funcionarioId).stream()
+            @RequestParam(required = false) Long funcionarioId,
+            Authentication authentication) {
+        UsuarioAutenticado usuario = usuario(authentication);
+        boolean acessoGlobal = acessoGlobal(usuario);
+        if (!acessoGlobal && funcionarioId != null
+                && !funcionarioId.equals(usuario.getFuncionarioId())) {
+            throw new AccessDeniedException("O usuário só pode consultar as próprias notificações.");
+        }
+        Long destinatario = acessoGlobal ? funcionarioId : usuario.getFuncionarioId();
+        return ResponseEntity.ok(notificacaoService.listar(destinatario).stream()
                 .map(NotificacaoResponse::from)
                 .toList());
     }
 
     @PatchMapping("/notificacoes/{id}/lida")
-    public ResponseEntity<NotificacaoResponse> marcarComoLida(@PathVariable Long id) {
-        return ResponseEntity.ok(NotificacaoResponse.from(notificacaoService.marcarComoLida(id)));
+    public ResponseEntity<NotificacaoResponse> marcarComoLida(
+            @PathVariable Long id,
+            Authentication authentication) {
+        UsuarioAutenticado usuario = usuario(authentication);
+        return ResponseEntity.ok(NotificacaoResponse.from(notificacaoService.marcarComoLida(
+                id, usuario.getFuncionarioId(), acessoGlobal(usuario))));
+    }
+
+    private boolean acessoGlobal(UsuarioAutenticado usuario) {
+        return "ADMIN".equals(usuario.getPerfil()) || "SUPERVISOR_TECNICO".equals(usuario.getPerfil());
+    }
+
+    private UsuarioAutenticado usuario(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UsuarioAutenticado usuario)) {
+            throw new AccessDeniedException("Sessão de funcionário inválida.");
+        }
+        return usuario;
     }
 
     public record NotificacaoResponse(
@@ -81,6 +118,9 @@ public class AlertaController {
             String mensagem,
             LocalDateTime criadaEm,
             LocalDateTime lidaEm,
+            boolean ativa,
+            LocalDateTime resolvidaEm,
+            String motivoResolucao,
             Long ordemServicoId,
             String numeroOs,
             Long destinatarioId,
@@ -94,10 +134,20 @@ public class AlertaController {
                     notificacao.getMensagem(),
                     notificacao.getCriadaEm(),
                     notificacao.getLidaEm(),
+                    notificacao.getResolvidaEm() == null,
+                    notificacao.getResolvidaEm(),
+                    notificacao.getMotivoResolucao(),
                     notificacao.getOrdemServico() == null ? null : notificacao.getOrdemServico().getId(),
                     notificacao.getOrdemServico() == null ? null : notificacao.getOrdemServico().getNumeroOs(),
                     notificacao.getDestinatario() == null ? null : notificacao.getDestinatario().getId(),
                     notificacao.getDestinatario() == null ? null : notificacao.getDestinatario().getNome());
         }
+    }
+
+    public record CanaisResponse(
+            boolean emailHabilitado,
+            String emailRemetente,
+            boolean whatsappHabilitado,
+            String whatsappDetalhe) {
     }
 }

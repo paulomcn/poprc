@@ -11,9 +11,26 @@ import java.math.BigDecimal;
 public class DashboardIndicadoresDTO {
     private Long contratosAtivos;
     private BigDecimal valorTotalContratado;
+    private BigDecimal valorReceitaRegistrada;
     private BigDecimal valorFaturado;
     private BigDecimal valorPendenteFaturamento;
+    private Long faturamentosEmAtraso;
+    private BigDecimal valorFaturamentoEmAtraso;
+    private BigDecimal custosMateriaisConsumidos;
+    private Boolean custosMateriaisEstimados;
+    private BigDecimal resultadoOperacional;
+    private BigDecimal margemOperacional;
+    private BigDecimal valorTotalEstoque;
+    private Long itensEstoqueCritico;
     private Long totalComarcasConcluidas;
     private Long totalComarcasEmAtraso;
     private BigDecimal custosAcumuladosViagem;
+    private Long totalOrdensServico;
+    private Long ordensAbertas;
+    private Long ordensEmExecucao;
+    private Long ordensConcluidas;
+    private Long ordensProximasPrazo;
+    private Long obrasEmVistoria;
+    private Long obrasEmInfraestrutura;
+    private Long obrasEmViradaRede;
 }

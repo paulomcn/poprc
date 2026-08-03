@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class OrdemServicoService {
     private final MaterialItemRepository materialItemRepository;
     private final ComarcaService comarcaService;
     private final OrdemRetiradaPort ordemRetiradaPort;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
 
     @Transactional
     public OrdemServico criar(CriarOrdemServicoRequest request) {
@@ -61,10 +63,16 @@ public class OrdemServicoService {
         }
         validarMateriaisSemDuplicidade(request.getMateriais());
 
-        Contrato contrato = contratoRepository.findById(request.getContratoId())
+        Contrato contrato = contratoRepository.findByIdForUpdate(request.getContratoId())
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado."));
         Projeto projeto = projetoRepository.findById(request.getProjetoId())
                 .orElseThrow(() -> new IllegalArgumentException("Projeto/Comarca alvo não encontrado."));
+        if (Boolean.TRUE.equals(contrato.getArquivado())) {
+            throw new IllegalStateException("Não é possível emitir OS para um contrato arquivado.");
+        }
+        if (Boolean.TRUE.equals(projeto.getArquivado())) {
+            throw new IllegalStateException("Não é possível emitir OS para um projeto arquivado.");
+        }
         if (projeto.getContrato() == null || !contrato.getId().equals(projeto.getContrato().getId())) {
             throw new IllegalArgumentException("O projeto selecionado não pertence ao contrato informado.");
         }
@@ -86,27 +94,50 @@ public class OrdemServicoService {
 
         OrdemServico ordemSalva = ordemServicoRepository.save(ordemServico);
         vincularComarcaEPrepararAuditoria(ordemSalva, request.getMateriais());
-        return ordemSalva;
+        return fluxoOrdemServicoService.iniciar(ordemSalva, "Sistema");
     }
 
+    @Transactional
     public OrdemServico atualizarStatus(Long id, StatusOS novoStatus) {
-        Optional<OrdemServico> ordemOpt = ordemServicoRepository.findById(id);
-        if (ordemOpt.isPresent()) {
-            OrdemServico ordem = ordemOpt.get();
-            ordem.setStatus(novoStatus);
-            return ordemServicoRepository.save(ordem);
+        return atualizarStatus(id, novoStatus, "Operação manual");
+    }
+
+    @Transactional
+    public OrdemServico atualizarStatus(Long id, StatusOS novoStatus, String responsavel) {
+        if (!ordemServicoRepository.existsById(id)) {
+            return null;
         }
-        return null;
+        return fluxoOrdemServicoService.transicionarPorUsuario(id, novoStatus, responsavel);
     }
 
     public OrdemServico atualizarChecklist(Long id, String checklist) {
         Optional<OrdemServico> ordemOpt = ordemServicoRepository.findById(id);
         if (ordemOpt.isPresent()) {
             OrdemServico ordem = ordemOpt.get();
+            validarOrdemAtiva(ordem);
+            if (checklistBloqueado(ordem.getStatus())) {
+                throw new IllegalStateException(
+                        "O checklist não pode ser alterado após o envio da OS para validação.");
+            }
             ordem.setChecklist(checklist);
             return ordemServicoRepository.save(ordem);
         }
         return null;
+    }
+
+    private void validarOrdemAtiva(OrdemServico ordem) {
+        if (Boolean.TRUE.equals(ordem.getArquivado())) {
+            throw new IllegalStateException("A Ordem de Serviço está arquivada e não pode ser alterada.");
+        }
+    }
+
+    private boolean checklistBloqueado(StatusOS status) {
+        return status == StatusOS.AGUARDANDO_VALIDACAO
+                || status == StatusOS.AGUARDANDO_DEVOLUCAO
+                || status == StatusOS.AGUARDANDO_AUDITORIA
+                || status == StatusOS.AGUARDANDO_ENCERRAMENTO
+                || status == StatusOS.CONCLUIDA
+                || status == StatusOS.FATURADA;
     }
 
     @Transactional
@@ -176,7 +207,10 @@ public class OrdemServicoService {
 
     private void cadastrarMateriaisDaOs(Comarca comarca,
             List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisPrevistos) {
-        for (CriarOrdemServicoRequest.MaterialPrevistoRequest materialPrevisto : materiaisPrevistos) {
+        List<CriarOrdemServicoRequest.MaterialPrevistoRequest> materiaisOrdenados = materiaisPrevistos.stream()
+                .sorted(Comparator.comparing(CriarOrdemServicoRequest.MaterialPrevistoRequest::getMaterialId))
+                .toList();
+        for (CriarOrdemServicoRequest.MaterialPrevistoRequest materialPrevisto : materiaisOrdenados) {
             if (materialPrevisto.getMaterialId() == null) {
                 throw new IllegalArgumentException("Todos os materiais previstos precisam estar vinculados ao estoque.");
             }

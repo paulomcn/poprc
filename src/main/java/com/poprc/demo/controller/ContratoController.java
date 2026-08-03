@@ -1,7 +1,9 @@
 package com.poprc.demo.controller;
 
+import com.poprc.demo.dto.ArquivamentoRequest;
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.repository.ContratoRepository;
+import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.specification.ContratoSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
@@ -17,11 +19,11 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/contratos")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class ContratoController {
 
     private final ContratoRepository contratoRepository;
+    private final ArquivamentoService arquivamentoService;
 
     /**
      * POST: Salvar novo contrato recebendo JSON do React
@@ -38,9 +40,16 @@ public class ContratoController {
             response.put("erro", "O campo 'contrato' (número) é obrigatório.");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
+        if (novoContrato.getTipoContratante() == null) {
+            response.put("erro", "O tipo do contratante é obrigatório.");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
 
         if (novoContrato.getStatus() == null || novoContrato.getStatus().isBlank()) {
             novoContrato.setStatus("ATIVO");
+        }
+        if (novoContrato.getArquivado() == null) {
+            novoContrato.setArquivado(false);
         }
 
         Contrato salvo = contratoRepository.save(novoContrato);
@@ -72,6 +81,10 @@ public class ContratoController {
                 .map(contrato -> {
                     contrato.setCliente(dadosAtualizados.getCliente());
                     contrato.setContrato(dadosAtualizados.getContrato());
+                    if (dadosAtualizados.getTipoContratante() == null) {
+                        throw new IllegalArgumentException("O tipo do contratante é obrigatório.");
+                    }
+                    contrato.setTipoContratante(dadosAtualizados.getTipoContratante());
                     contrato.setVigenciaInicio(dadosAtualizados.getVigenciaInicio());
                     contrato.setVigenciaFim(dadosAtualizados.getVigenciaFim());
                     contrato.setValorGlobal(dadosAtualizados.getValorGlobal());
@@ -101,11 +114,30 @@ public class ContratoController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @RequestParam(required = false) BigDecimal valorMin,
-            @RequestParam(required = false) BigDecimal valorMax) {
+            @RequestParam(required = false) BigDecimal valorMax,
+            @RequestParam(defaultValue = "false") boolean incluirArquivados) {
 
         Specification<Contrato> spec = ContratoSpecification.filtrar(
                 cliente, contrato, status, recorrencia, segmento, gestor, dataInicio, dataFim, valorMin, valorMax);
-        return ResponseEntity.ok(contratoRepository.findAll(spec));
+        List<Contrato> contratos = contratoRepository.findAll(spec).stream()
+                .filter(item -> incluirArquivados || !Boolean.TRUE.equals(item.getArquivado()))
+                .toList();
+        return ResponseEntity.ok(contratos);
+    }
+
+    @PatchMapping("/{id}/arquivar")
+    public ResponseEntity<Contrato> arquivar(@PathVariable Long id, @RequestBody ArquivamentoRequest request) {
+        return ResponseEntity.ok(arquivamentoService.arquivarContrato(id, request.getUsuario(), request.getMotivo()));
+    }
+
+    @PatchMapping("/{id}/restaurar")
+    public ResponseEntity<Contrato> restaurar(@PathVariable Long id) {
+        return ResponseEntity.ok(arquivamentoService.restaurarContrato(id));
+    }
+
+    @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
+    public ResponseEntity<Map<String, String>> handleArquivamentoInvalido(RuntimeException ex) {
+        return ResponseEntity.badRequest().body(Map.of("erro", ex.getMessage()));
     }
 
     /**

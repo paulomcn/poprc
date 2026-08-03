@@ -6,6 +6,7 @@ import com.poprc.demo.model.AtividadeComarca;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.repository.AtividadeComarcaRepository;
 import com.poprc.demo.repository.ComarcaRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Safelist;
@@ -16,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -32,7 +32,7 @@ public class AtividadeComarcaService {
     private static final Set<String> EXTENSOES_PERMITIDAS = Set.of("jpg", "jpeg", "png", "webp");
     private static final Set<String> MIME_PERMITIDOS = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/webp");
-    private static final String DIRETORIO_UPLOAD = "rc_uploads/comarcas";
+    private static final String DIRETORIO_UPLOAD = "comarcas";
 
     private final AtividadeComarcaRepository atividadeComarcaRepository;
     private final ComarcaRepository comarcaRepository;
@@ -112,7 +112,7 @@ public class AtividadeComarcaService {
             return new ArrayList<>();
         }
 
-        Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_UPLOAD);
+        Path pastaDestino = UploadStorage.directory(DIRETORIO_UPLOAD);
         try {
             Files.createDirectories(pastaDestino);
         } catch (IOException e) {

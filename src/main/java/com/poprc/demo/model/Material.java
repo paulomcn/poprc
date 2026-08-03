@@ -8,7 +8,10 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,6 +26,9 @@ public class Material {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
 
     @Column(nullable = false)
     private String nome;
@@ -65,5 +71,26 @@ public class Material {
     @Column(precision = 14, scale = 3)
     private BigDecimal estoqueMinimo = BigDecimal.ZERO;
 
+    @Column(name = "custo_medio", precision = 15, scale = 4, nullable = false)
+    private BigDecimal custoMedio = BigDecimal.ZERO;
+
     private String localizacao;
+
+    @Transient
+    public BigDecimal getValorTotalEstoque() {
+        BigDecimal saldo = controlaMetragem()
+                ? valor(metragemDisponivel)
+                : BigDecimal.valueOf(quantidadeDisponivel != null ? quantidadeDisponivel : 0);
+        return valor(custoMedio).multiply(saldo).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean controlaMetragem() {
+        return TipoControleEstoque.METRAGEM.equals(tipoControle)
+                || TipoControleEstoque.BOBINA.equals(tipoControle)
+                || TipoControleEstoque.ROLO.equals(tipoControle);
+    }
+
+    private BigDecimal valor(BigDecimal numero) {
+        return numero != null ? numero : BigDecimal.ZERO;
+    }
 }

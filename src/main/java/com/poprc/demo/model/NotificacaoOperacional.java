@@ -32,6 +32,9 @@ public class NotificacaoOperacional {
     @Column(nullable = false, length = 180)
     private String chave;
 
+    @Column(name = "chave_base", nullable = false, length = 180)
+    private String chaveBase;
+
     @Column(nullable = false, length = 60)
     private String tipo;
 
@@ -49,6 +52,12 @@ public class NotificacaoOperacional {
 
     @Column(name = "lida_em")
     private LocalDateTime lidaEm;
+
+    @Column(name = "resolvida_em")
+    private LocalDateTime resolvidaEm;
+
+    @Column(name = "motivo_resolucao", length = 500)
+    private String motivoResolucao;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ordem_servico_id")

@@ -80,4 +80,16 @@ public class DocumentoInterno {
     private String pdfHash;
 
     private LocalDateTime pdfGeradoEm;
+
+    private LocalDateTime invalidadoEm;
+
+    private String invalidadoPor;
+
+    @Column(columnDefinition = "TEXT")
+    private String motivoInvalidacao;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "documento_origem_id")
+    @JsonIgnoreProperties({ "comarca", "documentoOrigem" })
+    private DocumentoInterno documentoOrigem;
 }

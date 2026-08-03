@@ -6,6 +6,7 @@ import com.poprc.demo.model.Material;
 import com.poprc.demo.model.SaldoMaterialLocal;
 import com.poprc.demo.model.TipoControleEstoque;
 import com.poprc.demo.repository.LocalEstoqueRepository;
+import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.SaldoMaterialLocalRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -22,6 +23,7 @@ public class SaldoLocalService {
 
     private final LocalEstoqueRepository localRepository;
     private final SaldoMaterialLocalRepository saldoRepository;
+    private final MaterialRepository materialRepository;
 
     @Transactional(readOnly = true)
     public List<LocalEstoque> listarLocais() {
@@ -37,7 +39,7 @@ public class SaldoLocalService {
 
     @Transactional
     public SaldoMaterialLocal atualizarEstoqueMinimo(Long saldoId, BigDecimal estoqueMinimo) {
-        SaldoMaterialLocal saldo = saldoRepository.findById(saldoId)
+        SaldoMaterialLocal saldo = saldoRepository.findByIdForUpdate(saldoId)
                 .orElseThrow(() -> new IllegalArgumentException("Saldo local não encontrado."));
         if (estoqueMinimo != null && estoqueMinimo.signum() < 0) {
             throw new IllegalArgumentException("O estoque mínimo local não pode ser negativo.");
@@ -78,6 +80,7 @@ public class SaldoLocalService {
 
     @Transactional
     public LocalEstoque creditar(Material material, Long localId, BigDecimal valorCredito) {
+        material = bloquearMaterial(material);
         LocalEstoque local = localId != null ? buscarLocal(localId) : resolverOuCriar(material.getLocalizacao());
         SaldoMaterialLocal saldo = obterOuCriar(material, local);
         atualizarSaldo(saldo, saldoValor(material, saldo).add(valorCredito));
@@ -92,12 +95,13 @@ public class SaldoLocalService {
 
     @Transactional
     public LocalEstoque debitar(Material material, Long localId, BigDecimal valorDebito) {
+        material = bloquearMaterial(material);
         if (localId == null) {
             throw new IllegalArgumentException("Depósito do ajuste é obrigatório.");
         }
         LocalEstoque local = buscarLocal(localId);
         SaldoMaterialLocal saldo = saldoRepository
-                .findByMaterialIdAndLocalEstoqueId(material.getId(), localId)
+                .findByMaterialIdAndLocalEstoqueIdForUpdate(material.getId(), localId)
                 .orElseThrow(() -> new IllegalArgumentException("Material sem saldo neste depósito."));
         BigDecimal disponivel = saldoValor(material, saldo);
         if (valorDebito.signum() <= 0 || valorDebito.compareTo(disponivel) > 0) {
@@ -110,16 +114,18 @@ public class SaldoLocalService {
 
     @Transactional
     public List<MovimentoLocal> debitarDistribuido(Material material, BigDecimal valorDebito) {
+        Material materialBloqueado = bloquearMaterial(material);
         List<SaldoMaterialLocal> saldos = new ArrayList<>(
-                saldoRepository.findByMaterialIdOrderByLocalEstoqueNomeAsc(material.getId()));
-        saldos.sort(Comparator.comparing((SaldoMaterialLocal saldo) -> saldoValor(material, saldo)).reversed());
+                saldoRepository.findByMaterialIdForUpdate(materialBloqueado.getId()));
+        saldos.sort(Comparator.comparing(
+                (SaldoMaterialLocal saldo) -> saldoValor(materialBloqueado, saldo)).reversed());
         BigDecimal restante = valorDebito;
         List<MovimentoLocal> movimentos = new ArrayList<>();
         for (SaldoMaterialLocal saldo : saldos) {
             if (restante.signum() == 0) {
                 break;
             }
-            BigDecimal disponivel = saldoValor(material, saldo);
+            BigDecimal disponivel = saldoValor(materialBloqueado, saldo);
             BigDecimal debitado = disponivel.min(restante);
             if (debitado.signum() <= 0) {
                 continue;
@@ -130,20 +136,22 @@ public class SaldoLocalService {
             restante = restante.subtract(debitado);
         }
         if (restante.signum() > 0) {
-            throw new SaldoInsuficienteException("Saldo insuficiente nos depósitos para " + material.getNome() + ".");
+            throw new SaldoInsuficienteException(
+                    "Saldo insuficiente nos depósitos para " + materialBloqueado.getNome() + ".");
         }
         return movimentos;
     }
 
     @Transactional
     public TransferenciaLocal transferir(Material material, Long origemId, Long destinoId, BigDecimal valorTransferido) {
+        material = bloquearMaterial(material);
         if (origemId == null || destinoId == null || origemId.equals(destinoId)) {
             throw new IllegalArgumentException("Informe depósitos de origem e destino diferentes.");
         }
         LocalEstoque origem = buscarLocal(origemId);
         LocalEstoque destino = buscarLocal(destinoId);
         SaldoMaterialLocal saldoOrigem = saldoRepository
-                .findByMaterialIdAndLocalEstoqueId(material.getId(), origemId)
+                .findByMaterialIdAndLocalEstoqueIdForUpdate(material.getId(), origemId)
                 .orElseThrow(() -> new IllegalArgumentException("Material sem saldo no depósito de origem."));
         BigDecimal disponivel = saldoValor(material, saldoOrigem);
         if (valorTransferido.signum() <= 0 || valorTransferido.compareTo(disponivel) > 0) {
@@ -180,8 +188,16 @@ public class SaldoLocalService {
     }
 
     private SaldoMaterialLocal obterOuCriar(Material material, LocalEstoque local) {
-        return saldoRepository.findByMaterialIdAndLocalEstoqueId(material.getId(), local.getId())
+        return saldoRepository.findByMaterialIdAndLocalEstoqueIdForUpdate(material.getId(), local.getId())
                 .orElseGet(() -> novoSaldo(material, local));
+    }
+
+    private Material bloquearMaterial(Material material) {
+        if (material == null || material.getId() == null) {
+            throw new IllegalArgumentException("Material é obrigatório para alterar o saldo local.");
+        }
+        return materialRepository.findByIdForUpdate(material.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
     }
 
     private SaldoMaterialLocal novoSaldo(Material material, LocalEstoque local) {

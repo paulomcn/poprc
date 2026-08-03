@@ -7,10 +7,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface NotificacaoOperacionalRepository extends JpaRepository<NotificacaoOperacional, Long> {
 
     boolean existsByChave(String chave);
+
+    Optional<NotificacaoOperacional> findFirstByChaveBaseAndResolvidaEmIsNull(String chaveBase);
+
+    List<NotificacaoOperacional> findAllByTipoAndResolvidaEmIsNull(String tipo);
 
     @EntityGraph(attributePaths = {"ordemServico", "destinatario"})
     List<NotificacaoOperacional> findAllByOrderByCriadaEmDesc();

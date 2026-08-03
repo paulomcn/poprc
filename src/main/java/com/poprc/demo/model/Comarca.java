@@ -3,6 +3,7 @@ package com.poprc.demo.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -68,6 +69,19 @@ public class Comarca {
     private String viradaRedeChecklist;
 
     private Boolean viradaRedeConcluida = false;
+
+    private LocalDateTime dataConclusao;
+
+    private String concluidaPor;
+
+    private Boolean arquivado = false;
+
+    private LocalDateTime arquivadoEm;
+
+    private String arquivadoPor;
+
+    @Column(length = 1000)
+    private String motivoArquivamento;
 
     private Boolean faltouMaterial = false;
 

@@ -3,9 +3,11 @@ package com.poprc.demo.service;
 import com.poprc.demo.model.EvidenciaFoto;
 import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.OrdemServico;
+import com.poprc.demo.model.StatusOS;
 import com.poprc.demo.repository.EvidenciaFotoRepository;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.storage.UploadStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +32,7 @@ public class FotoService {
             "image/jpeg", "jpg",
             "image/jpg", "jpg",
             "image/png", "png");
-    private static final String DIRETORIO_EVIDENCIAS = "rc_uploads/evidencias";
+    private static final String DIRETORIO_EVIDENCIAS = "evidencias";
 
     private final EvidenciaFotoRepository fotoRepository;
     private final FuncionarioRepository funcionarioRepository;
@@ -47,8 +49,9 @@ public class FotoService {
 
         OrdemServico os = osRepository.findById(osId)
                 .orElseThrow(() -> new IllegalArgumentException("Ordem de Serviço não encontrada."));
+        validarOrdemEditavel(os);
 
-        Path pastaDestino = Paths.get(System.getProperty("user.home"), DIRETORIO_EVIDENCIAS)
+        Path pastaDestino = UploadStorage.directory(DIRETORIO_EVIDENCIAS)
                 .toAbsolutePath()
                 .normalize();
         String extensao = EXTENSAO_POR_MIME.get(arquivo.getContentType());
@@ -92,6 +95,89 @@ public class FotoService {
         return fotoRepository.findByOrdemServicoIdOrderByDataUploadDesc(ordemServicoId);
     }
 
+    @Transactional(readOnly = true)
+    public ArquivoEvidencia carregarArquivo(Long evidenciaId) {
+        EvidenciaFoto evidencia = fotoRepository.findById(evidenciaId)
+                .orElseThrow(() -> new IllegalArgumentException("Evidência fotográfica não encontrada."));
+        Path arquivo = resolverArquivoEvidencia(evidencia.getCaminhoArquivo());
+        try {
+            if (!Files.isRegularFile(arquivo)) {
+                throw new IllegalArgumentException("Arquivo da evidência não encontrado.");
+            }
+            String contentType = Files.probeContentType(arquivo);
+            if (contentType == null || !contentType.startsWith("image/")) {
+                contentType = arquivo.getFileName().toString().toLowerCase().endsWith(".png")
+                        ? "image/png"
+                        : "image/jpeg";
+            }
+            return new ArquivoEvidencia(
+                    arquivo.getFileName().toString(),
+                    contentType,
+                    Files.readAllBytes(arquivo));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Não foi possível ler a evidência no servidor.", ex);
+        }
+    }
+
+    @Transactional
+    public void removerEvidencia(Long evidenciaId, Long funcionarioId) {
+        EvidenciaFoto evidencia = fotoRepository.findById(evidenciaId)
+                .orElseThrow(() -> new IllegalArgumentException("Evidência fotográfica não encontrada."));
+
+        if (funcionarioId == null || evidencia.getFuncionario() == null
+                || !funcionarioId.equals(evidencia.getFuncionario().getId())) {
+            throw new IllegalStateException("Apenas o técnico que enviou a evidência pode removê-la.");
+        }
+
+        validarOrdemEditavel(evidencia.getOrdemServico());
+        removerArquivo(evidencia.getCaminhoArquivo());
+        fotoRepository.delete(evidencia);
+    }
+
+    private void validarOrdemEditavel(OrdemServico ordemServico) {
+        if (ordemServico == null) {
+            throw new IllegalArgumentException("Ordem de Serviço não encontrada.");
+        }
+        if (StatusOS.AGUARDANDO_VALIDACAO.equals(ordemServico.getStatus())
+                || StatusOS.AGUARDANDO_DEVOLUCAO.equals(ordemServico.getStatus())
+                || StatusOS.AGUARDANDO_AUDITORIA.equals(ordemServico.getStatus())
+                || StatusOS.AGUARDANDO_ENCERRAMENTO.equals(ordemServico.getStatus())
+                || StatusOS.CONCLUIDA.equals(ordemServico.getStatus())
+                || StatusOS.FATURADA.equals(ordemServico.getStatus())) {
+            throw new IllegalStateException(
+                    "As evidências não podem ser alteradas após o envio da OS para validação.");
+        }
+    }
+
+    private void removerArquivo(String caminhoArquivo) {
+        if (caminhoArquivo == null || !caminhoArquivo.startsWith("/uploads/evidencias/")) {
+            return;
+        }
+        Path arquivo = resolverArquivoEvidencia(caminhoArquivo);
+
+        try {
+            Files.deleteIfExists(arquivo);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Não foi possível remover a evidência do servidor.", ex);
+        }
+    }
+
+    private Path resolverArquivoEvidencia(String caminhoArquivo) {
+        if (caminhoArquivo == null || !caminhoArquivo.startsWith("/uploads/evidencias/")) {
+            throw new IllegalStateException("Caminho de evidência inválido.");
+        }
+        Path pastaDestino = UploadStorage.directory(DIRETORIO_EVIDENCIAS)
+                .toAbsolutePath()
+                .normalize();
+        Path arquivo = pastaDestino.resolve(Paths.get(caminhoArquivo).getFileName().toString())
+                .toAbsolutePath()
+                .normalize();
+        if (!arquivo.startsWith(pastaDestino)) {
+            throw new IllegalStateException("Caminho de evidência inválido.");
+        }
+        return arquivo;
+    }
+
     private void validarArquivo(MultipartFile arquivo) {
         if (arquivo == null || arquivo.isEmpty()) {
             throw new IllegalArgumentException("A foto de evidência é obrigatória.");
@@ -120,5 +206,8 @@ public class FotoService {
         } catch (NullPointerException | NumberFormatException ex) {
             throw new IllegalArgumentException("Coordenada de " + nome + " inválida.");
         }
+    }
+
+    public record ArquivoEvidencia(String nomeArquivo, String contentType, byte[] conteudo) {
     }
 }

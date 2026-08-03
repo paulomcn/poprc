@@ -1,22 +1,25 @@
-import { AlertCircle, CheckCircle, Info } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 
 export default function Alert({ type = 'info', message, onClose }) {
   const bgColor = {
     success: 'bg-green-50 border-green-200',
     error: 'bg-red-50 border-red-200',
     info: 'bg-blue-50 border-blue-200',
+    warning: 'bg-amber-50 border-amber-200',
   }[type]
 
   const icon = {
     success: <CheckCircle className="text-green-600" size={20} />,
     error: <AlertCircle className="text-red-600" size={20} />,
     info: <Info className="text-blue-600" size={20} />,
+    warning: <AlertTriangle className="text-amber-600" size={20} />,
   }[type]
 
   const textColor = {
     success: 'text-green-800',
     error: 'text-red-800',
     info: 'text-blue-800',
+    warning: 'text-amber-800',
   }[type]
 
   return (

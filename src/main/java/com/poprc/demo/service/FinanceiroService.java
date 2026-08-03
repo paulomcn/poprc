@@ -34,9 +34,24 @@ public class FinanceiroService {
     @Transactional
     public PrestacaoContas fecharPrestacaoContas(Long viagemId, BigDecimal custoReal, String pathNota) {
         Viagem viagem = viagemRepository.findById(viagemId)
-                .orElseThrow(() -> new RuntimeException("Viagem não encontrada"));
+                .orElseThrow(() -> new IllegalArgumentException("Viagem não encontrada."));
 
-        String statusCalculado = custoReal.compareTo(viagem.getCustoPlanejado()) > 0 ? "EXCEDIDO" : "DENTRO_DO_ORCAMENTO";
+        if (prestacaoContasRepository.existsByViagemId(viagemId)) {
+            throw new IllegalStateException("Esta viagem já possui uma prestação de contas concluída.");
+        }
+        if (custoReal == null || custoReal.signum() <= 0) {
+            throw new IllegalArgumentException("O custo real deve ser maior que zero.");
+        }
+        if (pathNota == null || pathNota.isBlank()) {
+            throw new IllegalArgumentException("O comprovante da prestação de contas é obrigatório.");
+        }
+
+        BigDecimal custoPlanejado = viagem.getCustoPlanejado() != null
+                ? viagem.getCustoPlanejado()
+                : BigDecimal.ZERO;
+        String statusCalculado = custoReal.compareTo(custoPlanejado) > 0
+                ? "EXCEDIDO"
+                : "DENTRO_DO_ORCAMENTO";
 
         PrestacaoContas prestacao = new PrestacaoContas();
         prestacao.setViagem(viagem);

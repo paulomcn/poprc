@@ -29,6 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashSet;
@@ -53,6 +57,9 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     private final UnidadeEstoqueRastreavelRepository unidadeRastreavelRepository;
     private final OrdemRetiradaAlocacaoRepository alocacaoRepository;
     private final SaldoLocalService saldoLocalService;
+    private final FluxoOrdemServicoService fluxoOrdemServicoService;
+    private final OrdemRetiradaPdfService ordemRetiradaPdfService;
+    private final EvidenciaMetragemOrService evidenciaMetragemOrService;
 
     @Transactional
     public OrdemRetirada criarParaOrdemServico(OrdemServico ordemServico, Comarca comarca, String geradoPor) {
@@ -62,6 +69,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         if (comarca == null || comarca.getMateriais() == null || comarca.getMateriais().isEmpty()) {
             throw new IllegalArgumentException("A OS precisa ter materiais previstos para gerar uma OR.");
         }
+        ordemServico = ordemServicoRepository.findByIdForUpdate(ordemServico.getId())
+                .orElseThrow(() -> new IllegalArgumentException("OS não encontrada."));
 
         OrdemRetirada ordemRetirada = new OrdemRetirada();
         ordemRetirada.setNumeroOr(gerarNumeroOr(ordemServico));
@@ -89,13 +98,18 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             throw new IllegalArgumentException("A OR precisa ter ao menos um item vinculado ao estoque.");
         }
 
-        return ordemRetiradaRepository.save(ordemRetirada);
+        OrdemRetirada salva = ordemRetiradaRepository.saveAndFlush(ordemRetirada);
+        ordemRetiradaPdfService.arquivar(salva, OrdemRetiradaPdfService.FASE_GERACAO);
+        return salva;
     }
 
     @Transactional
     public OrdemRetirada criarAdicionalParaOs(Long ordemServicoId, String geradoPor) {
-        OrdemServico ordemServico = ordemServicoRepository.findById(ordemServicoId)
+        OrdemServico ordemServico = ordemServicoRepository.findByIdForUpdate(ordemServicoId)
                 .orElseThrow(() -> new IllegalArgumentException("OS não encontrada."));
+        if (Boolean.TRUE.equals(ordemServico.getArquivado())) {
+            throw new IllegalStateException("Não é possível gerar Ordem de Retirada para uma OS arquivada.");
+        }
         if (ordemRetiradaRepository.existsByOrdemServicoIdAndStatusIn(
                 ordemServicoId, List.of(STATUS_GERADA, STATUS_RETIRADA))) {
             throw new IllegalStateException(
@@ -134,24 +148,36 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         validarTexto(request.getLevadoPor(), "Informe quem levou os itens.");
         validarTexto(request.getAssinaturaConferenteBase64(), "Assinatura de quem conferiu é obrigatória.");
         validarTexto(request.getAssinaturaRetiranteBase64(), "Assinatura de quem levou é obrigatória.");
+        fluxoOrdemServicoService.validarRetiradaPermitida(ordemRetirada.getOrdemServico().getId());
 
         Map<Long, List<ExecutarOrdemRetiradaRequest.AlocacaoRequest>> alocacoesPorItem = request.getAlocacoes() == null
                 ? Map.of()
                 : request.getAlocacoes().stream()
                         .filter(alocacao -> alocacao.getItemId() != null)
                         .collect(Collectors.groupingBy(ExecutarOrdemRetiradaRequest.AlocacaoRequest::getItemId));
+        Map<ExecutarOrdemRetiradaRequest.AlocacaoRequest, EvidenciaMetragemOrService.EvidenciaPreparada>
+                evidenciasRetirada = new IdentityHashMap<>();
+        alocacoesPorItem.values().stream()
+                .flatMap(List::stream)
+                .forEach(alocacao -> evidenciasRetirada.put(
+                        alocacao,
+                        evidenciaMetragemOrService.preparar(
+                                alocacao.getEvidenciaFotoBase64(),
+                                alocacao.getEvidenciaFotoNome())));
 
         ordemRetirada.setConferidoPor(request.getConferidoPor().trim());
         ordemRetirada.setLevadoPor(request.getLevadoPor().trim());
 
         LocalDateTime agora = LocalDateTime.now();
-        for (OrdemRetiradaItem item : ordemRetirada.getItens()) {
-            Material material = item.getMaterial();
+        for (OrdemRetiradaItem item : itensOrdenados(ordemRetirada)) {
+            Material material = bloquearMaterial(item.getMaterial());
+            item.setMaterial(material);
             BigDecimal quantidade = valor(item.getQuantidadeSolicitada());
             String origemLocal = null;
             if (rastreavel(material)) {
                 retirarDeUnidadesRastreaveis(ordemRetirada, item, quantidade,
-                        alocacoesPorItem.getOrDefault(item.getId(), List.of()), request);
+                        alocacoesPorItem.getOrDefault(item.getId(), List.of()), request,
+                        evidenciasRetirada);
             } else if (controlaMetragem(material)) {
                 BigDecimal disponivel = valor(material.getMetragemDisponivel());
                 if (quantidade.compareTo(disponivel) > 0) {
@@ -200,7 +226,11 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         ordemRetirada.setLevadoPor(request.getLevadoPor().trim());
         ordemRetirada.setAssinaturaConferenteBase64(request.getAssinaturaConferenteBase64());
         ordemRetirada.setAssinaturaRetiranteBase64(request.getAssinaturaRetiranteBase64());
-        return ordemRetiradaRepository.save(ordemRetirada);
+        OrdemRetirada salva = ordemRetiradaRepository.save(ordemRetirada);
+        fluxoOrdemServicoService.registrarRetirada(
+                salva.getOrdemServico().getId(), request.getLevadoPor());
+        ordemRetiradaPdfService.arquivar(salva, OrdemRetiradaPdfService.FASE_RETIRADA);
+        return salva;
     }
 
     @Transactional
@@ -229,13 +259,18 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                                 DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest::getAlocacaoId,
                                 alocacao -> alocacao,
                                 (a, b) -> b));
+        Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> evidenciasDevolucao =
+                prepararEvidenciasDevolucao(ordemRetirada, devolucoesAlocacao);
         ordemRetirada.setDevolvidoPor(request.getDevolvidoPor().trim());
         ordemRetirada.setRecebidoPor(request.getRecebidoPor().trim());
 
-        for (OrdemRetiradaItem item : ordemRetirada.getItens()) {
+        for (OrdemRetiradaItem item : itensOrdenados(ordemRetirada)) {
+            Material materialBloqueado = bloquearMaterial(item.getMaterial());
+            item.setMaterial(materialBloqueado);
             BigDecimal retirada = valor(item.getQuantidadeRetirada());
             BigDecimal devolvida = rastreavel(item.getMaterial())
-                    ? devolverUnidadesRastreaveis(ordemRetirada, item, devolucoesAlocacao, request)
+                    ? devolverUnidadesRastreaveis(
+                            ordemRetirada, item, devolucoesAlocacao, request, evidenciasDevolucao)
                     : valor(devolucoes.getOrDefault(item.getId(),
                             new DevolverOrdemRetiradaRequest.ItemDevolucaoRequest()).getQuantidadeDevolvida());
             if (devolvida.signum() < 0 || devolvida.compareTo(retirada) > 0) {
@@ -271,12 +306,30 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         ordemRetirada.setDevolvidoPor(request.getDevolvidoPor().trim());
         ordemRetirada.setRecebidoPor(request.getRecebidoPor().trim());
         ordemRetirada.setAssinaturaRecebimentoBase64(request.getAssinaturaRecebimentoBase64());
-        return ordemRetiradaRepository.save(ordemRetirada);
+        OrdemRetirada salva = ordemRetiradaRepository.save(ordemRetirada);
+        fluxoOrdemServicoService.registrarDevolucao(
+                salva.getOrdemServico().getId(), request.getRecebidoPor());
+        ordemRetiradaPdfService.arquivar(salva, OrdemRetiradaPdfService.FASE_DEVOLUCAO);
+        return salva;
     }
 
     private OrdemRetirada buscar(Long id) {
-        return ordemRetiradaRepository.findById(id)
+        return ordemRetiradaRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Ordem de Retirada não encontrada."));
+    }
+
+    private List<OrdemRetiradaItem> itensOrdenados(OrdemRetirada ordemRetirada) {
+        return ordemRetirada.getItens().stream()
+                .sorted(Comparator.comparing(item -> item.getMaterial().getId()))
+                .toList();
+    }
+
+    private Material bloquearMaterial(Material material) {
+        if (material == null || material.getId() == null) {
+            throw new IllegalArgumentException("Material da OR não encontrado.");
+        }
+        return materialRepository.findByIdForUpdate(material.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Material da OR não encontrado."));
     }
 
     private String gerarNumeroOr(OrdemServico ordemServico) {
@@ -333,12 +386,44 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         movimentacao.setEstoqueDestino(destinoOverride != null ? destinoOverride : TipoMovimentacao.RETIRADA_OR.equals(tipo)
                 ? ordemRetirada.getComarca() != null ? ordemRetirada.getComarca().getNomeComarca() : null
                 : item.getMaterial().getLocalizacao());
+        CustoMovimentacao custo = resolverCustoMovimentacao(ordemRetirada, item, tipo, unidadeRastreavel);
+        movimentacao.setCustoUnitario(custo.unitario());
+        movimentacao.setValorTotalMovimentacao(custo.unitario().multiply(quantidade)
+                .setScale(4, RoundingMode.HALF_UP));
+        movimentacao.setCustoEstimado(custo.estimado());
         movimentacaoEstoqueRepository.save(movimentacao);
+    }
+
+    private CustoMovimentacao resolverCustoMovimentacao(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
+            TipoMovimentacao tipo, UnidadeEstoqueRastreavel unidadeRastreavel) {
+        if (TipoMovimentacao.DEVOLUCAO_OR.equals(tipo)) {
+            List<MovimentacaoEstoque> retiradas = movimentacaoEstoqueRepository
+                    .findByOrdemRetiradaIdAndMaterialIdAndTipoOrderByDataMovimentacaoAsc(
+                            ordemRetirada.getId(), item.getMaterial().getId(), TipoMovimentacao.RETIRADA_OR);
+            return retiradas.stream()
+                    .filter(movimentacao -> unidadeRastreavel == null
+                            || movimentacao.getUnidadeRastreavel() != null
+                                    && unidadeRastreavel.getId().equals(movimentacao.getUnidadeRastreavel().getId()))
+                    .filter(movimentacao -> movimentacao.getCustoUnitario() != null
+                            && movimentacao.getCustoUnitario().signum() >= 0)
+                    .map(movimentacao -> new CustoMovimentacao(
+                            movimentacao.getCustoUnitario(),
+                            Boolean.TRUE.equals(movimentacao.getCustoEstimado())))
+                    .findFirst()
+                    .orElseGet(() -> new CustoMovimentacao(
+                            valor(item.getMaterial().getCustoMedio()), true));
+        }
+        return new CustoMovimentacao(valor(item.getMaterial().getCustoMedio()), false);
+    }
+
+    private record CustoMovimentacao(BigDecimal unitario, boolean estimado) {
     }
 
     private void retirarDeUnidadesRastreaveis(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
             BigDecimal quantidadeSolicitada, List<ExecutarOrdemRetiradaRequest.AlocacaoRequest> requisicoes,
-            ExecutarOrdemRetiradaRequest request) {
+            ExecutarOrdemRetiradaRequest request,
+            Map<ExecutarOrdemRetiradaRequest.AlocacaoRequest,
+                    EvidenciaMetragemOrService.EvidenciaPreparada> evidencias) {
         if (requisicoes.isEmpty()) {
             throw new IllegalArgumentException("Selecione ao menos uma bobina/rolo para " + item.getNomeMaterial() + ".");
         }
@@ -360,7 +445,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                 throw new IllegalArgumentException("A mesma bobina/rolo não pode ser repetida no item.");
             }
             UnidadeEstoqueRastreavel unidade = unidadeRastreavelRepository
-                    .findById(requisicao.getUnidadeRastreavelId())
+                    .findByIdForUpdate(requisicao.getUnidadeRastreavelId())
                     .orElseThrow(() -> new IllegalArgumentException("Bobina/rolo não encontrado."));
             if (!unidade.getMaterial().getId().equals(item.getMaterial().getId())) {
                 throw new IllegalArgumentException("A bobina/rolo " + unidade.getCodigo() + " pertence a outro material.");
@@ -387,6 +472,12 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             alocacao.setUnidadeRastreavel(unidade);
             alocacao.setMetragemRetirada(metragem);
             alocacao.setMetragemDevolvida(BigDecimal.ZERO);
+            EvidenciaMetragemOrService.EvidenciaSalva evidencia =
+                    evidenciaMetragemOrService.salvar(evidencias.get(requisicao));
+            alocacao.setEvidenciaRetiradaPath(evidencia.caminho());
+            alocacao.setEvidenciaRetiradaNome(evidencia.nomeOriginal());
+            alocacao.setEvidenciaRetiradaData(LocalDateTime.now());
+            alocacao.setMetragemRestanteAposRetirada(unidade.getMetragemAtual());
             item.getAlocacoes().add(alocacaoRepository.save(alocacao));
 
             registrarMovimentacao(ordemRetirada, item, metragem, TipoMovimentacao.RETIRADA_OR,
@@ -402,26 +493,41 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
 
     private BigDecimal devolverUnidadesRastreaveis(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
             Map<Long, DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest> devolucoes,
-            DevolverOrdemRetiradaRequest request) {
+            DevolverOrdemRetiradaRequest request,
+            Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> evidencias) {
         BigDecimal totalDevolvido = BigDecimal.ZERO;
         for (OrdemRetiradaAlocacao alocacao : item.getAlocacoes()) {
+            UnidadeEstoqueRastreavel unidade = unidadeRastreavelRepository
+                    .findByIdForUpdate(alocacao.getUnidadeRastreavel().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Bobina/rolo não encontrado."));
+            alocacao.setUnidadeRastreavel(unidade);
             BigDecimal devolvida = valor(devolucoes.getOrDefault(alocacao.getId(),
                     new DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest()).getMetragemDevolvida());
             BigDecimal saldoRetirado = valor(alocacao.getMetragemRetirada())
                     .subtract(valor(alocacao.getMetragemDevolvida()));
             if (devolvida.signum() < 0 || devolvida.compareTo(saldoRetirado) > 0) {
                 throw new IllegalArgumentException("Metragem devolvida inválida para "
-                        + alocacao.getUnidadeRastreavel().getCodigo() + ".");
+                        + unidade.getCodigo() + ".");
             }
+            EvidenciaMetragemOrService.EvidenciaSalva evidencia =
+                    evidenciaMetragemOrService.salvar(evidencias.get(alocacao.getId()));
             if (devolvida.signum() == 0) {
+                alocacao.setEvidenciaDevolucaoPath(evidencia.caminho());
+                alocacao.setEvidenciaDevolucaoNome(evidencia.nomeOriginal());
+                alocacao.setEvidenciaDevolucaoData(LocalDateTime.now());
+                alocacao.setMetragemRestanteAposDevolucao(unidade.getMetragemAtual());
+                alocacaoRepository.save(alocacao);
                 continue;
             }
 
-            UnidadeEstoqueRastreavel unidade = alocacao.getUnidadeRastreavel();
             unidade.setMetragemAtual(unidade.getMetragemAtual().add(devolvida));
             unidade.setStatus(StatusUnidadeRastreavel.DEVOLVIDA_ESTOQUE);
             unidadeRastreavelRepository.save(unidade);
             alocacao.setMetragemDevolvida(valor(alocacao.getMetragemDevolvida()).add(devolvida));
+            alocacao.setEvidenciaDevolucaoPath(evidencia.caminho());
+            alocacao.setEvidenciaDevolucaoNome(evidencia.nomeOriginal());
+            alocacao.setEvidenciaDevolucaoData(LocalDateTime.now());
+            alocacao.setMetragemRestanteAposDevolucao(unidade.getMetragemAtual());
             alocacaoRepository.save(alocacao);
 
             item.getMaterial().setMetragemDisponivel(
@@ -435,6 +541,49 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         }
         materialRepository.save(item.getMaterial());
         return totalDevolvido;
+    }
+
+    private Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> prepararEvidenciasDevolucao(
+            OrdemRetirada ordemRetirada,
+            Map<Long, DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest> devolucoes) {
+        Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> preparadas = new HashMap<>();
+        ordemRetirada.getItens().stream()
+                .flatMap(item -> item.getAlocacoes().stream())
+                .forEach(alocacao -> {
+                    DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest requisicao =
+                            devolucoes.get(alocacao.getId());
+                    if (requisicao == null) {
+                        throw new IllegalArgumentException(
+                                "Informe a devolução e a foto da bobina/rolo "
+                                        + alocacao.getUnidadeRastreavel().getCodigo() + ".");
+                    }
+                    preparadas.put(
+                            alocacao.getId(),
+                            evidenciaMetragemOrService.preparar(
+                                    requisicao.getEvidenciaFotoBase64(),
+                                    requisicao.getEvidenciaFotoNome()));
+                });
+        return preparadas;
+    }
+
+    @Transactional(readOnly = true)
+    public EvidenciaMetragemOrService.ArquivoEvidencia carregarEvidenciaMetragem(
+            Long ordemRetiradaId, Long alocacaoId, String fase) {
+        OrdemRetiradaAlocacao alocacao = alocacaoRepository.findById(alocacaoId)
+                .orElseThrow(() -> new IllegalArgumentException("Alocação de bobina/rolo não encontrada."));
+        Long ordemDaAlocacao = alocacao.getItem().getOrdemRetirada().getId();
+        if (!ordemRetiradaId.equals(ordemDaAlocacao)) {
+            throw new IllegalArgumentException("A evidência não pertence à Ordem de Retirada informada.");
+        }
+        if ("retirada".equalsIgnoreCase(fase)) {
+            return evidenciaMetragemOrService.carregar(
+                    alocacao.getEvidenciaRetiradaPath(), alocacao.getEvidenciaRetiradaNome());
+        }
+        if ("devolucao".equalsIgnoreCase(fase)) {
+            return evidenciaMetragemOrService.carregar(
+                    alocacao.getEvidenciaDevolucaoPath(), alocacao.getEvidenciaDevolucaoNome());
+        }
+        throw new IllegalArgumentException("Fase de evidência inválida.");
     }
 
     private void validarTexto(String valor, String mensagem) {

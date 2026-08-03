@@ -10,6 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 
 @Service
 @RequiredArgsConstructor
@@ -26,12 +29,15 @@ public class NotificacaoOperacionalService {
             String mensagem,
             OrdemServico ordemServico,
             Funcionario destinatario) {
-        if (repository.existsByChave(chave)) {
+        if (repository.findFirstByChaveBaseAndResolvidaEmIsNull(chave).isPresent()) {
             return false;
         }
 
         NotificacaoOperacional notificacao = new NotificacaoOperacional();
-        notificacao.setChave(chave);
+        notificacao.setChaveBase(chave);
+        notificacao.setChave(repository.existsByChave(chave)
+                ? chave + ":OCORRENCIA:" + UUID.randomUUID()
+                : chave);
         notificacao.setTipo(tipo);
         notificacao.setSeveridade(severidade);
         notificacao.setTitulo(titulo);
@@ -43,6 +49,22 @@ public class NotificacaoOperacionalService {
         return true;
     }
 
+    @Transactional
+    public int resolverAusentesDoTipo(String tipo, Set<String> chavesAtivas, String motivo) {
+        Set<String> chavesNormalizadas = chavesAtivas == null ? Set.of() : Set.copyOf(chavesAtivas);
+        List<NotificacaoOperacional> resolvidas = repository.findAllByTipoAndResolvidaEmIsNull(tipo).stream()
+                .filter(notificacao -> !chavesNormalizadas.contains(notificacao.getChaveBase()))
+                .peek(notificacao -> {
+                    notificacao.setResolvidaEm(LocalDateTime.now());
+                    notificacao.setMotivoResolucao(motivo);
+                })
+                .toList();
+        if (!resolvidas.isEmpty()) {
+            repository.saveAll(resolvidas);
+        }
+        return resolvidas.size();
+    }
+
     @Transactional(readOnly = true)
     public List<NotificacaoOperacional> listar(Long funcionarioId) {
         return funcionarioId == null
@@ -52,8 +74,20 @@ public class NotificacaoOperacionalService {
 
     @Transactional
     public NotificacaoOperacional marcarComoLida(Long id) {
+        return marcarComoLida(id, null, true);
+    }
+
+    @Transactional
+    public NotificacaoOperacional marcarComoLida(
+            Long id,
+            Long funcionarioId,
+            boolean acessoGlobal) {
         NotificacaoOperacional notificacao = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Notificação não encontrada."));
+        if (!acessoGlobal && notificacao.getDestinatario() != null
+                && !notificacao.getDestinatario().getId().equals(funcionarioId)) {
+            throw new AccessDeniedException("O usuário só pode alterar as próprias notificações.");
+        }
         if (notificacao.getLidaEm() == null) {
             notificacao.setLidaEm(LocalDateTime.now());
         }

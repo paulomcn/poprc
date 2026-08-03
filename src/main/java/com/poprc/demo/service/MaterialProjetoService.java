@@ -27,8 +27,15 @@ public class MaterialProjetoService {
                 .orElseThrow(() -> new RuntimeException("Vínculo de Material e Projeto não encontrado"));
 
         int saldo = mp.getQuantidadePrevista() - mp.getQuantidadeUtilizada();
-        
-        return new MetricasMaterialDTO(saldo, null, false);
+        BigDecimal custoMedio = mp.getMaterial() != null ? mp.getMaterial().getCustoMedio() : null;
+        boolean custoDisponivel = false;
+        BigDecimal custoAcumulado = null;
+        if (custoMedio != null && custoMedio.signum() > 0) {
+            custoDisponivel = true;
+            custoAcumulado = custoMedio.multiply(BigDecimal.valueOf(mp.getQuantidadeUtilizada()));
+        }
+
+        return new MetricasMaterialDTO(saldo, custoAcumulado, custoDisponivel);
     }
 
     // DTO interno para devolver as métricas limpas pro Controller

@@ -3,6 +3,7 @@ package com.poprc.demo.model;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -27,6 +28,10 @@ public class Contrato {
 
     private String contrato;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_contratante", nullable = false)
+    private TipoContratante tipoContratante = TipoContratante.SETOR_PUBLICO;
+
     private LocalDate vigenciaInicio;
 
     private LocalDate vigenciaFim;
@@ -45,6 +50,15 @@ public class Contrato {
     @Column(length = 2000)
     private String escopo;
     private String status = "ATIVO";
+
+    private Boolean arquivado = false;
+
+    private LocalDateTime arquivadoEm;
+
+    private String arquivadoPor;
+
+    @Column(length = 1000)
+    private String motivoArquivamento;
 
     @OneToMany(mappedBy = "contrato", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnoreProperties("contrato") // Evita recursão infinita no JSON

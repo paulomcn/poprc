@@ -1,6 +1,7 @@
 package com.poprc.demo.specification;
 
 import com.poprc.demo.model.Contrato;
+import com.poprc.demo.model.TipoContratante;
 import org.springframework.data.jpa.domain.Specification;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
@@ -30,15 +31,11 @@ public class ContratoSpecification {
             if (status != null && !status.isEmpty()) {
                 predicates.add(root.get("status").in(status));
             }
-            // 💥 Filtros de Recorrência e Segmento
-            if (recorrencia != null && !recorrencia.isBlank()) {
-                predicates.add(cb.equal(root.get("recorrencia"), recorrencia));
-            }
             if (segmento != null && !segmento.isBlank()) {
-                predicates.add(cb.equal(root.get("segmento"), segmento));
-            }
-            if (gestor != null && !gestor.isBlank()) {
-                predicates.add(cb.equal(root.get("gestorResponsavel"), gestor));
+                TipoContratante tipo = "PUBLICO".equalsIgnoreCase(segmento)
+                        ? TipoContratante.SETOR_PUBLICO
+                        : TipoContratante.SETOR_PRIVADO;
+                predicates.add(cb.equal(root.get("tipoContratante"), tipo));
             }
 
             // Intervalos e Datas

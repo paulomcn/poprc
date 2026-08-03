@@ -3,16 +3,26 @@ import { Calendar, MapPin, ChevronDown, AlertCircle, CheckCircle, Clock } from '
 
 const statusIconMap = {
   ABERTA: <AlertCircle className="w-4 h-4 text-blue-600" />,
+  AGUARDANDO_VISTORIA: <Clock className="w-4 h-4 text-blue-600" />,
+  AGUARDANDO_RETIRADA: <Clock className="w-4 h-4 text-cyan-600" />,
   EM_EXECUCAO: <Clock className="w-4 h-4 text-yellow-600" />,
   AGUARDANDO_VALIDACAO: <AlertCircle className="w-4 h-4 text-purple-600" />,
+  AGUARDANDO_DEVOLUCAO: <Clock className="w-4 h-4 text-orange-600" />,
+  AGUARDANDO_AUDITORIA: <Clock className="w-4 h-4 text-violet-600" />,
+  AGUARDANDO_ENCERRAMENTO: <Clock className="w-4 h-4 text-teal-600" />,
   CONCLUIDA: <CheckCircle className="w-4 h-4 text-green-600" />,
   FATURADA: <CheckCircle className="w-4 h-4 text-gray-600" />,
 }
 
 const statusLabelMap = {
   ABERTA: 'Aberta',
+  AGUARDANDO_VISTORIA: 'Aguardando vistoria',
+  AGUARDANDO_RETIRADA: 'Aguardando retirada',
   EM_EXECUCAO: 'Em Execução',
   AGUARDANDO_VALIDACAO: 'Aguardando',
+  AGUARDANDO_DEVOLUCAO: 'Aguardando devolução',
+  AGUARDANDO_AUDITORIA: 'Aguardando auditoria',
+  AGUARDANDO_ENCERRAMENTO: 'Aguardando encerramento',
   CONCLUIDA: 'Concluída',
   FATURADA: 'Faturada',
 }

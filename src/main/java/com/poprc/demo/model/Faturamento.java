@@ -20,7 +20,7 @@ public class Faturamento {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "servicos_executados", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "servicos_executados", columnDefinition = "TEXT")
     private String servicosExecutados;
 
     @Column(name = "valor_medicao", nullable = false)
@@ -36,8 +36,42 @@ public class Faturamento {
     @Column(name = "data_vencimento")
     private LocalDate dataVencimento;
 
+    @Column(name = "data_emissao")
+    private LocalDate dataEmissao;
+
+    @Column(name = "data_pagamento")
+    private LocalDate dataPagamento;
+
+    @Column(name = "competencia_fiscal")
+    private LocalDate competenciaFiscal;
+
+    @Column(name = "aliquota_imposto_retido", precision = 7, scale = 6)
+    private BigDecimal aliquotaImpostoRetido;
+
+    @Column(name = "aliquota_imposto_pagar", precision = 7, scale = 6)
+    private BigDecimal aliquotaImpostoPagar;
+
+    @Column(name = "imposto_retido", precision = 19, scale = 2)
+    private BigDecimal impostoRetido;
+
+    @Column(name = "imposto_pagar", precision = 19, scale = 2)
+    private BigDecimal impostoPagar;
+
+    @Column(name = "imposto_total", precision = 19, scale = 2)
+    private BigDecimal impostoTotal;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contrato_id", nullable = false)
     @JsonIgnoreProperties("projetos")
     private Contrato contrato;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "projeto_id")
+    @JsonIgnoreProperties({ "materiais", "equipe", "responsavel" })
+    private Projeto projeto;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ordem_servico_id")
+    @JsonIgnoreProperties({ "contrato", "projeto" })
+    private OrdemServico ordemServico;
 }

@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 @Service
 @RequiredArgsConstructor
@@ -40,7 +41,7 @@ public class EstoqueService {
 
     @Transactional
     public Material atualizarMaterial(Long id, Material dados) {
-        Material material = materialRepository.findById(id)
+        Material material = materialRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
 
         TipoControleEstoque controleAtual = material.getTipoControle() != null
@@ -70,6 +71,7 @@ public class EstoqueService {
         material.setDimensao(dados.getDimensao());
         material.setComprimentoPorPeca(dados.getComprimentoPorPeca());
         material.setEstoqueMinimo(dados.getEstoqueMinimo());
+        material.setCustoMedio(dados.getCustoMedio());
 
         normalizarCadastro(material);
         return materialRepository.save(material);
@@ -77,8 +79,8 @@ public class EstoqueService {
 
     @Transactional
     public MovimentacaoEstoque registrarEntrada(Long materialId, Integer quantidade, BigDecimal metragem,
-            Long funcionarioId, Long localEstoqueId) {
-        Material material = materialRepository.findById(materialId)
+            BigDecimal custoUnitarioEntrada, Long funcionarioId, Long localEstoqueId) {
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado"));
         
         Funcionario funcionario = funcionarioRepository.findById(funcionarioId)
@@ -100,6 +102,8 @@ public class EstoqueService {
             material.setQuantidadeDisponivel(valor(material.getQuantidadeDisponivel()) + quantidade);
             atualizarMetragemDerivada(material);
         }
+        atualizarCustoMedio(material, saldoAnterior, valorEntrada(controleMetragem, quantidade, metragem),
+                custoUnitarioEntrada);
         materialRepository.save(material);
         BigDecimal valorEntrada = controleMetragem ? metragem : BigDecimal.valueOf(quantidade);
         com.poprc.demo.model.LocalEstoque localDestino = saldoLocalService.creditar(
@@ -118,6 +122,13 @@ public class EstoqueService {
         movimentacao.setEstoqueDestino(localDestino.getNome());
         movimentacao.setLancadoPor(funcionario.getNome());
         movimentacao.setMotivo("Entrada de estoque");
+        BigDecimal custoEfetivoEntrada = custoUnitarioEntrada != null
+                ? custoUnitarioEntrada
+                : valor(material.getCustoMedio());
+        movimentacao.setCustoUnitario(custoEfetivoEntrada);
+        movimentacao.setValorTotalMovimentacao(custoEfetivoEntrada.multiply(valorEntrada)
+                .setScale(4, RoundingMode.HALF_UP));
+        movimentacao.setCustoEstimado(false);
 
         return movimentacaoEstoqueRepository.save(movimentacao);
     }
@@ -139,7 +150,7 @@ public class EstoqueService {
         validarTexto(autorizadoPor, "Informe quem autorizou o ajuste.");
         validarPositivo(valorAjuste, "O valor do ajuste deve ser maior que zero.");
 
-        Material material = materialRepository.findById(materialId)
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
@@ -170,6 +181,69 @@ public class EstoqueService {
     }
 
     @Transactional
+    public MovimentacaoEstoque reconciliarSaldoPlanilha(
+            Long materialId,
+            Long localEstoqueId,
+            Integer saldoDesejado,
+            BigDecimal custoUnitario,
+            String motivo,
+            String responsavel) {
+        if (saldoDesejado == null || saldoDesejado < 0) {
+            throw new IllegalArgumentException("O saldo importado não pode ser negativo.");
+        }
+        if (custoUnitario == null || custoUnitario.signum() < 0) {
+            throw new IllegalArgumentException("O custo importado não pode ser negativo.");
+        }
+
+        Material material = materialRepository.findByIdForUpdate(materialId)
+                .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
+        if (controlaMetragem(material)) {
+            throw new IllegalArgumentException(
+                    "A importação unitária não suporta materiais controlados por metragem, bobina ou rolo.");
+        }
+
+        BigDecimal saldoAnterior = saldoControle(material);
+        BigDecimal saldoPosterior = BigDecimal.valueOf(saldoDesejado);
+        BigDecimal diferenca = saldoPosterior.subtract(saldoAnterior);
+        material.setCustoMedio(custoUnitario.setScale(4, RoundingMode.HALF_UP));
+        if (diferenca.signum() == 0) {
+            materialRepository.save(material);
+            return null;
+        }
+
+        atualizarSaldoControle(material, saldoPosterior);
+        materialRepository.save(material);
+
+        TipoMovimentacao tipo = diferenca.signum() > 0
+                ? TipoMovimentacao.AJUSTE_POSITIVO
+                : TipoMovimentacao.AJUSTE_NEGATIVO;
+        BigDecimal valorAjuste = diferenca.abs();
+        MovimentacaoEstoque movimentacao = novaMovimentacaoAuditoria(
+                material,
+                tipo,
+                valorAjuste,
+                saldoAnterior,
+                saldoPosterior,
+                motivo,
+                responsavel,
+                responsavel);
+        if (diferenca.signum() > 0) {
+            com.poprc.demo.model.LocalEstoque destino = saldoLocalService.creditar(
+                    material, localEstoqueId, valorAjuste);
+            movimentacao.setEstoqueDestino(destino.getNome());
+        } else {
+            java.util.List<SaldoLocalService.MovimentoLocal> origens =
+                    saldoLocalService.debitarDistribuido(material, valorAjuste);
+            movimentacao.setEstoqueOrigem(saldoLocalService.descreverMovimentos(origens));
+        }
+        movimentacao.setCustoUnitario(material.getCustoMedio());
+        movimentacao.setValorTotalMovimentacao(
+                material.getCustoMedio().multiply(valorAjuste).setScale(4, RoundingMode.HALF_UP));
+        movimentacao.setCustoEstimado(false);
+        return movimentacaoEstoqueRepository.save(movimentacao);
+    }
+
+    @Transactional
     public MovimentacaoEstoque transferirLocalizacao(Long materialId, Long origemId, Long destinoId,
             BigDecimal valorTransferido, String motivo, String lancadoPor, String autorizadoPor) {
         validarPositivo(valorTransferido, "O valor da transferência deve ser maior que zero.");
@@ -177,7 +251,7 @@ public class EstoqueService {
         validarTexto(lancadoPor, "Informe quem lançou a transferência.");
         validarTexto(autorizadoPor, "Informe quem autorizou a transferência.");
 
-        Material material = materialRepository.findById(materialId)
+        Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
@@ -213,6 +287,7 @@ public class EstoqueService {
         material.setMetragemDisponivel(valor(material.getMetragemDisponivel()).max(BigDecimal.ZERO));
         material.setMetragemReservada(valor(material.getMetragemReservada()).max(BigDecimal.ZERO));
         material.setEstoqueMinimo(valor(material.getEstoqueMinimo()).max(BigDecimal.ZERO));
+        material.setCustoMedio(valor(material.getCustoMedio()).max(BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP));
 
         if (TipoControleEstoque.PECA_COM_COMPRIMENTO.equals(material.getTipoControle())) {
             validarPositivo(material.getComprimentoPorPeca(),
@@ -244,7 +319,37 @@ public class EstoqueService {
         movimentacao.setSaldoAnterior(BigDecimal.ZERO);
         movimentacao.setSaldoPosterior(saldoControle(material));
         movimentacao.setEstoqueDestino(material.getLocalizacao());
+        movimentacao.setCustoUnitario(valor(material.getCustoMedio()));
+        BigDecimal valorInicial = quantidade > 0
+                ? BigDecimal.valueOf(quantidade)
+                : metragem;
+        movimentacao.setValorTotalMovimentacao(
+                valor(material.getCustoMedio()).multiply(valorInicial).setScale(4, RoundingMode.HALF_UP));
+        movimentacao.setCustoEstimado(false);
         movimentacaoEstoqueRepository.save(movimentacao);
+    }
+
+    private void atualizarCustoMedio(Material material, BigDecimal saldoAnterior, BigDecimal valorEntrada,
+            BigDecimal custoUnitarioEntrada) {
+        if (custoUnitarioEntrada == null) {
+            return;
+        }
+        if (custoUnitarioEntrada.signum() < 0) {
+            throw new IllegalArgumentException("O custo unitário da entrada não pode ser negativo.");
+        }
+        BigDecimal saldoPosterior = saldoAnterior.add(valorEntrada);
+        if (saldoPosterior.signum() <= 0) {
+            material.setCustoMedio(BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP));
+            return;
+        }
+        BigDecimal valorAnterior = saldoAnterior.multiply(valor(material.getCustoMedio()));
+        BigDecimal valorRecebido = valorEntrada.multiply(custoUnitarioEntrada);
+        material.setCustoMedio(valorAnterior.add(valorRecebido)
+                .divide(saldoPosterior, 4, RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal valorEntrada(boolean controleMetragem, Integer quantidade, BigDecimal metragem) {
+        return controleMetragem ? metragem : BigDecimal.valueOf(quantidade);
     }
 
     private MovimentacaoEstoque novaMovimentacaoAuditoria(Material material, TipoMovimentacao tipo,

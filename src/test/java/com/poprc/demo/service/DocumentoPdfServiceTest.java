@@ -3,6 +3,7 @@ package com.poprc.demo.service;
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.DocumentoInternoRepository;
 import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,8 +30,10 @@ class DocumentoPdfServiceTest {
         assertTrue(pdf.length > 500);
         assertTrue(new String(pdf, 0, 4, StandardCharsets.US_ASCII).startsWith("%PDF"));
         PdfReader reader = new PdfReader(pdf);
-        assertEquals(5, reader.getNumberOfPages());
+        assertEquals(6, reader.getNumberOfPages());
         assertTrue(reader.getPageSize(1).getWidth() > 590);
+        assertTrue(new PdfTextExtractor(reader).getTextFromPage(1)
+                .contains("ABERTURA E VISTORIA TÉCNICA INICIAL"));
         reader.close();
     }
 }
