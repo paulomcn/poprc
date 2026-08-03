@@ -58,4 +58,19 @@ public class ImportacaoEstoquePlanilha {
 
     @Column(name = "valor_total_importado", precision = 19, scale = 2, nullable = false)
     private BigDecimal valorTotalImportado = BigDecimal.ZERO;
+
+    @Column(name = "abas_retirada_processadas", nullable = false)
+    private Integer abasRetiradaProcessadas = 0;
+
+    @Column(name = "retiradas_importadas", nullable = false)
+    private Integer retiradasImportadas = 0;
+
+    @Column(name = "faltas_identificadas", nullable = false)
+    private Integer faltasIdentificadas = 0;
+
+    @Column(name = "data_complementacao")
+    private LocalDateTime dataComplementacao;
+
+    @Column(name = "complementado_por")
+    private String complementadoPor;
 }

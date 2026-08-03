@@ -7,6 +7,7 @@ import com.poprc.demo.model.OrdemRetiradaDocumento;
 import com.poprc.demo.service.OrdemRetiradaPdfService;
 import com.poprc.demo.service.OrdemRetiradaService;
 import com.poprc.demo.service.AcessoOperacionalService;
+import com.poprc.demo.service.EvidenciaMetragemOrService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -82,6 +83,22 @@ public class OrdemRetiradaController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename=ordem-retirada-" + id + "-documento-" + documentoId + ".pdf")
                 .body(ordemRetiradaPdfService.obterPdfArquivado(id, documentoId));
+    }
+
+    @GetMapping("/{id}/alocacoes/{alocacaoId}/evidencia/{fase}")
+    public ResponseEntity<byte[]> abrirEvidenciaMetragem(
+            @PathVariable Long id,
+            @PathVariable Long alocacaoId,
+            @PathVariable String fase,
+            Authentication authentication) {
+        acessoOperacionalService.garantirAcessoOrdemRetirada(id, authentication);
+        EvidenciaMetragemOrService.ArquivoEvidencia arquivo =
+                ordemRetiradaService.carregarEvidenciaMetragem(id, alocacaoId, fase);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(arquivo.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + arquivo.nomeArquivo().replace("\"", "") + "\"")
+                .body(arquivo.conteudo());
     }
 
     @PostMapping("/os/{ordemServicoId}")

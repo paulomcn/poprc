@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.Data;
 
 @Entity
@@ -36,4 +37,28 @@ public class OrdemRetiradaAlocacao {
 
     @Column(precision = 14, scale = 3, nullable = false)
     private BigDecimal metragemDevolvida = BigDecimal.ZERO;
+
+    @Column(name = "evidencia_retirada_path", length = 500)
+    private String evidenciaRetiradaPath;
+
+    @Column(name = "evidencia_retirada_nome")
+    private String evidenciaRetiradaNome;
+
+    @Column(name = "evidencia_retirada_data")
+    private LocalDateTime evidenciaRetiradaData;
+
+    @Column(name = "metragem_restante_apos_retirada", precision = 14, scale = 3)
+    private BigDecimal metragemRestanteAposRetirada;
+
+    @Column(name = "evidencia_devolucao_path", length = 500)
+    private String evidenciaDevolucaoPath;
+
+    @Column(name = "evidencia_devolucao_nome")
+    private String evidenciaDevolucaoNome;
+
+    @Column(name = "evidencia_devolucao_data")
+    private LocalDateTime evidenciaDevolucaoData;
+
+    @Column(name = "metragem_restante_apos_devolucao", precision = 14, scale = 3)
+    private BigDecimal metragemRestanteAposDevolucao;
 }

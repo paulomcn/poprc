@@ -12,7 +12,10 @@ import {
   Edit2,
   SlidersHorizontal,
   ArrowRightLeft,
+  Camera,
   Download,
+  Eye,
+  FileClock,
   Upload,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
@@ -71,6 +74,44 @@ const valorDaCelula = (celula) => {
   }
   return valor;
 };
+
+const dataPlanilhaParaIso = (valor) => {
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+    return valor.toISOString().slice(0, 10);
+  }
+  if (typeof valor === "number" && Number.isFinite(valor)) {
+    const data = new Date(Date.UTC(1899, 11, 30) + valor * 86400000);
+    return data.toISOString().slice(0, 10);
+  }
+  if (typeof valor === "string" && valor.trim()) {
+    const partes = valor.trim().split(/[/-]/);
+    if (partes.length === 3) {
+      const [dia, mes, ano] = partes;
+      if (ano?.length === 4) return `${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+    }
+  }
+  return null;
+};
+
+const lerImagemComoDataUrl = (arquivo) =>
+  new Promise((resolve, reject) => {
+    if (!arquivo) {
+      resolve({ base64: "", nome: "" });
+      return;
+    }
+    if (!["image/jpeg", "image/png"].includes(arquivo.type)) {
+      reject(new Error("Envie uma foto JPG ou PNG."));
+      return;
+    }
+    if (arquivo.size > 10 * 1024 * 1024) {
+      reject(new Error("A foto deve ter no máximo 10 MB."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve({ base64: reader.result, nome: arquivo.name });
+    reader.onerror = () => reject(new Error("Não foi possível ler a foto selecionada."));
+    reader.readAsDataURL(arquivo);
+  });
 
 function SignatureBox({ label, value, onChange }) {
   const canvasRef = useRef(null);
@@ -189,6 +230,8 @@ export default function PainelEstoque() {
   const [unidadesRastreaveis, setUnidadesRastreaveis] = useState([]);
   const [locaisEstoque, setLocaisEstoque] = useState([]);
   const [saldosLocais, setSaldosLocais] = useState([]);
+  const [importacoesPlanilha, setImportacoesPlanilha] = useState([]);
+  const [retiradasImportadas, setRetiradasImportadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -211,6 +254,8 @@ export default function PainelEstoque() {
   const [showLocalEstoqueModal, setShowLocalEstoqueModal] = useState(false);
   const [showTransferenciaUnidadeModal, setShowTransferenciaUnidadeModal] = useState(false);
   const [showMinimoLocalModal, setShowMinimoLocalModal] = useState(false);
+  const [showHistoricoImportacoesModal, setShowHistoricoImportacoesModal] = useState(false);
+  const [importacaoDetalhe, setImportacaoDetalhe] = useState(null);
   const [fotoExpandida, setFotoExpandida] = useState(null);
   const [materialEmEdicao, setMaterialEmEdicao] = useState(null);
   const [ordemRetiradaAtual, setOrdemRetiradaAtual] = useState(null);
@@ -256,6 +301,7 @@ export default function PainelEstoque() {
     devolucoes: {},
     alocacoes: {},
     devolucoesAlocacao: {},
+    evidenciasDevolucao: {},
   });
   const [unidadeForm, setUnidadeForm] = useState({
     materialId: "",
@@ -328,6 +374,13 @@ export default function PainelEstoque() {
       setLocaisEstoque(locaisResponse.data || []);
       setSaldosLocais(saldosResponse.data || []);
 
+      const [importacoesResponse, retiradasImportadasResponse] = await Promise.all([
+        api.get("/estoque/importacoes/planilha"),
+        api.get("/estoque/importacoes/planilha/retiradas"),
+      ]);
+      setImportacoesPlanilha(importacoesResponse.data || []);
+      setRetiradasImportadas(retiradasImportadasResponse.data || []);
+
       setError(null);
     } catch (err) {
       setError(getApiErrorMessage(err, "Erro ao carregar dados do estoque."));
@@ -347,6 +400,8 @@ export default function PainelEstoque() {
     setShowLocalEstoqueModal(false);
     setShowTransferenciaUnidadeModal(false);
     setShowMinimoLocalModal(false);
+    setShowHistoricoImportacoesModal(false);
+    setImportacaoDetalhe(null);
     setImportacaoPreview(null);
     setImportacaoLocalId("");
     setImportacaoProcessando(false);
@@ -364,6 +419,7 @@ export default function PainelEstoque() {
       devolucoes: {},
       alocacoes: {},
       devolucoesAlocacao: {},
+      evidenciasDevolucao: {},
     });
     setUnidadeForm({ materialId: "", codigo: "", metragemInicial: "", observacao: "", localEstoqueId: "" });
     setMaterialOperacao(null);
@@ -430,6 +486,8 @@ export default function PainelEstoque() {
             if (["estoque atual", "quantidade em estoque"].includes(texto)) mapa.quantidade = coluna;
             if (texto === "valor unitario") mapa.custo = coluna;
             if (texto === "quantidade da retirada") mapa.retirada = coluna;
+            if (texto === "data de retirada") mapa.dataRetirada = coluna;
+            if (texto === "estoque apos retirada") mapa.saldoFinal = coluna;
           }
           if (mapa.produto && mapa.quantidade && mapa.custo) {
             return { linha, ...mapa };
@@ -509,10 +567,92 @@ export default function PainelEstoque() {
         };
       });
 
-      const abasLegadas = workbook.worksheets
+      const dadosBasePorMaterial = new Map(
+        itens.map((item) => [normalizarTextoPlanilha(item.nome), item]),
+      );
+      const saldoCorrentePorMaterial = new Map(
+        itens.map((item) => [normalizarTextoPlanilha(item.nome), item.quantidade]),
+      );
+      const abasRetiradas = workbook.worksheets
         .filter((sheet) => sheet.id !== origem.id)
-        .filter((sheet) => localizarCabecalho(sheet)?.retirada)
-        .map((sheet) => sheet.name);
+        .map((sheet) => ({ sheet, cabecalho: localizarCabecalho(sheet) }))
+        .filter(({ cabecalho: cabecalhoRetirada }) =>
+          cabecalhoRetirada?.retirada && cabecalhoRetirada?.saldoFinal)
+        .map(({ sheet, cabecalho: cabecalhoRetirada }) => {
+          const itensRetirada = [];
+          for (
+            let linha = cabecalhoRetirada.linha + 1;
+            linha <= sheet.rowCount;
+            linha += 1
+          ) {
+            const nomeBruto = valorDaCelula(
+              sheet.getCell(linha, cabecalhoRetirada.produto),
+            );
+            const nome = typeof nomeBruto === "string" ? nomeBruto.trim() : "";
+            if (!nome) continue;
+            const chaveMaterial = normalizarTextoPlanilha(nome);
+            if (chaveMaterial.startsWith("total") || chaveMaterial.startsWith("valor total")) {
+              continue;
+            }
+            const saldoInformado = Number(
+              valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.quantidade)),
+            );
+            const saldoInicial = saldoCorrentePorMaterial.has(chaveMaterial)
+              ? saldoCorrentePorMaterial.get(chaveMaterial)
+              : saldoInformado;
+            const retiradaInformada = Number(
+              valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.retirada)),
+            );
+            const quantidadeRetirada = Number.isFinite(retiradaInformada)
+              ? retiradaInformada
+              : 0;
+            const custoInformado = Number(
+              valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.custo)),
+            );
+            const custoUnitario = Number.isFinite(custoInformado)
+              ? custoInformado
+              : dadosBasePorMaterial.get(chaveMaterial)?.custoUnitario;
+            if (
+              !Number.isFinite(saldoInicial)
+              || quantidadeRetirada < 0
+              || !Number.isFinite(custoUnitario)
+              || custoUnitario < 0
+            ) {
+              avisos.push(`Aba ${sheet.name}, linha ${linha}: retirada inválida para ${nome}.`);
+              continue;
+            }
+            const saldoFinal = saldoInicial - quantidadeRetirada;
+            saldoCorrentePorMaterial.set(chaveMaterial, saldoFinal);
+            if (quantidadeRetirada === 0 && saldoFinal >= 0) continue;
+            itensRetirada.push({
+              nomeMaterial: nome,
+              saldoInicial,
+              quantidadeRetirada,
+              saldoFinal,
+              quantidadeFaltante: saldoFinal < 0 ? Math.abs(saldoFinal) : 0,
+              custoUnitario,
+              dataRetirada: cabecalhoRetirada.dataRetirada
+                ? dataPlanilhaParaIso(
+                    valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.dataRetirada)),
+                  )
+                : null,
+            });
+          }
+          const nomeNormalizado = normalizarTextoPlanilha(sheet.name);
+          const comarcaCorrespondente = comarcas.find((comarca) =>
+            normalizarTextoPlanilha(comarca.nomeComarca) === nomeNormalizado);
+          return {
+            nome: sheet.name,
+            comarcaId: comarcaCorrespondente ? String(comarcaCorrespondente.id) : "",
+            itens: itensRetirada,
+            totalRetirado: itensRetirada.reduce(
+              (total, item) => total + item.quantidadeRetirada,
+              0,
+            ),
+            faltas: itensRetirada.filter((item) => item.quantidadeFaltante > 0).length,
+          };
+        })
+        .filter((aba) => aba.itens.length > 0);
       const digest = await crypto.subtle.digest("SHA-256", buffer);
       const hashSha256 = Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -527,7 +667,7 @@ export default function PainelEstoque() {
         nomeArquivo: arquivo.name,
         hashSha256,
         abaOrigem: origem.name,
-        abasLegadas,
+        abasRetiradas,
         itens: itensPreview,
         avisos,
         valorTotal: itens.reduce(
@@ -548,6 +688,10 @@ export default function PainelEstoque() {
       setError("Corrija os itens bloqueados antes de importar.");
       return;
     }
+    if (importacaoPreview.abasRetiradas.some((aba) => !aba.comarcaId)) {
+      setError("Vincule cada aba de retirada a uma obra antes de importar.");
+      return;
+    }
     try {
       setImportacaoProcessando(true);
       const response = await api.post("/estoque/importacoes/planilha", {
@@ -559,12 +703,24 @@ export default function PainelEstoque() {
           quantidade,
           custoUnitario,
         })),
+        retiradas: importacaoPreview.abasRetiradas.flatMap((aba) =>
+          aba.itens.map((item) => ({
+            aba: aba.nome,
+            comarcaId: Number(aba.comarcaId),
+            nomeMaterial: item.nomeMaterial,
+            saldoInicial: item.saldoInicial,
+            quantidadeRetirada: item.quantidadeRetirada,
+            saldoFinal: item.saldoFinal,
+            custoUnitario: item.custoUnitario,
+            dataRetirada: item.dataRetirada,
+          }))),
       });
       const resultado = response.data;
       setSuccessMessage(
         `Planilha importada: ${resultado.materiaisCriados} materiais criados, `
           + `${resultado.materiaisAtualizados} atualizados e `
-          + `${resultado.ajustesPositivos + resultado.ajustesNegativos} ajustes registrados.`,
+          + `${resultado.retiradasImportadas} retiradas históricas registradas. `
+          + `${resultado.faltasIdentificadas} faltas identificadas; saldo final reconciliado.`,
       );
       setImportacaoPreview(null);
       setImportacaoLocalId("");
@@ -573,6 +729,17 @@ export default function PainelEstoque() {
       setError(getApiErrorMessage(err, "Não foi possível importar a planilha."));
     } finally {
       setImportacaoProcessando(false);
+    }
+  };
+
+  const abrirDetalheImportacao = async (importacaoId) => {
+    try {
+      setImportacaoDetalhe({ carregando: true });
+      const response = await api.get(`/estoque/importacoes/planilha/${importacaoId}`);
+      setImportacaoDetalhe(response.data);
+    } catch (err) {
+      setImportacaoDetalhe(null);
+      setError(getApiErrorMessage(err, "Não foi possível abrir os detalhes da importação."));
     }
   };
 
@@ -746,7 +913,12 @@ export default function PainelEstoque() {
           .filter((item) => ["BOBINA", "ROLO"].includes(item.material?.tipoControle))
           .map((item) => [
             item.id,
-            [{ unidadeRastreavelId: "", metragem: String(item.quantidadeSolicitada || "") }],
+            [{
+              unidadeRastreavelId: "",
+              metragem: String(item.quantidadeSolicitada || ""),
+              evidenciaFotoBase64: "",
+              evidenciaFotoNome: "",
+            }],
           ]),
       ),
       devolucoesAlocacao: Object.fromEntries(
@@ -754,6 +926,7 @@ export default function PainelEstoque() {
           (item.alocacoes || []).map((alocacao) => [alocacao.id, "0"]),
         ),
       ),
+      evidenciasDevolucao: {},
     });
     setShowSaidaModal(true);
   };
@@ -787,6 +960,8 @@ export default function PainelEstoque() {
               itemId: Number(itemId),
               unidadeRastreavelId: Number(alocacao.unidadeRastreavelId),
               metragem: parseFloat(alocacao.metragem),
+              evidenciaFotoBase64: alocacao.evidenciaFotoBase64,
+              evidenciaFotoNome: alocacao.evidenciaFotoNome,
             })),
           ),
         });
@@ -808,6 +983,10 @@ export default function PainelEstoque() {
             ([alocacaoId, metragemDevolvida]) => ({
               alocacaoId: Number(alocacaoId),
               metragemDevolvida: parseFloat(metragemDevolvida || 0),
+              evidenciaFotoBase64:
+                orForm.evidenciasDevolucao[alocacaoId]?.base64 || "",
+              evidenciaFotoNome:
+                orForm.evidenciasDevolucao[alocacaoId]?.nome || "",
             }),
           ),
         });
@@ -880,10 +1059,40 @@ export default function PainelEstoque() {
         ...prev.alocacoes,
         [itemId]: [
           ...(prev.alocacoes[itemId] || []),
-          { unidadeRastreavelId: "", metragem: "" },
+          {
+            unidadeRastreavelId: "",
+            metragem: "",
+            evidenciaFotoBase64: "",
+            evidenciaFotoNome: "",
+          },
         ],
       },
     }));
+  };
+
+  const selecionarEvidenciaRetirada = async (itemId, index, arquivo) => {
+    try {
+      const evidencia = await lerImagemComoDataUrl(arquivo);
+      atualizarAlocacao(itemId, index, "evidenciaFotoBase64", evidencia.base64);
+      atualizarAlocacao(itemId, index, "evidenciaFotoNome", evidencia.nome);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const selecionarEvidenciaDevolucao = async (alocacaoId, arquivo) => {
+    try {
+      const evidencia = await lerImagemComoDataUrl(arquivo);
+      setOrForm((prev) => ({
+        ...prev,
+        evidenciasDevolucao: {
+          ...prev.evidenciasDevolucao,
+          [alocacaoId]: evidencia,
+        },
+      }));
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const removerAlocacao = (itemId, index) => {
@@ -1455,6 +1664,7 @@ export default function PainelEstoque() {
           itens: new Map(),
           totalRetirado: 0,
           totalDevolvido: 0,
+          totalFaltante: 0,
           valorLiquido: 0,
         },
       ]),
@@ -1470,6 +1680,7 @@ export default function PainelEstoque() {
           itens: new Map(),
           totalRetirado: 0,
           totalDevolvido: 0,
+          totalFaltante: 0,
           valorLiquido: 0,
         });
       }
@@ -1491,6 +1702,7 @@ export default function PainelEstoque() {
           nome: item.nomeMaterial || material?.nome || "Material",
           retirada: 0,
           devolvida: 0,
+          faltante: 0,
           ordens: new Set(),
         };
         atual.retirada += retirada;
@@ -1502,6 +1714,57 @@ export default function PainelEstoque() {
         resumo.valorLiquido +=
           (retirada - devolvida) * Number(material?.custoMedio || 0);
       });
+    });
+
+    retiradasImportadas.forEach((retirada) => {
+      if (!retirada.comarcaId) return;
+      const chaveComarca = String(retirada.comarcaId);
+      const comarca =
+        comarcas.find((item) => String(item.id) === chaveComarca)
+        || { id: retirada.comarcaId, nomeComarca: retirada.comarca, ordemServico: { numeroOs: retirada.numeroOs } };
+      if (!agrupado.has(chaveComarca)) {
+        agrupado.set(chaveComarca, {
+          comarca,
+          itens: new Map(),
+          totalRetirado: 0,
+          totalDevolvido: 0,
+          totalFaltante: 0,
+          valorLiquido: 0,
+        });
+      }
+      const resumo = agrupado.get(chaveComarca);
+      const material =
+        materiais.find((item) => item.id === retirada.materialId)
+        || materiais.find(
+          (item) =>
+            normalizarTextoPlanilha(item.nome)
+            === normalizarTextoPlanilha(retirada.material),
+        );
+      const chaveMaterial = String(material?.id || normalizarTextoPlanilha(retirada.material));
+      const atual = resumo.itens.get(chaveMaterial) || {
+        material,
+        nome: retirada.material || material?.nome || "Material",
+        retirada: 0,
+        devolvida: 0,
+        faltante: 0,
+        ordens: new Set(),
+      };
+      atual.retirada += Number(retirada.quantidadeRetirada || 0);
+      atual.faltante = Math.max(
+        atual.faltante,
+        Number(retirada.quantidadeFaltante || 0),
+      );
+      atual.ordens.add(
+        retirada.numeroOs
+          ? `${retirada.numeroOs} · planilha ${retirada.aba}`
+          : `Planilha ${retirada.aba}`,
+      );
+      resumo.itens.set(chaveMaterial, atual);
+      resumo.totalRetirado += Number(retirada.quantidadeRetirada || 0);
+      resumo.totalFaltante += Number(retirada.quantidadeFaltante || 0);
+      resumo.valorLiquido +=
+        Number(retirada.quantidadeRetirada || 0)
+        * Number(retirada.custoUnitario || material?.custoMedio || 0);
     });
 
     return [...agrupado.values()]
@@ -1520,7 +1783,7 @@ export default function PainelEstoque() {
           String(b.comarca?.nomeComarca || ""),
           "pt-BR",
         ));
-  }, [comarcas, materiais, ordensRetirada]);
+  }, [comarcas, materiais, ordensRetirada, retiradasImportadas]);
 
   const estoqueComarcaSelecionada = estoquePorComarca.find(
     (item) => String(item.comarca?.id) === String(abaEstoque),
@@ -1568,8 +1831,6 @@ export default function PainelEstoque() {
 
   return (
     <div className="space-y-8">
-      <FilaPendenciasOperacionais area="ESTOQUE" titulo="Retiradas, devoluções e faltas pendentes" limite={8} />
-
       {/* Header */}
       <div>
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1598,6 +1859,15 @@ export default function PainelEstoque() {
             >
               <Upload size={18} />
               {importacaoProcessando ? "Lendo..." : "Importar .xlsx"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHistoricoImportacoesModal(true)}
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              title="Consultar arquivos importados e itens afetados"
+            >
+              <FileClock size={18} />
+              Histórico
             </button>
             {/*   BOTAO NOVO: Cadastrar no Catálogo */}
             <button
@@ -1637,6 +1907,17 @@ export default function PainelEstoque() {
         {error && <Alert type="error" message={error} />}
         {successMessage && <Alert type="success" message={successMessage} />}
       </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+        {indicadoresEstoque.map((indicador) => (
+          <div key={indicador.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+            <span className="block text-xs font-semibold text-slate-500">{indicador.label}</span>
+            <strong className="mt-1 block text-xl text-slate-800">{indicador.valor}</strong>
+          </div>
+        ))}
+      </div>
+
+      <FilaPendenciasOperacionais area="ESTOQUE" titulo="Retiradas, devoluções e faltas pendentes" limite={8} />
 
       <div
         role="tablist"
@@ -1902,6 +2183,12 @@ export default function PainelEstoque() {
                 <strong>{formatarNumero(estoqueComarcaSelecionada?.totalDevolvido)}</strong>
               </div>
               <div>
+                <span className="block text-xs text-slate-500">Faltante</span>
+                <strong className="text-rose-700">
+                  {formatarNumero(estoqueComarcaSelecionada?.totalFaltante)}
+                </strong>
+              </div>
+              <div>
                 <span className="block text-xs text-slate-500">Valor líquido</span>
                 <strong>{formatarMoeda(estoqueComarcaSelecionada?.valorLiquido)}</strong>
               </div>
@@ -1916,6 +2203,7 @@ export default function PainelEstoque() {
                   <th className="px-5 py-3 text-right">Retirado</th>
                   <th className="px-5 py-3 text-right">Devolvido</th>
                   <th className="px-5 py-3 text-right">Retirada líquida</th>
+                  <th className="px-5 py-3 text-right">Faltante</th>
                   <th className="px-5 py-3 text-right">Valor atribuído</th>
                 </tr>
               </thead>
@@ -1936,6 +2224,9 @@ export default function PainelEstoque() {
                     <td className="px-5 py-3 text-right font-bold text-slate-900">
                       {formatarNumero(item.saldoLiquido)}
                     </td>
+                    <td className="px-5 py-3 text-right font-bold text-rose-700">
+                      {item.faltante > 0 ? formatarNumero(item.faltante) : "—"}
+                    </td>
                     <td className="px-5 py-3 text-right font-bold text-slate-900">
                       {formatarMoeda(
                         item.saldoLiquido * Number(item.material?.custoMedio || 0),
@@ -1945,7 +2236,7 @@ export default function PainelEstoque() {
                 ))}
                 {(estoqueComarcaSelecionada?.itens || []).length === 0 && (
                   <tr>
-                    <td colSpan="6" className="px-5 py-10 text-center text-slate-400">
+                    <td colSpan="7" className="px-5 py-10 text-center text-slate-400">
                       Esta obra ainda não possui retirada de material executada por OR.
                     </td>
                   </tr>
@@ -1959,15 +2250,6 @@ export default function PainelEstoque() {
           </p>
         </section>
       )}
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        {indicadoresEstoque.map((indicador) => (
-          <div key={indicador.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-            <span className="block text-xs font-semibold text-slate-500">{indicador.label}</span>
-            <strong className="mt-1 block text-xl text-slate-800">{indicador.valor}</strong>
-          </div>
-        ))}
-      </div>
 
       {unidadesRastreaveis.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-md">
@@ -2063,12 +2345,35 @@ export default function PainelEstoque() {
                   </td>
                   <td className="px-6 py-4 text-xs text-slate-600">
                     {(or.itens || []).map((item) => (
-                      <span
-                        key={item.id}
-                        className="mb-1 mr-1 inline-flex rounded bg-slate-100 px-2 py-1"
-                      >
-                        {item.nomeMaterial}: {item.quantidadeSolicitada}
-                      </span>
+                      <div key={item.id} className="mb-1">
+                        <span className="mr-1 inline-flex rounded bg-slate-100 px-2 py-1">
+                          {item.nomeMaterial}: {item.quantidadeSolicitada}
+                        </span>
+                        {(item.alocacoes || []).map((alocacao) => (
+                          <span key={alocacao.id} className="inline-flex gap-1">
+                            {alocacao.evidenciaRetiradaPath && (
+                              <a
+                                href={`/api/ordens-retirada/${or.id}/alocacoes/${alocacao.id}/evidencia/retirada`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-1 font-semibold text-cyan-700 hover:bg-cyan-50"
+                              >
+                                <Camera size={12} /> Retirada
+                              </a>
+                            )}
+                            {alocacao.evidenciaDevolucaoPath && (
+                              <a
+                                href={`/api/ordens-retirada/${or.id}/alocacoes/${alocacao.id}/evidencia/devolucao`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-1 font-semibold text-emerald-700 hover:bg-emerald-50"
+                              >
+                                <Camera size={12} /> Retorno
+                              </a>
+                            )}
+                          </span>
+                        ))}
+                      </div>
                     ))}
                   </td>
                   <td className="px-6 py-4 text-xs text-slate-500">
@@ -2704,6 +3009,150 @@ export default function PainelEstoque() {
       </Modal>
 
       <Modal
+        isOpen={showHistoricoImportacoesModal}
+        onClose={handleCloseModal}
+        title="Histórico de importações do estoque"
+      >
+        <div className="space-y-4">
+          <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[620px] text-left text-xs">
+              <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Arquivo</th>
+                  <th className="px-3 py-2">Responsável</th>
+                  <th className="px-3 py-2">Data</th>
+                  <th className="px-3 py-2">Resultado</th>
+                  <th className="px-3 py-2 text-center">Detalhes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {importacoesPlanilha.map((importacao) => (
+                  <tr key={importacao.importacaoId}>
+                    <td className="px-3 py-2">
+                      <strong className="block text-slate-800">{importacao.nomeArquivo}</strong>
+                      <span className="text-slate-500">{importacao.deposito}</span>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      <span className="block">{importacao.importadoPor}</span>
+                      {importacao.complementadoPor && (
+                        <span className="text-[11px] text-slate-400">
+                          Complementado por {importacao.complementadoPor}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {new Date(importacao.dataImportacao).toLocaleString("pt-BR")}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      <span className="block">{importacao.itensProcessados} materiais</span>
+                      <span className="block">{importacao.retiradasImportadas} retiradas</span>
+                      {importacao.faltasIdentificadas > 0 && (
+                        <strong className="block text-rose-700">
+                          {importacao.faltasIdentificadas} faltas
+                        </strong>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => abrirDetalheImportacao(importacao.importacaoId)}
+                        className="rounded border border-slate-200 p-2 text-blue-700 hover:bg-blue-50"
+                        title="Ver itens afetados"
+                      >
+                        <Eye size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {importacoesPlanilha.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="px-3 py-8 text-center text-slate-400">
+                      Nenhuma planilha importada.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {importacaoDetalhe?.carregando && <LoadingSpinner />}
+          {importacaoDetalhe && !importacaoDetalhe.carregando && (
+            <section className="space-y-3 border-t border-slate-200 pt-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-slate-900">{importacaoDetalhe.nomeArquivo}</h3>
+                  <p className="text-xs text-slate-500">
+                    {formatarMoeda(importacaoDetalhe.valorTotalImportado)} importados
+                    {" · "}{importacaoDetalhe.abasRetiradaProcessadas} abas de obra
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setImportacaoDetalhe(null)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                >
+                  Fechar detalhes
+                </button>
+              </div>
+
+              <div className="max-h-72 overflow-auto rounded border border-slate-200">
+                <table className="w-full min-w-[700px] text-left text-xs">
+                  <thead className="sticky top-0 bg-slate-50 uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Origem / Material</th>
+                      <th className="px-3 py-2 text-right">Anterior</th>
+                      <th className="px-3 py-2 text-right">Importado</th>
+                      <th className="px-3 py-2 text-right">Retirado</th>
+                      <th className="px-3 py-2 text-right">Faltante</th>
+                      <th className="px-3 py-2">Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(importacaoDetalhe.itens || []).map((item) => (
+                      <tr key={`estoque-${item.materialId}`}>
+                        <td className="px-3 py-2">
+                          <span className="block text-[10px] font-bold uppercase text-blue-600">
+                            Estoque atual
+                          </span>
+                          <strong>{item.material}</strong>
+                        </td>
+                        <td className="px-3 py-2 text-right">{item.saldoAnterior}</td>
+                        <td className="px-3 py-2 text-right">{item.saldoImportado}</td>
+                        <td className="px-3 py-2 text-right">—</td>
+                        <td className="px-3 py-2 text-right">—</td>
+                        <td className="px-3 py-2">{item.acao.replaceAll("_", " ")}</td>
+                      </tr>
+                    ))}
+                    {(importacaoDetalhe.retiradas || []).map((item, index) => (
+                      <tr key={`retirada-${item.aba}-${item.materialId}-${index}`}>
+                        <td className="px-3 py-2">
+                          <span className="block text-[10px] font-bold uppercase text-amber-700">
+                            {item.aba} · {item.comarca}
+                          </span>
+                          <strong>{item.material}</strong>
+                        </td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.saldoInicial)}</td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.saldoFinal)}</td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.quantidadeRetirada)}</td>
+                        <td className="px-3 py-2 text-right font-bold text-rose-700">
+                          {item.quantidadeFaltante > 0
+                            ? formatarNumero(item.quantidadeFaltante)
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.quantidadeFaltante > 0 ? "FALTA" : "REGISTRADO"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={Boolean(importacaoPreview)}
         onClose={() => {
           if (!importacaoProcessando) {
@@ -2776,11 +3225,56 @@ export default function PainelEstoque() {
               </span>
             </label>
 
-            {importacaoPreview.abasLegadas.length > 0 && (
-              <Alert
-                type="warning"
-                message={`As abas ${importacaoPreview.abasLegadas.join(", ")} foram reconhecidas como controles antigos de retirada, mas não serão gravadas sem OS e OR válidas.`}
-              />
+            {importacaoPreview.abasRetiradas.length > 0 && (
+              <section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div>
+                  <h3 className="text-sm font-bold text-amber-950">
+                    Retiradas históricas por obra
+                  </h3>
+                  <p className="mt-1 text-xs text-amber-800">
+                    O sistema reconstruirá a sequência das retiradas e reconciliará o estoque com
+                    o último saldo calculado. Saldos negativos serão zerados no estoque físico e
+                    registrados separadamente como material faltante.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {importacaoPreview.abasRetiradas.map((aba) => (
+                    <div
+                      key={aba.nome}
+                      className="grid gap-2 rounded border border-amber-200 bg-white p-3 md:grid-cols-[1fr_1.5fr]"
+                    >
+                      <div>
+                        <strong className="block text-sm text-slate-800">{aba.nome}</strong>
+                        <span className="text-xs text-slate-500">
+                          {aba.itens.length} itens · {formatarNumero(aba.totalRetirado)} retirados
+                          {" · "}{aba.faltas} faltas
+                        </span>
+                      </div>
+                      <select
+                        value={aba.comarcaId}
+                        onChange={(event) =>
+                          setImportacaoPreview((prev) => ({
+                            ...prev,
+                            abasRetiradas: prev.abasRetiradas.map((atual) =>
+                              atual.nome === aba.nome
+                                ? { ...atual, comarcaId: event.target.value }
+                                : atual),
+                          }))
+                        }
+                        required
+                        className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Vincule a uma obra/OS</option>
+                        {comarcas.map((comarca) => (
+                          <option key={comarca.id} value={comarca.id}>
+                            {comarca.nomeComarca} · {comarca.ordemServico?.numeroOs || "Sem OS"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </section>
             )}
             {importacaoPreview.avisos.length > 0 && (
               <Alert
@@ -2835,7 +3329,9 @@ export default function PainelEstoque() {
 
             <div className="rounded bg-slate-50 p-3 text-xs text-slate-600">
               A importação substitui o saldo total dos materiais pelo valor da planilha. O arquivo
-              fica identificado pelo hash e não poderá ser importado novamente.
+              fica identificado pelo hash. Se o estoque desse arquivo já tiver sido importado, o
+              sistema complementará o histórico e aplicará somente o saldo final reconstruído das
+              retiradas, sem repetir cada baixa intermediária.
             </div>
 
             <div className="flex justify-end gap-3">
@@ -2857,6 +3353,7 @@ export default function PainelEstoque() {
                   importacaoProcessando
                   || !importacaoLocalId
                   || importacaoPreview.itens.some((item) => item.erros.length > 0)
+                  || importacaoPreview.abasRetiradas.some((aba) => !aba.comarcaId)
                 }
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
@@ -3484,47 +3981,77 @@ export default function PainelEstoque() {
                     </div>
                     <div className="space-y-2">
                       {(orForm.alocacoes[item.id] || []).map((alocacao, index) => (
-                        <div key={index} className="grid grid-cols-[1fr_110px_32px] gap-2">
-                          <select
-                            required
-                            value={alocacao.unidadeRastreavelId}
-                            onChange={(event) =>
-                              atualizarAlocacao(
-                                item.id,
-                                index,
-                                "unidadeRastreavelId",
-                                event.target.value,
-                              )
-                            }
-                            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
-                          >
-                            <option value="">Selecione</option>
-                            {unidadesDisponiveis(item.material?.id).map((unidade) => (
-                              <option key={unidade.id} value={unidade.id}>
-                                {unidade.codigo} ({formatarNumero(unidade.metragemAtual)} m)
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            required
-                            min="0.001"
-                            step="0.001"
-                            value={alocacao.metragem}
-                            onChange={(event) =>
-                              atualizarAlocacao(item.id, index, "metragem", event.target.value)
-                            }
-                            className="rounded border border-slate-300 px-2 py-2 text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removerAlocacao(item.id, index)}
-                            disabled={(orForm.alocacoes[item.id] || []).length === 1}
-                            className="rounded text-slate-400 hover:bg-white hover:text-rose-600 disabled:opacity-30"
-                            title="Remover alocação"
-                          >
-                            <Minus size={15} />
-                          </button>
+                        <div key={index} className="space-y-2 rounded border border-cyan-200 bg-white p-3">
+                          <div className="grid grid-cols-[1fr_110px_32px] gap-2">
+                            <select
+                              required
+                              value={alocacao.unidadeRastreavelId}
+                              onChange={(event) =>
+                                atualizarAlocacao(
+                                  item.id,
+                                  index,
+                                  "unidadeRastreavelId",
+                                  event.target.value,
+                                )
+                              }
+                              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                            >
+                              <option value="">Selecione</option>
+                              {unidadesDisponiveis(item.material?.id).map((unidade) => (
+                                <option key={unidade.id} value={unidade.id}>
+                                  {unidade.codigo} ({formatarNumero(unidade.metragemAtual)} m)
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              required
+                              min="0.001"
+                              step="0.001"
+                              value={alocacao.metragem}
+                              onChange={(event) =>
+                                atualizarAlocacao(item.id, index, "metragem", event.target.value)
+                              }
+                              className="rounded border border-slate-300 px-2 py-2 text-sm"
+                              aria-label="Metragem retirada"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removerAlocacao(item.id, index)}
+                              disabled={(orForm.alocacoes[item.id] || []).length === 1}
+                              className="rounded text-slate-400 hover:bg-slate-50 hover:text-rose-600 disabled:opacity-30"
+                              title="Remover alocação"
+                            >
+                              <Minus size={15} />
+                            </button>
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-3 rounded border border-dashed border-cyan-300 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-800">
+                            <Camera size={18} />
+                            <span className="flex-1">
+                              {alocacao.evidenciaFotoNome || "Foto da metragem restante *"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png"
+                              capture="environment"
+                              required={!alocacao.evidenciaFotoBase64}
+                              onChange={(event) =>
+                                selecionarEvidenciaRetirada(
+                                  item.id,
+                                  index,
+                                  event.target.files?.[0],
+                                )
+                              }
+                              className="sr-only"
+                            />
+                            {alocacao.evidenciaFotoBase64 && (
+                              <img
+                                src={alocacao.evidenciaFotoBase64}
+                                alt="Preview da metragem na retirada"
+                                className="h-12 w-16 rounded border border-cyan-200 object-cover"
+                              />
+                            )}
+                          </label>
                         </div>
                       ))}
                     </div>
@@ -3571,31 +4098,61 @@ export default function PainelEstoque() {
                     ? (item.alocacoes || []).map((alocacao) => (
                         <div
                           key={`alocacao-${alocacao.id}`}
-                          className="grid grid-cols-[1fr_120px] items-center gap-3 border-t border-slate-100 px-3 py-2 text-sm"
+                          className="space-y-2 border-t border-slate-100 px-3 py-3 text-sm"
                         >
-                          <span>
-                            {item.nomeMaterial} · {alocacao.unidadeRastreavel?.codigo}
-                            <small className="ml-2 text-slate-400">
-                              retirado {alocacao.metragemRetirada} m
-                            </small>
-                          </span>
-                          <input
-                            type="number"
-                            min="0"
-                            max={Number(alocacao.metragemRetirada || 0) - Number(alocacao.metragemDevolvida || 0)}
-                            step="0.001"
-                            value={orForm.devolucoesAlocacao[alocacao.id] ?? 0}
-                            onChange={(event) =>
-                              setOrForm((prev) => ({
-                                ...prev,
-                                devolucoesAlocacao: {
-                                  ...prev.devolucoesAlocacao,
-                                  [alocacao.id]: event.target.value,
-                                },
-                              }))
-                            }
-                            className="w-full rounded border border-slate-300 px-2 py-1"
-                          />
+                          <div className="grid grid-cols-[1fr_120px] items-center gap-3">
+                            <span>
+                              {item.nomeMaterial} · {alocacao.unidadeRastreavel?.codigo}
+                              <small className="ml-2 text-slate-400">
+                                retirado {alocacao.metragemRetirada} m
+                              </small>
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max={Number(alocacao.metragemRetirada || 0) - Number(alocacao.metragemDevolvida || 0)}
+                              step="0.001"
+                              value={orForm.devolucoesAlocacao[alocacao.id] ?? 0}
+                              onChange={(event) =>
+                                setOrForm((prev) => ({
+                                  ...prev,
+                                  devolucoesAlocacao: {
+                                    ...prev.devolucoesAlocacao,
+                                    [alocacao.id]: event.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-full rounded border border-slate-300 px-2 py-1"
+                              aria-label="Metragem devolvida"
+                            />
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-3 rounded border border-dashed border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                            <Camera size={18} />
+                            <span className="flex-1">
+                              {orForm.evidenciasDevolucao[alocacao.id]?.nome
+                                || "Foto da metragem restante no retorno *"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png"
+                              capture="environment"
+                              required={!orForm.evidenciasDevolucao[alocacao.id]?.base64}
+                              onChange={(event) =>
+                                selecionarEvidenciaDevolucao(
+                                  alocacao.id,
+                                  event.target.files?.[0],
+                                )
+                              }
+                              className="sr-only"
+                            />
+                            {orForm.evidenciasDevolucao[alocacao.id]?.base64 && (
+                              <img
+                                src={orForm.evidenciasDevolucao[alocacao.id].base64}
+                                alt="Preview da metragem no retorno"
+                                className="h-12 w-16 rounded border border-emerald-200 object-cover"
+                              />
+                            )}
+                          </label>
                         </div>
                       ))
                     : [

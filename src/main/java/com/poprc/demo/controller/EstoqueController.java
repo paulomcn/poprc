@@ -1,6 +1,7 @@
 package com.poprc.demo.controller;
 
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
+import com.poprc.demo.dto.ImportacaoEstoquePlanilhaDetalheDTO;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
@@ -133,6 +134,23 @@ public class EstoqueController {
         String usuario = authentication != null ? authentication.getName() : null;
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(importacaoPlanilhaService.importar(request, usuario));
+    }
+
+    @GetMapping("/importacoes/planilha")
+    public ResponseEntity<List<ImportacaoEstoquePlanilhaDetalheDTO>> listarImportacoesPlanilha() {
+        return ResponseEntity.ok(importacaoPlanilhaService.listarHistorico());
+    }
+
+    @GetMapping("/importacoes/planilha/{id}")
+    public ResponseEntity<ImportacaoEstoquePlanilhaDetalheDTO> detalharImportacaoPlanilha(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(importacaoPlanilhaService.detalhar(id));
+    }
+
+    @GetMapping("/importacoes/planilha/retiradas")
+    public ResponseEntity<List<ImportacaoEstoquePlanilhaDetalheDTO.Retirada>>
+            listarRetiradasImportadas() {
+        return ResponseEntity.ok(importacaoPlanilhaService.listarRetiradasImportadas());
     }
 
     @GetMapping("/unidades-rastreaveis")

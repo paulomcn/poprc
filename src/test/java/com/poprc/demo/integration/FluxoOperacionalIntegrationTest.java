@@ -50,11 +50,15 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -498,7 +502,7 @@ class FluxoOperacionalIntegrationTest {
     }
 
     @Test
-    void rastreiaRetiradaEDevolucaoParcialDeBobina() {
+    void rastreiaRetiradaEDevolucaoParcialDeBobina() throws Exception {
         Cenario cenario = prepararCenario(false);
         String sufixo = UUID.randomUUID().toString().substring(0, 8);
         Material bobina = new Material();
@@ -526,6 +530,8 @@ class FluxoOperacionalIntegrationTest {
         alocacao.setItemId(item.getId());
         alocacao.setUnidadeRastreavelId(unidade.getId());
         alocacao.setMetragem(BigDecimal.valueOf(30));
+        alocacao.setEvidenciaFotoBase64(fotoValida());
+        alocacao.setEvidenciaFotoNome("retirada.png");
         retirada.setAlocacoes(List.of(alocacao));
         ordemRetirada = ordemRetiradaService.executarRetirada(ordemRetirada.getId(), retirada);
 
@@ -533,6 +539,12 @@ class FluxoOperacionalIntegrationTest {
                 unidadeEstoqueRastreavelRepository.findById(unidade.getId()).orElseThrow().getMetragemAtual()));
         assertEquals(0, BigDecimal.valueOf(70).compareTo(
                 materialRepository.findById(bobina.getId()).orElseThrow().getMetragemDisponivel()));
+        var alocacaoRetirada = ordemRetirada.getItens().getFirst().getAlocacoes().getFirst();
+        assertNotNull(alocacaoRetirada.getEvidenciaRetiradaPath());
+        assertEquals("retirada.png", alocacaoRetirada.getEvidenciaRetiradaNome());
+        assertNotNull(alocacaoRetirada.getEvidenciaRetiradaData());
+        assertEquals(0, BigDecimal.valueOf(70).compareTo(
+                alocacaoRetirada.getMetragemRestanteAposRetirada()));
 
         DevolverOrdemRetiradaRequest devolucao = new DevolverOrdemRetiradaRequest();
         devolucao.setDevolvidoPor("Técnico Teste");
@@ -543,14 +555,30 @@ class FluxoOperacionalIntegrationTest {
                 new DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest();
         retorno.setAlocacaoId(ordemRetirada.getItens().getFirst().getAlocacoes().getFirst().getId());
         retorno.setMetragemDevolvida(BigDecimal.TEN);
+        retorno.setEvidenciaFotoBase64(fotoValida());
+        retorno.setEvidenciaFotoNome("retorno.png");
         devolucao.setAlocacoes(List.of(retorno));
 
-        ordemRetiradaService.devolver(ordemRetirada.getId(), devolucao);
+        ordemRetirada = ordemRetiradaService.devolver(ordemRetirada.getId(), devolucao);
 
         assertEquals(0, BigDecimal.valueOf(80).compareTo(
                 unidadeEstoqueRastreavelRepository.findById(unidade.getId()).orElseThrow().getMetragemAtual()));
         assertEquals(0, BigDecimal.valueOf(80).compareTo(
                 materialRepository.findById(bobina.getId()).orElseThrow().getMetragemDisponivel()));
+        var alocacaoDevolvida = ordemRetirada.getItens().getFirst().getAlocacoes().getFirst();
+        assertNotNull(alocacaoDevolvida.getEvidenciaDevolucaoPath());
+        assertEquals("retorno.png", alocacaoDevolvida.getEvidenciaDevolucaoNome());
+        assertNotNull(alocacaoDevolvida.getEvidenciaDevolucaoData());
+        assertEquals(0, BigDecimal.valueOf(80).compareTo(
+                alocacaoDevolvida.getMetragemRestanteAposDevolucao()));
+    }
+
+    private String fotoValida() throws Exception {
+        BufferedImage imagem = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(imagem, "png", output);
+        return "data:image/png;base64,"
+                + Base64.getEncoder().encodeToString(output.toByteArray());
     }
 
     private Cenario prepararCenario(boolean comFerramenta) {

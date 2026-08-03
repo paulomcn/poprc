@@ -31,6 +31,8 @@ import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashSet;
@@ -57,6 +59,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     private final SaldoLocalService saldoLocalService;
     private final FluxoOrdemServicoService fluxoOrdemServicoService;
     private final OrdemRetiradaPdfService ordemRetiradaPdfService;
+    private final EvidenciaMetragemOrService evidenciaMetragemOrService;
 
     @Transactional
     public OrdemRetirada criarParaOrdemServico(OrdemServico ordemServico, Comarca comarca, String geradoPor) {
@@ -152,6 +155,15 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                 : request.getAlocacoes().stream()
                         .filter(alocacao -> alocacao.getItemId() != null)
                         .collect(Collectors.groupingBy(ExecutarOrdemRetiradaRequest.AlocacaoRequest::getItemId));
+        Map<ExecutarOrdemRetiradaRequest.AlocacaoRequest, EvidenciaMetragemOrService.EvidenciaPreparada>
+                evidenciasRetirada = new IdentityHashMap<>();
+        alocacoesPorItem.values().stream()
+                .flatMap(List::stream)
+                .forEach(alocacao -> evidenciasRetirada.put(
+                        alocacao,
+                        evidenciaMetragemOrService.preparar(
+                                alocacao.getEvidenciaFotoBase64(),
+                                alocacao.getEvidenciaFotoNome())));
 
         ordemRetirada.setConferidoPor(request.getConferidoPor().trim());
         ordemRetirada.setLevadoPor(request.getLevadoPor().trim());
@@ -164,7 +176,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             String origemLocal = null;
             if (rastreavel(material)) {
                 retirarDeUnidadesRastreaveis(ordemRetirada, item, quantidade,
-                        alocacoesPorItem.getOrDefault(item.getId(), List.of()), request);
+                        alocacoesPorItem.getOrDefault(item.getId(), List.of()), request,
+                        evidenciasRetirada);
             } else if (controlaMetragem(material)) {
                 BigDecimal disponivel = valor(material.getMetragemDisponivel());
                 if (quantidade.compareTo(disponivel) > 0) {
@@ -246,6 +259,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                                 DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest::getAlocacaoId,
                                 alocacao -> alocacao,
                                 (a, b) -> b));
+        Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> evidenciasDevolucao =
+                prepararEvidenciasDevolucao(ordemRetirada, devolucoesAlocacao);
         ordemRetirada.setDevolvidoPor(request.getDevolvidoPor().trim());
         ordemRetirada.setRecebidoPor(request.getRecebidoPor().trim());
 
@@ -254,7 +269,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             item.setMaterial(materialBloqueado);
             BigDecimal retirada = valor(item.getQuantidadeRetirada());
             BigDecimal devolvida = rastreavel(item.getMaterial())
-                    ? devolverUnidadesRastreaveis(ordemRetirada, item, devolucoesAlocacao, request)
+                    ? devolverUnidadesRastreaveis(
+                            ordemRetirada, item, devolucoesAlocacao, request, evidenciasDevolucao)
                     : valor(devolucoes.getOrDefault(item.getId(),
                             new DevolverOrdemRetiradaRequest.ItemDevolucaoRequest()).getQuantidadeDevolvida());
             if (devolvida.signum() < 0 || devolvida.compareTo(retirada) > 0) {
@@ -405,7 +421,9 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
 
     private void retirarDeUnidadesRastreaveis(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
             BigDecimal quantidadeSolicitada, List<ExecutarOrdemRetiradaRequest.AlocacaoRequest> requisicoes,
-            ExecutarOrdemRetiradaRequest request) {
+            ExecutarOrdemRetiradaRequest request,
+            Map<ExecutarOrdemRetiradaRequest.AlocacaoRequest,
+                    EvidenciaMetragemOrService.EvidenciaPreparada> evidencias) {
         if (requisicoes.isEmpty()) {
             throw new IllegalArgumentException("Selecione ao menos uma bobina/rolo para " + item.getNomeMaterial() + ".");
         }
@@ -454,6 +472,12 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             alocacao.setUnidadeRastreavel(unidade);
             alocacao.setMetragemRetirada(metragem);
             alocacao.setMetragemDevolvida(BigDecimal.ZERO);
+            EvidenciaMetragemOrService.EvidenciaSalva evidencia =
+                    evidenciaMetragemOrService.salvar(evidencias.get(requisicao));
+            alocacao.setEvidenciaRetiradaPath(evidencia.caminho());
+            alocacao.setEvidenciaRetiradaNome(evidencia.nomeOriginal());
+            alocacao.setEvidenciaRetiradaData(LocalDateTime.now());
+            alocacao.setMetragemRestanteAposRetirada(unidade.getMetragemAtual());
             item.getAlocacoes().add(alocacaoRepository.save(alocacao));
 
             registrarMovimentacao(ordemRetirada, item, metragem, TipoMovimentacao.RETIRADA_OR,
@@ -469,7 +493,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
 
     private BigDecimal devolverUnidadesRastreaveis(OrdemRetirada ordemRetirada, OrdemRetiradaItem item,
             Map<Long, DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest> devolucoes,
-            DevolverOrdemRetiradaRequest request) {
+            DevolverOrdemRetiradaRequest request,
+            Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> evidencias) {
         BigDecimal totalDevolvido = BigDecimal.ZERO;
         for (OrdemRetiradaAlocacao alocacao : item.getAlocacoes()) {
             UnidadeEstoqueRastreavel unidade = unidadeRastreavelRepository
@@ -484,7 +509,14 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                 throw new IllegalArgumentException("Metragem devolvida inválida para "
                         + unidade.getCodigo() + ".");
             }
+            EvidenciaMetragemOrService.EvidenciaSalva evidencia =
+                    evidenciaMetragemOrService.salvar(evidencias.get(alocacao.getId()));
             if (devolvida.signum() == 0) {
+                alocacao.setEvidenciaDevolucaoPath(evidencia.caminho());
+                alocacao.setEvidenciaDevolucaoNome(evidencia.nomeOriginal());
+                alocacao.setEvidenciaDevolucaoData(LocalDateTime.now());
+                alocacao.setMetragemRestanteAposDevolucao(unidade.getMetragemAtual());
+                alocacaoRepository.save(alocacao);
                 continue;
             }
 
@@ -492,6 +524,10 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
             unidade.setStatus(StatusUnidadeRastreavel.DEVOLVIDA_ESTOQUE);
             unidadeRastreavelRepository.save(unidade);
             alocacao.setMetragemDevolvida(valor(alocacao.getMetragemDevolvida()).add(devolvida));
+            alocacao.setEvidenciaDevolucaoPath(evidencia.caminho());
+            alocacao.setEvidenciaDevolucaoNome(evidencia.nomeOriginal());
+            alocacao.setEvidenciaDevolucaoData(LocalDateTime.now());
+            alocacao.setMetragemRestanteAposDevolucao(unidade.getMetragemAtual());
             alocacaoRepository.save(alocacao);
 
             item.getMaterial().setMetragemDisponivel(
@@ -505,6 +541,49 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
         }
         materialRepository.save(item.getMaterial());
         return totalDevolvido;
+    }
+
+    private Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> prepararEvidenciasDevolucao(
+            OrdemRetirada ordemRetirada,
+            Map<Long, DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest> devolucoes) {
+        Map<Long, EvidenciaMetragemOrService.EvidenciaPreparada> preparadas = new HashMap<>();
+        ordemRetirada.getItens().stream()
+                .flatMap(item -> item.getAlocacoes().stream())
+                .forEach(alocacao -> {
+                    DevolverOrdemRetiradaRequest.AlocacaoDevolucaoRequest requisicao =
+                            devolucoes.get(alocacao.getId());
+                    if (requisicao == null) {
+                        throw new IllegalArgumentException(
+                                "Informe a devolução e a foto da bobina/rolo "
+                                        + alocacao.getUnidadeRastreavel().getCodigo() + ".");
+                    }
+                    preparadas.put(
+                            alocacao.getId(),
+                            evidenciaMetragemOrService.preparar(
+                                    requisicao.getEvidenciaFotoBase64(),
+                                    requisicao.getEvidenciaFotoNome()));
+                });
+        return preparadas;
+    }
+
+    @Transactional(readOnly = true)
+    public EvidenciaMetragemOrService.ArquivoEvidencia carregarEvidenciaMetragem(
+            Long ordemRetiradaId, Long alocacaoId, String fase) {
+        OrdemRetiradaAlocacao alocacao = alocacaoRepository.findById(alocacaoId)
+                .orElseThrow(() -> new IllegalArgumentException("Alocação de bobina/rolo não encontrada."));
+        Long ordemDaAlocacao = alocacao.getItem().getOrdemRetirada().getId();
+        if (!ordemRetiradaId.equals(ordemDaAlocacao)) {
+            throw new IllegalArgumentException("A evidência não pertence à Ordem de Retirada informada.");
+        }
+        if ("retirada".equalsIgnoreCase(fase)) {
+            return evidenciaMetragemOrService.carregar(
+                    alocacao.getEvidenciaRetiradaPath(), alocacao.getEvidenciaRetiradaNome());
+        }
+        if ("devolucao".equalsIgnoreCase(fase)) {
+            return evidenciaMetragemOrService.carregar(
+                    alocacao.getEvidenciaDevolucaoPath(), alocacao.getEvidenciaDevolucaoNome());
+        }
+        throw new IllegalArgumentException("Fase de evidência inválida.");
     }
 
     private void validarTexto(String valor, String mensagem) {
