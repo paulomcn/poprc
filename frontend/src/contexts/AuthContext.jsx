@@ -27,6 +27,7 @@ export function AuthProvider({ children }) {
         const administrador = usuarios.data.find((item) => item.perfil === "ADMIN") || usuarios.data[0];
         if (!administrador) throw new Error("Nenhum usuário de teste ativo foi encontrado.");
         const response = await api.post("/auth/dev-login", { funcionarioId: administrador.id });
+        await refreshCsrfToken();
         setUsuario(response.data);
         return;
       }
