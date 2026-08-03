@@ -4,6 +4,7 @@ import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
 import com.poprc.demo.model.ImportacaoEstoquePlanilha;
 import com.poprc.demo.model.Comarca;
+import com.poprc.demo.model.ImportacaoEstoqueItemPlanilha;
 import com.poprc.demo.model.ImportacaoRetiradaPlanilha;
 import com.poprc.demo.model.LocalEstoque;
 import com.poprc.demo.model.Material;
@@ -22,8 +23,10 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -161,6 +164,8 @@ class ImportacaoEstoquePlanilhaServiceTest {
         when(importacaoRepository.findByHashSha256(hash)).thenReturn(Optional.of(existente));
         when(materialRepository.findAll()).thenReturn(List.of(material));
         when(itemImportacaoRepository.existsByImportacaoId(5L)).thenReturn(true);
+        when(itemImportacaoRepository.findByImportacaoIdOrderByNomePlanilhaAsc(5L))
+                .thenReturn(List.of(itemOriginal(existente, material, "Terminal", 10, "8.09")));
         when(comarcaRepository.findById(9L)).thenReturn(Optional.of(comarca));
         when(retiradaImportacaoRepository.save(any(ImportacaoRetiradaPlanilha.class)))
                 .thenAnswer(invocacao -> invocacao.getArgument(0));
@@ -195,5 +200,208 @@ class ImportacaoEstoquePlanilhaServiceTest {
                 new BigDecimal("8.09"),
                 "Saldo final após retiradas importadas de estoque.xlsx",
                 "auditor");
+    }
+
+    @Test
+    void deveBloquearImportacaoParcialQuandoParserEncontrouLinhaInvalida() {
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "estoque.xlsx",
+                "d".repeat(64),
+                3L,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Patch Cord", 8, BigDecimal.TEN, 4)),
+                List.of(),
+                List.of("Linha 5: quantidade inválida para Conector."));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertTrue(exception.getMessage().contains("Linha 5"));
+        verifyNoInteractions(importacaoRepository, estoqueService);
+    }
+
+    @Test
+    void deveBloquearSaldoFinalQueNaoCorrespondeARetirada() {
+        ImportacaoEstoquePlanilhaRequest request = requestComRetiradas(
+                List.of(retirada("ESPERANÇA", "Terminal", "10", "3", "9", 8)));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertTrue(exception.getMessage().contains("deveria ser 7"));
+        assertTrue(exception.getMessage().contains("linha 8"));
+        verifyNoInteractions(importacaoRepository, estoqueService);
+    }
+
+    @Test
+    void deveBloquearQuebraDeSequenciaEntreAbas() {
+        ImportacaoEstoquePlanilhaRequest request = requestComRetiradas(List.of(
+                retirada("ESPERANÇA", "Terminal", "10", "3", "7", 8),
+                retirada("CUITÉ", "Terminal", "8", "2", "6", 9)));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertTrue(exception.getMessage().contains("esperado 7, recebido 8"));
+        verifyNoInteractions(importacaoRepository, estoqueService);
+    }
+
+    @Test
+    void deveBloquearRetiradaDeMaterialAusenteDoInventarioBase() {
+        ImportacaoEstoquePlanilhaRequest request = requestComRetiradas(
+                List.of(retirada("ESPERANÇA", "Conector", "0", "2", "-2", 11)));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertTrue(exception.getMessage().contains("não existe no inventário-base"));
+        verifyNoInteractions(importacaoRepository, estoqueService);
+    }
+
+    @Test
+    void deveBloquearComplementacaoEmDepositoDiferente() {
+        String hash = "e".repeat(64);
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+        ImportacaoEstoquePlanilha existente = importacaoExistente(5L, hash, local);
+        when(importacaoRepository.findByHashSha256(hash)).thenReturn(Optional.of(existente));
+
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "estoque.xlsx",
+                hash,
+                4L,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Terminal", 10, new BigDecimal("8.09"), 3)),
+                List.of(retirada("ESPERANÇA", "Terminal", "10", "2", "8", 8)));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertTrue(exception.getMessage().contains("mesmo depósito"));
+        verifyNoInteractions(estoqueService);
+    }
+
+    @Test
+    void deveBloquearComplementacaoComInventarioBaseAlterado() {
+        String hash = "f".repeat(64);
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+        Material material = new Material();
+        material.setId(7L);
+        material.setNome("Terminal");
+        ImportacaoEstoquePlanilha existente = importacaoExistente(5L, hash, local);
+        when(importacaoRepository.findByHashSha256(hash)).thenReturn(Optional.of(existente));
+        when(itemImportacaoRepository.findByImportacaoIdOrderByNomePlanilhaAsc(5L))
+                .thenReturn(List.of(itemOriginal(existente, material, "Terminal", 10, "8.09")));
+
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "estoque.xlsx",
+                hash,
+                3L,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Terminal", 11, new BigDecimal("8.09"), 3)),
+                List.of(retirada("ESPERANÇA", "Terminal", "11", "2", "9", 8)));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertTrue(exception.getMessage().contains("inventário-base foi alterado"));
+        verifyNoInteractions(estoqueService);
+    }
+
+    @Test
+    void deveBloquearSegundaComplementacaoDoMesmoArquivo() {
+        String hash = "1".repeat(64);
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+        ImportacaoEstoquePlanilha existente = importacaoExistente(5L, hash, local);
+        when(importacaoRepository.findByHashSha256(hash)).thenReturn(Optional.of(existente));
+        when(retiradaImportacaoRepository.existsByImportacaoId(5L)).thenReturn(true);
+
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "estoque.xlsx",
+                hash,
+                3L,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Terminal", 10, new BigDecimal("8.09"), 3)),
+                List.of(retirada("ESPERANÇA", "Terminal", "10", "2", "8", 8)));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.importar(request, "gestor"));
+
+        assertEquals(
+                "O estoque e as retiradas desta planilha já foram importados.",
+                exception.getMessage());
+        verifyNoInteractions(estoqueService);
+    }
+
+    private ImportacaoEstoquePlanilhaRequest requestComRetiradas(
+            List<ImportacaoEstoquePlanilhaRequest.RetiradaImportacao> retiradas) {
+        return new ImportacaoEstoquePlanilhaRequest(
+                "estoque.xlsx",
+                "9".repeat(64),
+                3L,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Terminal", 10, new BigDecimal("8.09"), 3)),
+                retiradas);
+    }
+
+    private ImportacaoEstoquePlanilhaRequest.RetiradaImportacao retirada(
+            String aba,
+            String material,
+            String saldoInicial,
+            String quantidade,
+            String saldoFinal,
+            int linha) {
+        return new ImportacaoEstoquePlanilhaRequest.RetiradaImportacao(
+                aba,
+                9L,
+                material,
+                new BigDecimal(saldoInicial),
+                new BigDecimal(quantidade),
+                new BigDecimal(saldoFinal),
+                new BigDecimal("8.09"),
+                null,
+                linha);
+    }
+
+    private ImportacaoEstoquePlanilha importacaoExistente(
+            Long id, String hash, LocalEstoque local) {
+        ImportacaoEstoquePlanilha importacao = new ImportacaoEstoquePlanilha();
+        importacao.setId(id);
+        importacao.setNomeArquivo("estoque.xlsx");
+        importacao.setHashSha256(hash);
+        importacao.setImportadoPor("gestor");
+        importacao.setDataImportacao(java.time.LocalDateTime.now());
+        importacao.setLocalEstoque(local);
+        importacao.setItensProcessados(1);
+        return importacao;
+    }
+
+    private ImportacaoEstoqueItemPlanilha itemOriginal(
+            ImportacaoEstoquePlanilha importacao,
+            Material material,
+            String nome,
+            int quantidade,
+            String custo) {
+        ImportacaoEstoqueItemPlanilha item = new ImportacaoEstoqueItemPlanilha();
+        item.setImportacao(importacao);
+        item.setMaterial(material);
+        item.setNomePlanilha(nome);
+        item.setSaldoAnterior(0);
+        item.setSaldoImportado(quantidade);
+        item.setCustoUnitario(new BigDecimal(custo));
+        item.setAcao("ATUALIZADO");
+        return item;
     }
 }

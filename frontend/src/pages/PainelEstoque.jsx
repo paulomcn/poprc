@@ -532,7 +532,7 @@ export default function PainelEstoque() {
           avisos.push(`Linha ${linha}: custo unitário inválido para ${nome}.`);
           continue;
         }
-        itens.push({ nome, quantidade, custoUnitario });
+        itens.push({ nome, quantidade, custoUnitario, linhaOrigem: linha });
       }
       if (itens.length === 0) {
         throw new Error("A aba de estoque não possui materiais válidos para importar.");
@@ -626,6 +626,7 @@ export default function PainelEstoque() {
             if (quantidadeRetirada === 0 && saldoFinal >= 0) continue;
             itensRetirada.push({
               nomeMaterial: nome,
+              linhaOrigem: linha,
               saldoInicial,
               quantidadeRetirada,
               saldoFinal,
@@ -688,6 +689,10 @@ export default function PainelEstoque() {
       setError("Corrija os itens bloqueados antes de importar.");
       return;
     }
+    if (importacaoPreview.avisos.length > 0) {
+      setError("Corrija todas as linhas inválidas da planilha antes de importar.");
+      return;
+    }
     if (importacaoPreview.abasRetiradas.some((aba) => !aba.comarcaId)) {
       setError("Vincule cada aba de retirada a uma obra antes de importar.");
       return;
@@ -698,10 +703,12 @@ export default function PainelEstoque() {
         nomeArquivo: importacaoPreview.nomeArquivo,
         hashSha256: importacaoPreview.hashSha256,
         localEstoqueId: Number(importacaoLocalId),
-        itens: importacaoPreview.itens.map(({ nome, quantidade, custoUnitario }) => ({
+        avisos: importacaoPreview.avisos,
+        itens: importacaoPreview.itens.map(({ nome, quantidade, custoUnitario, linhaOrigem }) => ({
           nome,
           quantidade,
           custoUnitario,
+          linhaOrigem,
         })),
         retiradas: importacaoPreview.abasRetiradas.flatMap((aba) =>
           aba.itens.map((item) => ({
@@ -713,6 +720,7 @@ export default function PainelEstoque() {
             saldoFinal: item.saldoFinal,
             custoUnitario: item.custoUnitario,
             dataRetirada: item.dataRetirada,
+            linhaOrigem: item.linhaOrigem,
           }))),
       });
       const resultado = response.data;
@@ -3277,10 +3285,19 @@ export default function PainelEstoque() {
               </section>
             )}
             {importacaoPreview.avisos.length > 0 && (
-              <Alert
-                type="warning"
-                message={`${importacaoPreview.avisos.length} linhas inválidas foram ignoradas. ${importacaoPreview.avisos.slice(0, 2).join(" ")}`}
-              />
+              <div className="space-y-2">
+                <Alert
+                  type="error"
+                  message={`${importacaoPreview.avisos.length} linhas precisam ser corrigidas; nenhuma alteração será aplicada.`}
+                />
+                <ul className="max-h-32 overflow-auto rounded border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+                  {importacaoPreview.avisos.map((aviso, indice) => (
+                    <li key={`${indice}-${aviso}`} className="py-0.5">
+                      {aviso}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
@@ -3352,6 +3369,7 @@ export default function PainelEstoque() {
                 disabled={
                   importacaoProcessando
                   || !importacaoLocalId
+                  || importacaoPreview.avisos.length > 0
                   || importacaoPreview.itens.some((item) => item.erros.length > 0)
                   || importacaoPreview.abasRetiradas.some((aba) => !aba.comarcaId)
                 }
