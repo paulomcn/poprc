@@ -12,6 +12,7 @@ import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -75,6 +76,13 @@ public class Material {
     private BigDecimal custoMedio = BigDecimal.ZERO;
 
     private String localizacao;
+
+    @Column(nullable = false)
+    private Boolean ativo = true;
+
+    private LocalDateTime removidoEm;
+
+    private String removidoPor;
 
     @Transient
     public BigDecimal getValorTotalEstoque() {

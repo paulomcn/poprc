@@ -1,5 +1,38 @@
 # Operação local multiusuário
 
+## Primeiro uso com banco limpo
+
+Para iniciar a operação real sem os dados usados durante o desenvolvimento:
+
+```powershell
+.\scripts\preparar-ambiente-local-limpo.ps1
+```
+
+O comando cria o banco `poprc_local`, mantém o banco anterior intacto e atualiza somente
+`application-local.properties`. Ao abrir o sistema pela primeira vez, a tela de login pede o
+cadastro do primeiro administrador. Esse cadastro inicial deixa de existir automaticamente após
+o primeiro usuário ser criado.
+
+Se `poprc_local` já existir, o script não apaga dados. Para recriá-lo, use `-Recreate`; será exigida
+uma confirmação textual e um backup será criado antes da remoção.
+
+## Importação por nota fiscal
+
+Na página **Estoque**, use **Importar NF** para enviar XML ou PDF. O sistema primeiro apresenta uma
+prévia editável, permite vincular linhas a materiais existentes ou criar novos itens e somente
+altera o saldo após a confirmação. XML de NF-e é a fonte mais confiável. PDFs variam por fornecedor
+e sempre precisam de conferência; PDFs digitalizados podem exigir o preenchimento manual das linhas.
+
+O botão **Histórico** separa notas fiscais e planilhas. Em **Notas fiscais** é possível conferir os
+itens processados, materiais criados ou vinculados e baixar o XML/PDF original arquivado.
+
+## Remoção de materiais
+
+O ícone de lixeira remove o material das listas operacionais, mas preserva notas fiscais,
+movimentações, OS e auditorias antigas. A remoção exige saldo disponível, metragem e reservas
+zerados e registra o usuário e o horário da ação. Como é uma operação sensível, o sistema pode
+solicitar a senha novamente antes de confirmar.
+
 ## Objetivo
 
 Usar um único computador como servidor local do RC Operations Hub. Os demais

@@ -27,6 +27,9 @@ public class EstoqueService {
 
     @Transactional
     public Material cadastrarMaterial(Material material) {
+        material.setAtivo(true);
+        material.setRemovidoEm(null);
+        material.setRemovidoPor(null);
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
             material.setQuantidadeDisponivel(0);
@@ -78,8 +81,42 @@ public class EstoqueService {
     }
 
     @Transactional
+    public void removerMaterial(Long id, String removidoPor) {
+        Material material = materialRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
+        if (!Boolean.TRUE.equals(material.getAtivo())) {
+            throw new IllegalArgumentException("Este material já foi removido do estoque.");
+        }
+        boolean possuiSaldo = valor(material.getQuantidadeDisponivel()) > 0
+                || valor(material.getQuantidadeReservada()) > 0
+                || valor(material.getMetragemDisponivel()).signum() > 0;
+        if (possuiSaldo) {
+            throw new IllegalArgumentException(
+                    "Zere o saldo disponível, a metragem e as reservas antes de remover o material.");
+        }
+        material.setAtivo(false);
+        material.setRemovidoEm(LocalDateTime.now());
+        material.setRemovidoPor(valorTexto(removidoPor, "Usuário não identificado"));
+        materialRepository.save(material);
+    }
+
+    @Transactional
     public MovimentacaoEstoque registrarEntrada(Long materialId, Integer quantidade, BigDecimal metragem,
             BigDecimal custoUnitarioEntrada, Long funcionarioId, Long localEstoqueId) {
+        return registrarEntradaInterna(materialId, quantidade, metragem, custoUnitarioEntrada,
+                funcionarioId, localEstoqueId, "Entrada de estoque");
+    }
+
+    @Transactional
+    public MovimentacaoEstoque registrarEntradaNotaFiscal(Long materialId, Integer quantidade, BigDecimal metragem,
+            BigDecimal custoUnitarioEntrada, Long funcionarioId, Long localEstoqueId, String numeroNota) {
+        String referencia = numeroNota == null || numeroNota.isBlank() ? "não informada" : numeroNota.trim();
+        return registrarEntradaInterna(materialId, quantidade, metragem, custoUnitarioEntrada,
+                funcionarioId, localEstoqueId, "Entrada pela nota fiscal " + referencia);
+    }
+
+    private MovimentacaoEstoque registrarEntradaInterna(Long materialId, Integer quantidade, BigDecimal metragem,
+            BigDecimal custoUnitarioEntrada, Long funcionarioId, Long localEstoqueId, String motivo) {
         Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado"));
         
@@ -121,7 +158,8 @@ public class EstoqueService {
         movimentacao.setSaldoPosterior(saldoControle(material));
         movimentacao.setEstoqueDestino(localDestino.getNome());
         movimentacao.setLancadoPor(funcionario.getNome());
-        movimentacao.setMotivo("Entrada de estoque");
+        movimentacao.setMotivo(motivo);
+        movimentacao.setObservacao(motivo);
         BigDecimal custoEfetivoEntrada = custoUnitarioEntrada != null
                 ? custoUnitarioEntrada
                 : valor(material.getCustoMedio());

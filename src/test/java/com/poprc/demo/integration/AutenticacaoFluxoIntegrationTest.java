@@ -77,7 +77,9 @@ class AutenticacaoFluxoIntegrationTest {
 
     @AfterEach
     void removerUsuario() {
-        funcionarioRepository.findById(funcionarioId).ifPresent(funcionarioRepository::delete);
+        if (funcionarioId != null) {
+            funcionarioRepository.findById(funcionarioId).ifPresent(funcionarioRepository::delete);
+        }
         if (funcionarioEstoqueId != null) {
             funcionarioRepository.findById(funcionarioEstoqueId).ifPresent(funcionarioRepository::delete);
         }
@@ -190,6 +192,51 @@ class AutenticacaoFluxoIntegrationTest {
 
         mockMvc.perform(get("/api/auth/me").cookie(sessao))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void bancoVazioPermiteCriarSomenteOPrimeiroAdministrador() throws Exception {
+        funcionarioRepository.deleteById(funcionarioId);
+        funcionarioId = null;
+
+        mockMvc.perform(get("/api/auth/config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bootstrapRequired").value(true));
+
+        MvcResult resultado = mockMvc.perform(post("/api/auth/bootstrap")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Primeiro Administrador",
+                                  "cpf": "111.444.777-35",
+                                  "senha": "Definitiva123",
+                                  "cidade": "Natal"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.perfil").value("ADMIN"))
+                .andExpect(jsonPath("$.trocaSenhaObrigatoria").value(false))
+                .andReturn();
+        assertThat(resultado.getResponse().getCookie("SESSION")).isNotNull();
+        funcionarioId = funcionarioRepository.findByCpf(CPF).orElseThrow().getId();
+
+        mockMvc.perform(get("/api/auth/config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bootstrapRequired").value(false));
+
+        mockMvc.perform(post("/api/auth/bootstrap")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Segundo Administrador",
+                                  "cpf": "529.982.247-25",
+                                  "senha": "Definitiva123",
+                                  "cidade": "Natal"
+                                }
+                                """))
+                .andExpect(status().isConflict());
     }
 
     @Test

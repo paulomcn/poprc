@@ -7,8 +7,9 @@ import api, { getApiErrorMessage } from "../services/api";
 import { API_ORIGIN } from "../services/runtimeConfig";
 
 export default function Login() {
-  const { usuario, carregando, configuracao, login, loginDesenvolvimento } = useAuth();
+  const { usuario, carregando, configuracao, login, loginDesenvolvimento, configurarAdministrador } = useAuth();
   const [credenciais, setCredenciais] = useState({ cpf: "", senha: "" });
+  const [primeiroAdmin, setPrimeiroAdmin] = useState({ nome: "", cpf: "", senha: "", confirmarSenha: "", cidade: "" });
   const [usuariosDev, setUsuariosDev] = useState([]);
   const [funcionarioId, setFuncionarioId] = useState("");
   const [devAberto, setDevAberto] = useState(false);
@@ -53,6 +54,21 @@ export default function Login() {
     catch (error) { setErro(getApiErrorMessage(error)); }
     finally { setEntrando(false); }
   };
+  const concluirBootstrap = async (event) => {
+    event.preventDefault(); setEntrando(true); setErro("");
+    if (primeiroAdmin.senha !== primeiroAdmin.confirmarSenha) {
+      setErro("As senhas não conferem."); setEntrando(false); return;
+    }
+    try {
+      concluir(await configurarAdministrador({
+        nome: primeiroAdmin.nome,
+        cpf: primeiroAdmin.cpf,
+        senha: primeiroAdmin.senha,
+        cidade: primeiroAdmin.cidade,
+      }));
+    } catch (error) { setErro(getApiErrorMessage(error, "Não foi possível configurar o administrador.")); }
+    finally { setEntrando(false); }
+  };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
@@ -60,13 +76,23 @@ export default function Login() {
         <div className="mb-6 flex items-center gap-3 border-b border-slate-200 pb-5"><img src={rcLogo} alt="RC Technology" className="h-12 w-12 rounded object-cover" /><div><h1 className="text-lg font-bold text-slate-950">RC Operations Hub</h1><p className="text-sm text-slate-500">Acesso ao ambiente operacional</p></div></div>
         {erro && <p className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
         {mensagem && <p className="mb-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{mensagem}</p>}
-        <form onSubmit={entrarLocal} className="space-y-4">
+        {configuracao.bootstrapRequired ? (
+          <form onSubmit={concluirBootstrap} className="space-y-4">
+            <div className="rounded border border-blue-200 bg-blue-50 p-3"><h2 className="text-sm font-bold text-blue-950">Configurar primeiro administrador</h2><p className="mt-1 text-xs text-blue-800">Este cadastro aparece somente porque o ambiente está vazio.</p></div>
+            <label className="block text-sm font-semibold text-slate-700">Nome<input value={primeiroAdmin.nome} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, nome: e.target.value })} required autoComplete="name" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+            <label className="block text-sm font-semibold text-slate-700">CPF<input value={primeiroAdmin.cpf} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cpf: e.target.value })} inputMode="numeric" required placeholder="000.000.000-00" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+            <label className="block text-sm font-semibold text-slate-700">Cidade<input value={primeiroAdmin.cidade} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cidade: e.target.value })} className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+            <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Senha<input value={primeiroAdmin.senha} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, senha: e.target.value })} type="password" minLength={8} required autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label><label className="block text-sm font-semibold text-slate-700">Confirmar<input value={primeiroAdmin.confirmarSenha} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, confirmarSenha: e.target.value })} type="password" minLength={8} required autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label></div>
+            <p className="text-xs text-slate-500">Use ao menos 8 caracteres, com letras e números.</p>
+            <button disabled={entrando} className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><ShieldCheck size={18} /> {entrando ? "Configurando..." : "Criar administrador"}</button>
+          </form>
+        ) : <form onSubmit={entrarLocal} className="space-y-4">
           <label className="block text-sm font-semibold text-slate-700">CPF<input value={credenciais.cpf} onChange={(e) => setCredenciais({ ...credenciais, cpf: e.target.value })} inputMode="numeric" autoComplete="username" required placeholder="000.000.000-00" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
           <label className="block text-sm font-semibold text-slate-700">Senha<input value={credenciais.senha} onChange={(e) => setCredenciais({ ...credenciais, senha: e.target.value })} type="password" autoComplete="current-password" required className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
           <button disabled={entrando} className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><LogIn size={18} /> {entrando ? "Entrando..." : "Entrar com CPF"}</button>
-        </form>
-        {configuracao.zohoEnabled && <div className="mt-4"><a href={`${API_ORIGIN}/oauth2/authorization/zoho`} className="flex w-full items-center justify-center gap-2 rounded border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><ShieldCheck size={18} /> Entrar com Zoho</a></div>}
-        {configuracao.devLoginEnabled && <div className="mt-5 border-t border-slate-200 pt-4"><button type="button" onClick={() => setDevAberto(!devAberto)} className="flex w-full items-center justify-between text-sm font-semibold text-slate-600"><span className="flex items-center gap-2"><User size={17} /> Ambiente de teste</span><ChevronDown size={16} /></button>{devAberto && <div className="mt-3 space-y-3"><select value={funcionarioId} onChange={(e) => setFuncionarioId(e.target.value)} className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm">{usuariosDev.map((item) => <option key={item.id} value={item.id}>{item.nome} - {item.perfil.replaceAll("_", " ")}</option>)}</select><button type="button" onClick={entrarDev} disabled={!funcionarioId || entrando} className="w-full rounded border border-blue-300 px-3 py-2 text-sm font-bold text-blue-700 disabled:opacity-50">Entrar como usuário selecionado</button></div>}</div>}
+        </form>}
+        {!configuracao.bootstrapRequired && configuracao.zohoEnabled && <div className="mt-4"><a href={`${API_ORIGIN}/oauth2/authorization/zoho`} className="flex w-full items-center justify-center gap-2 rounded border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><ShieldCheck size={18} /> Entrar com Zoho</a></div>}
+        {!configuracao.bootstrapRequired && configuracao.devLoginEnabled && <div className="mt-5 border-t border-slate-200 pt-4"><button type="button" onClick={() => setDevAberto(!devAberto)} className="flex w-full items-center justify-between text-sm font-semibold text-slate-600"><span className="flex items-center gap-2"><User size={17} /> Ambiente de teste</span><ChevronDown size={16} /></button>{devAberto && <div className="mt-3 space-y-3"><select value={funcionarioId} onChange={(e) => setFuncionarioId(e.target.value)} className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm">{usuariosDev.map((item) => <option key={item.id} value={item.id}>{item.nome} - {item.perfil.replaceAll("_", " ")}</option>)}</select><button type="button" onClick={entrarDev} disabled={!funcionarioId || entrando} className="w-full rounded border border-blue-300 px-3 py-2 text-sm font-bold text-blue-700 disabled:opacity-50">Entrar como usuário selecionado</button></div>}</div>}
       </section>
     </main>
   );

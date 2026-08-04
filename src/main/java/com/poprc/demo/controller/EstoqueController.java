@@ -3,6 +3,7 @@ package com.poprc.demo.controller;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaDetalheDTO;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
+import com.poprc.demo.dto.NotaFiscalEstoqueDTO;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.repository.MaterialRepository;
@@ -14,10 +15,17 @@ import com.poprc.demo.model.LocalEstoque;
 import com.poprc.demo.model.SaldoMaterialLocal;
 import com.poprc.demo.service.SaldoLocalService;
 import com.poprc.demo.service.ImportacaoEstoquePlanilhaService;
+import com.poprc.demo.service.ImportacaoNotaFiscalEstoqueService;
+import com.poprc.demo.security.UsuarioAutenticado;
 import lombok.RequiredArgsConstructor;
 import lombok.Data;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +43,7 @@ public class EstoqueController {
     private final UnidadeEstoqueRastreavelService unidadeRastreavelService;
     private final SaldoLocalService saldoLocalService;
     private final ImportacaoEstoquePlanilhaService importacaoPlanilhaService;
+    private final ImportacaoNotaFiscalEstoqueService importacaoNotaFiscalService;
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> tratarRequisicaoInvalida(IllegalArgumentException exception) {
@@ -43,7 +52,7 @@ public class EstoqueController {
 
     @GetMapping("/materiais")
     public ResponseEntity<List<Material>> listarMateriais() {
-        List<Material> materiais = materialRepository.findAll();
+        List<Material> materiais = materialRepository.findByAtivoTrueOrderByNomeAsc();
         return ResponseEntity.ok(materiais);
     }
 
@@ -56,6 +65,16 @@ public class EstoqueController {
     @PutMapping("/materiais/{id}")
     public ResponseEntity<Material> atualizarMaterial(@PathVariable Long id, @RequestBody Material materialAtualizado) {
         return ResponseEntity.ok(estoqueService.atualizarMaterial(id, materialAtualizado));
+    }
+
+    @DeleteMapping("/materiais/{id}")
+    public ResponseEntity<Void> removerMaterial(@PathVariable Long id, Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        if (authentication != null && authentication.getPrincipal() instanceof UsuarioAutenticado autenticado) {
+            usuario = autenticado.getNome();
+        }
+        estoqueService.removerMaterial(id, usuario);
+        return ResponseEntity.noContent().build();
     }
 
     // ROTA DO HISTÓRICO CORRIGIDA: Buscando direto do banco pelo repository
@@ -151,6 +170,48 @@ public class EstoqueController {
     public ResponseEntity<List<ImportacaoEstoquePlanilhaDetalheDTO.Retirada>>
             listarRetiradasImportadas() {
         return ResponseEntity.ok(importacaoPlanilhaService.listarRetiradasImportadas());
+    }
+
+    @PostMapping("/importacoes/notas-fiscais/analisar")
+    public ResponseEntity<NotaFiscalEstoqueDTO.Preview> analisarNotaFiscal(
+            @RequestBody NotaFiscalEstoqueDTO.ArquivoRequest request) {
+        return ResponseEntity.ok(importacaoNotaFiscalService.analisar(request));
+    }
+
+    @PostMapping("/importacoes/notas-fiscais")
+    public ResponseEntity<NotaFiscalEstoqueDTO.Resultado> importarNotaFiscal(
+            @RequestBody NotaFiscalEstoqueDTO.ConfirmarRequest request,
+            Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UsuarioAutenticado usuario)) {
+            throw new IllegalArgumentException("Usuário autenticado não identificado.");
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(importacaoNotaFiscalService.confirmar(request, usuario));
+    }
+
+    @GetMapping("/importacoes/notas-fiscais")
+    public ResponseEntity<List<NotaFiscalEstoqueDTO.Historico>> listarImportacoesNotasFiscais() {
+        return ResponseEntity.ok(importacaoNotaFiscalService.listarHistorico());
+    }
+
+    @GetMapping("/importacoes/notas-fiscais/{id}")
+    public ResponseEntity<NotaFiscalEstoqueDTO.Detalhe> detalharImportacaoNotaFiscal(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(importacaoNotaFiscalService.detalhar(id));
+    }
+
+    @GetMapping("/importacoes/notas-fiscais/{id}/arquivo")
+    public ResponseEntity<Resource> baixarArquivoNotaFiscal(@PathVariable Long id) {
+        ImportacaoNotaFiscalEstoqueService.ArquivoArmazenado arquivo =
+                importacaoNotaFiscalService.carregarArquivo(id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(arquivo.nomeArquivo(), java.nio.charset.StandardCharsets.UTF_8)
+                .build());
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType(arquivo.contentType()))
+                .body(new FileSystemResource(arquivo.path()));
     }
 
     @GetMapping("/unidades-rastreaveis")

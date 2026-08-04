@@ -46,7 +46,20 @@ public class AuthController {
         return Map.of(
                 "securityEnabled", securityEnabled,
                 "devLoginEnabled", devLoginEnabled,
-                "zohoEnabled", securityEnabled && zohoEnabled);
+                "zohoEnabled", securityEnabled && zohoEnabled,
+                "bootstrapRequired", funcionarioRepository.count() == 0);
+    }
+
+    @PostMapping("/bootstrap")
+    public ResponseEntity<UsuarioResponse> configurarPrimeiroAdministrador(
+            @RequestBody BootstrapRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+        Funcionario funcionario = autenticacaoLocalService.criarAdministradorInicial(
+                request.nome(), request.cpf(), request.senha(), request.cidade());
+        UsuarioAutenticado usuario = UsuarioAutenticado.de(funcionario, "CPF_SENHA");
+        sessaoAutenticacaoService.autenticar(usuario, httpRequest, httpResponse);
+        return ResponseEntity.status(201).body(UsuarioResponse.de(usuario, funcionario));
     }
 
     @GetMapping("/me")
@@ -105,6 +118,7 @@ public class AuthController {
     public record LoginRequest(String cpf, String senha) { }
     public record SenhaRequest(String senha) { }
     public record AlterarSenhaRequest(String senhaAtual, String novaSenha) { }
+    public record BootstrapRequest(String nome, String cpf, String senha, String cidade) { }
 
     public record UsuarioResponse(
             Long funcionarioId,

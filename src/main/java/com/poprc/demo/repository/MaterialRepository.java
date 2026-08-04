@@ -3,6 +3,7 @@ package com.poprc.demo.repository;
 import com.poprc.demo.model.Material;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -12,6 +13,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface MaterialRepository extends JpaRepository<Material, Long> {
     boolean existsByPartNumberIgnoreCase(String partNumber);
+    Optional<Material> findByPartNumberIgnoreCase(String partNumber);
+    List<Material> findByAtivoTrueOrderByNomeAsc();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from Material m where m.id = :id")
