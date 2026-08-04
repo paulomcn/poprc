@@ -8,6 +8,7 @@ application-local.properties
 !.env.example
 rc_uploads/
 tmp/
+.runtime/
 ~$*.docx
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

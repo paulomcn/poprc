@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { KeyRound, Pencil, Plus, Search, Users } from "lucide-react";
+import { History, KeyRound, Pencil, Plus, Search, ShieldCheck, Users } from "lucide-react";
 import Alert from "../components/Alert";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Modal from "../components/Modal";
@@ -13,6 +13,19 @@ const perfis = [
 ];
 const funcoes = ["Administrador", "Supervisor técnico", "Líder de equipe", "Técnico de campo", "Técnico de redes", "Almoxarife", "Auditor", "Financeiro"];
 const vazio = { nome: "", funcao: "Técnico de campo", cidade: "", cpf: "", telefone: "", email: "", perfilAcesso: "TECNICO", ativo: true, senha: "", certificacoes: "", documentPaths: "" };
+const matrizPerfis = [
+  { perfil: "Administrador", escopo: "Acesso integral, usuários, financeiro e configurações." },
+  { perfil: "Supervisor técnico", escopo: "Contratos, projetos, OS, equipes e execução das obras." },
+  { perfil: "Técnico", escopo: "Somente OS, obras e documentos vinculados à própria equipe." },
+  { perfil: "Estoque", escopo: "Cadastro, entrada, retirada, devolução e rastreabilidade de materiais." },
+  { perfil: "Auditor", escopo: "Consulta operacional, conciliação e homologação do As-Built." },
+];
+const nomesEventos = {
+  ACESSO_FUNCIONARIO_CRIADO: "Usuário criado",
+  ACESSO_PERFIL_ALTERADO: "Perfil alterado",
+  ACESSO_STATUS_ALTERADO: "Status alterado",
+  ACESSO_SENHA_TEMPORARIA_REDEFINIDA: "Senha temporária redefinida",
+};
 
 export default function Funcionarios() {
   const { usuario } = useAuth();
@@ -26,10 +39,20 @@ export default function Funcionarios() {
   const [editando, setEditando] = useState(null);
   const [form, setForm] = useState(vazio);
   const [salvando, setSalvando] = useState(false);
+  const [auditoria, setAuditoria] = useState([]);
+  const [showGovernanca, setShowGovernanca] = useState(false);
 
   const carregar = async () => {
     setLoading(true);
-    try { setFuncionarios((await api.get("/funcionarios")).data); setError(""); }
+    try {
+      const [respostaFuncionarios, respostaAuditoria] = await Promise.all([
+        api.get("/funcionarios"),
+        podeGerenciar ? api.get("/funcionarios/auditoria-acessos") : Promise.resolve({ data: [] }),
+      ]);
+      setFuncionarios(respostaFuncionarios.data);
+      setAuditoria(respostaAuditoria.data);
+      setError("");
+    }
     catch (err) { setError(getApiErrorMessage(err, "Erro ao carregar funcionários.")); }
     finally { setLoading(false); }
   };
@@ -67,12 +90,18 @@ export default function Funcionarios() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-900">Equipes e acessos</h1><p className="mt-1 text-sm text-slate-500">Colaboradores, funções operacionais e permissões do sistema.</p></div>{podeGerenciar && <button onClick={abrirNovo} className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white"><Plus size={18} /> Novo funcionário</button>}</div>
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-900">Equipes e acessos</h1><p className="mt-1 text-sm text-slate-500">Colaboradores, funções operacionais e permissões do sistema.</p></div>{podeGerenciar && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setShowGovernanca(true)} className="flex items-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"><ShieldCheck size={18} /> Matriz de acesso</button><button onClick={abrirNovo} className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white"><Plus size={18} /> Novo funcionário</button></div>}</div>
       {error && <Alert type="error" message={error} onClose={() => setError("")} />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess("")} />}
       <div className="flex items-center gap-2 rounded border border-slate-200 bg-white px-3 py-2"><Search size={17} className="text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full border-0 text-sm outline-none" placeholder="Filtrar por nome, função, CPF, telefone ou cidade" /></div>
       {loading ? <LoadingSpinner /> : filtrados.length === 0 ? <div className="rounded border border-slate-200 bg-white p-8 text-center"><Users className="mx-auto text-slate-400" /><p className="mt-3 text-sm text-slate-500">Nenhum funcionário encontrado.</p></div> : (
         <div className="overflow-x-auto rounded border border-slate-200 bg-white"><table className="w-full min-w-[900px] text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500"><tr>{["Funcionário", "Contato", "Função", "Perfil", "Login", "Status", ...(podeGerenciar ? ["Ações"] : [])].map((item) => <th key={item} className="px-4 py-3">{item}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtrados.map((item) => <tr key={item.id} className="hover:bg-slate-50"><td className="px-4 py-3"><p className="font-semibold text-slate-900">{item.nome}</p><p className="text-xs text-slate-500">{item.cidade || "Cidade não informada"}</p></td><td className="px-4 py-3 text-slate-600"><p>{item.cpfMascarado || "CPF não informado"}</p><p className="text-xs">{item.telefone || item.email || "Sem contato"}</p></td><td className="px-4 py-3 text-slate-700">{item.funcao}</td><td className="px-4 py-3 text-slate-700">{perfis.find(([valor]) => valor === item.perfilAcesso)?.[1] || item.perfilAcesso}</td><td className="px-4 py-3"><span className={`rounded px-2 py-1 text-xs font-semibold ${item.senhaConfigurada ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{item.senhaConfigurada ? "Senha configurada" : "Sem senha"}</span></td><td className="px-4 py-3"><span className={`rounded px-2 py-1 text-xs font-semibold ${item.ativo === false ? "bg-slate-100 text-slate-600" : "bg-blue-50 text-blue-700"}`}>{item.ativo === false ? "Inativo" : "Ativo"}</span></td>{podeGerenciar && <td className="px-4 py-3"><div className="flex gap-1"><button title="Editar" onClick={() => abrirEdicao(item)} className="rounded border border-slate-200 p-2 text-blue-700 hover:bg-blue-50"><Pencil size={16} /></button><button title="Redefinir senha" onClick={() => redefinir(item)} disabled={!item.cpfMascarado} className="rounded border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 disabled:opacity-30"><KeyRound size={16} /></button></div></td>}</tr>)}</tbody></table></div>
+      )}
+      {podeGerenciar && !loading && (
+        <section className="rounded border border-slate-200 bg-white">
+          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3"><History size={18} className="text-blue-600" /><div><h2 className="text-sm font-bold text-slate-900">Histórico de acessos</h2><p className="text-xs text-slate-500">Últimas alterações administrativas, em ordem cronológica inversa.</p></div></div>
+          {auditoria.length === 0 ? <p className="px-4 py-6 text-center text-sm text-slate-500">Nenhuma alteração de acesso registrada.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data e hora</th><th className="px-4 py-3">Administrador</th><th className="px-4 py-3">Funcionário afetado</th><th className="px-4 py-3">Evento</th><th className="px-4 py-3">Detalhes</th></tr></thead><tbody className="divide-y divide-slate-100">{auditoria.map((item) => <tr key={item.id}><td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.registradoEm ? new Date(item.registradoEm).toLocaleString("pt-BR") : "-"}</td><td className="px-4 py-3 font-medium text-slate-800">{item.usuario || "Sistema"}</td><td className="px-4 py-3 text-slate-700">{funcionarios.find((funcionario) => funcionario.id === item.alvoFuncionarioId)?.nome || `ID ${item.alvoFuncionarioId}`}</td><td className="px-4 py-3 text-slate-700">{nomesEventos[item.tipoEvento] || item.tipoEvento}</td><td className="px-4 py-3 text-slate-600">{item.detalhes || "-"}</td></tr>)}</tbody></table></div>}
+        </section>
       )}
       <Modal isOpen={podeGerenciar && showModal} onClose={() => setShowModal(false)} title={editando ? "Editar funcionário" : "Novo funcionário"}>
         <form onSubmit={salvar} className="space-y-4">
@@ -84,6 +113,13 @@ export default function Funcionarios() {
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Acesso ativo</label>
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4"><button type="button" onClick={() => setShowModal(false)} className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold">Cancelar</button><button disabled={salvando} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Salvar"}</button></div>
         </form>
+      </Modal>
+      <Modal isOpen={podeGerenciar && showGovernanca} onClose={() => setShowGovernanca(false)} title="Matriz de acesso">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">Os perfis abaixo são fixos nesta fase. Alterações entram em vigor na próxima requisição e encerram sessões cujo perfil foi modificado.</p>
+          <div className="divide-y divide-slate-200 rounded border border-slate-200">{matrizPerfis.map((item) => <div key={item.perfil} className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><p className="text-sm font-bold text-slate-900">{item.perfil}</p><p className="text-sm text-slate-600">{item.escopo}</p></div>)}</div>
+          <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">O último administrador ativo não pode ser desativado nem convertido para outro perfil.</p>
+        </div>
       </Modal>
     </div>
   );

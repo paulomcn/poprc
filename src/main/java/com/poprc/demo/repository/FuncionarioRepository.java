@@ -1,6 +1,7 @@
 package com.poprc.demo.repository;
 
 import com.poprc.demo.model.Funcionario;
+import com.poprc.demo.model.PerfilAcesso;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -24,4 +25,6 @@ public interface FuncionarioRepository extends JpaRepository<Funcionario, Long> 
     Optional<Funcionario> findByCpf(String cpf);
 
     List<Funcionario> findByAtivoTrueOrderByNomeAsc();
+
+    long countByPerfilAcessoAndAtivoTrue(PerfilAcesso perfilAcesso);
 }
