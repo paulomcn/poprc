@@ -67,9 +67,35 @@ transação seja revertida.
 | Preservar sequência de saldo entre abas | Atendido |
 | Persistir evidências de retirada e devolução | Atendido |
 
-## Pendência de Homologação Manual
+## Homologação Manual Concluída em 04/08/2026
 
-Antes de encerrar definitivamente a fase, deve ser feito um último teste pela interface
-com uma cópia controlada da planilha real em ambiente de desenvolvimento. O teste deve
-confirmar o mapeamento de cada aba para a obra correta e a conferência visual do relatório
-de importação. Essa validação não deve usar o banco operacional.
+A planilha real foi enviada pela interface em uma cópia isolada do banco `poprc_dev`.
+O banco original não recebeu alterações e a cópia foi removida após a conferência.
+
+Resultados da prévia:
+
+- 62 materiais reconhecidos, sem itens bloqueados.
+- Valor total reconhecido de R$ 57.241,97.
+- Quatro abas de retirada reconhecidas: `ESPERANÇA`, `ALAGOA_NOVA`, `CUITÉ` e `CABEDELO`.
+- Todas as abas foram vinculadas à OS de desenvolvimento disponível no ambiente isolado.
+
+Resultados persistidos:
+
+- 62 materiais processados.
+- Quatro abas processadas.
+- 71 registros históricos de retirada.
+- 37 linhas com falta de material.
+- 2.213 unidades retiradas e 1.719 unidades faltantes acumuladas segundo a sequência da planilha.
+
+O mesmo arquivo foi enviado novamente e a operação foi bloqueada com a mensagem
+`O estoque e as retiradas desta planilha já foram importados.`. Antes e depois da
+tentativa repetida, os contadores permaneceram em três importações, 113 itens de
+histórico de inventário, 132 retiradas importadas e 138 movimentações de estoque.
+
+Foi tentada uma verificação visual adicional com uma planilha artificial inválida, mas
+o arquivo temporário reexportado pela ferramenta de planilhas não foi aceito pelo
+ExcelJS e, portanto, esse resultado foi descartado. O bloqueio de importação parcial
+permanece comprovado pelos testes unitários e pelo teste transacional da suíte.
+
+Com a importação real, a reimportação bloqueada e os 208 testes aprovados, a Fase 1
+está concluída.
