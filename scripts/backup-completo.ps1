@@ -46,6 +46,7 @@ try {
             }
         }
 
+    $totalBytes = [long](($arquivos | ForEach-Object { [long]$_.size } | Measure-Object -Sum).Sum)
     $manifest = [ordered]@{
         formatVersion = 1
         createdAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -53,7 +54,7 @@ try {
         databaseDump = [System.IO.Path]::GetRelativePath($stage, $dump).Replace('\', '/')
         uploadSource = [System.IO.Path]::GetFullPath($UploadDirectory)
         fileCount = @($arquivos).Count
-        totalBytes = (@($arquivos) | Measure-Object -Property size -Sum).Sum
+        totalBytes = $totalBytes
         files = @($arquivos)
     }
     $manifest | ConvertTo-Json -Depth 6 |

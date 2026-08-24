@@ -1,0 +1,10 @@
+version: "2"
+authtoken: ${NGROK_AUTHTOKEN}
+tunnels:
+  frontend:
+    proto: http
+    addr: 5173
+    domain: your-frontend-domain.ngrok-free.app
+  backend:
+    proto: http
+    addr: 8085
