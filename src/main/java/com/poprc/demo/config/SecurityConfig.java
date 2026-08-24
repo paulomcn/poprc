@@ -74,7 +74,7 @@ public class SecurityConfig {
                     authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     authorize.requestMatchers("/error", "/actuator/health",
                             "/api/auth/csrf", "/api/auth/dev-login", "/api/auth/dev-usuarios").permitAll();
-                    authorize.requestMatchers("/api/auth/config", "/api/auth/login").permitAll();
+                    authorize.requestMatchers("/api/auth/config", "/api/auth/login", "/api/auth/bootstrap").permitAll();
                     if (zohoEnabled) {
                         authorize.requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll();
                     }
@@ -94,6 +94,8 @@ public class SecurityConfig {
                     authorize.requestMatchers("/uploads/documentos/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "AUDITOR");
                     authorize.requestMatchers("/uploads/**").authenticated();
+                    authorize.requestMatchers(HttpMethod.GET, "/api/funcionarios/auditoria-acessos")
+                            .hasRole("ADMIN");
                     authorize.requestMatchers(HttpMethod.GET, "/api/funcionarios/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
                     authorize.requestMatchers("/api/funcionarios/**").hasRole("ADMIN");

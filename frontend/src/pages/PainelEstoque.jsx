@@ -17,12 +17,16 @@ import {
   Eye,
   FileClock,
   Upload,
+  Receipt,
+  Trash2,
+  Undo2,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
 import Modal from "../components/Modal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
+import { useAuth } from "../contexts/AuthContext";
 
 const CATEGORIAS_MATERIAL = [
   { value: "MATERIAL_CONSUMO", label: "Materiais de Consumo" },
@@ -222,7 +226,10 @@ function SignatureBox({ label, value, onChange }) {
 }
 
 export default function PainelEstoque() {
+  const { usuario } = useAuth();
+  const podeGerenciarEstoque = ["ADMIN", "ESTOQUE"].includes(usuario?.perfil);
   const [materiais, setMateriais] = useState([]);
+  const [materiaisRemovidos, setMateriaisRemovidos] = useState([]);
   const [funcionarios, setFuncionarios] = useState([]);
   const [comarcas, setComarcas] = useState([]);
   const [historico, setHistorico] = useState([]);
@@ -231,6 +238,7 @@ export default function PainelEstoque() {
   const [locaisEstoque, setLocaisEstoque] = useState([]);
   const [saldosLocais, setSaldosLocais] = useState([]);
   const [importacoesPlanilha, setImportacoesPlanilha] = useState([]);
+  const [importacoesNotaFiscal, setImportacoesNotaFiscal] = useState([]);
   const [retiradasImportadas, setRetiradasImportadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -256,6 +264,8 @@ export default function PainelEstoque() {
   const [showMinimoLocalModal, setShowMinimoLocalModal] = useState(false);
   const [showHistoricoImportacoesModal, setShowHistoricoImportacoesModal] = useState(false);
   const [importacaoDetalhe, setImportacaoDetalhe] = useState(null);
+  const [notaFiscalDetalhe, setNotaFiscalDetalhe] = useState(null);
+  const [abaHistoricoImportacoes, setAbaHistoricoImportacoes] = useState("notas-fiscais");
   const [fotoExpandida, setFotoExpandida] = useState(null);
   const [materialEmEdicao, setMaterialEmEdicao] = useState(null);
   const [ordemRetiradaAtual, setOrdemRetiradaAtual] = useState(null);
@@ -341,6 +351,10 @@ export default function PainelEstoque() {
   const [importacaoLocalId, setImportacaoLocalId] = useState("");
   const [importacaoProcessando, setImportacaoProcessando] = useState(false);
   const importacaoInputRef = useRef(null);
+  const [notaFiscalPreview, setNotaFiscalPreview] = useState(null);
+  const [notaFiscalLocalId, setNotaFiscalLocalId] = useState("");
+  const [notaFiscalProcessando, setNotaFiscalProcessando] = useState(false);
+  const notaFiscalInputRef = useRef(null);
 
   useEffect(() => {
     fetchData();
@@ -349,8 +363,14 @@ export default function PainelEstoque() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const materiaisResponse = await api.get("/estoque/materiais");
+      const [materiaisResponse, removidosResponse] = await Promise.all([
+        api.get("/estoque/materiais"),
+        podeGerenciarEstoque
+          ? api.get("/estoque/materiais/removidos")
+          : Promise.resolve({ data: [] }),
+      ]);
       setMateriais(materiaisResponse.data);
+      setMateriaisRemovidos(removidosResponse.data || []);
 
       const funcionariosResponse = await api.get("/funcionarios");
       setFuncionarios(funcionariosResponse.data);
@@ -374,12 +394,14 @@ export default function PainelEstoque() {
       setLocaisEstoque(locaisResponse.data || []);
       setSaldosLocais(saldosResponse.data || []);
 
-      const [importacoesResponse, retiradasImportadasResponse] = await Promise.all([
+      const [importacoesResponse, retiradasImportadasResponse, notasFiscaisResponse] = await Promise.all([
         api.get("/estoque/importacoes/planilha"),
         api.get("/estoque/importacoes/planilha/retiradas"),
+        api.get("/estoque/importacoes/notas-fiscais"),
       ]);
       setImportacoesPlanilha(importacoesResponse.data || []);
       setRetiradasImportadas(retiradasImportadasResponse.data || []);
+      setImportacoesNotaFiscal(notasFiscaisResponse.data || []);
 
       setError(null);
     } catch (err) {
@@ -402,9 +424,13 @@ export default function PainelEstoque() {
     setShowMinimoLocalModal(false);
     setShowHistoricoImportacoesModal(false);
     setImportacaoDetalhe(null);
+    setNotaFiscalDetalhe(null);
     setImportacaoPreview(null);
     setImportacaoLocalId("");
     setImportacaoProcessando(false);
+    setNotaFiscalPreview(null);
+    setNotaFiscalLocalId("");
+    setNotaFiscalProcessando(false);
     setMaterialEmEdicao(null);
     setOrdemRetiradaAtual(null);
     setFormData({ materialId: "", quantidade: "", custoUnitarioEntrada: "", funcionarioId: "", comarcaId: "", localEstoqueId: "" });
@@ -532,7 +558,7 @@ export default function PainelEstoque() {
           avisos.push(`Linha ${linha}: custo unitário inválido para ${nome}.`);
           continue;
         }
-        itens.push({ nome, quantidade, custoUnitario });
+        itens.push({ nome, quantidade, custoUnitario, linhaOrigem: linha });
       }
       if (itens.length === 0) {
         throw new Error("A aba de estoque não possui materiais válidos para importar.");
@@ -626,6 +652,7 @@ export default function PainelEstoque() {
             if (quantidadeRetirada === 0 && saldoFinal >= 0) continue;
             itensRetirada.push({
               nomeMaterial: nome,
+              linhaOrigem: linha,
               saldoInicial,
               quantidadeRetirada,
               saldoFinal,
@@ -688,6 +715,10 @@ export default function PainelEstoque() {
       setError("Corrija os itens bloqueados antes de importar.");
       return;
     }
+    if (importacaoPreview.avisos.length > 0) {
+      setError("Corrija todas as linhas inválidas da planilha antes de importar.");
+      return;
+    }
     if (importacaoPreview.abasRetiradas.some((aba) => !aba.comarcaId)) {
       setError("Vincule cada aba de retirada a uma obra antes de importar.");
       return;
@@ -698,10 +729,12 @@ export default function PainelEstoque() {
         nomeArquivo: importacaoPreview.nomeArquivo,
         hashSha256: importacaoPreview.hashSha256,
         localEstoqueId: Number(importacaoLocalId),
-        itens: importacaoPreview.itens.map(({ nome, quantidade, custoUnitario }) => ({
+        avisos: importacaoPreview.avisos,
+        itens: importacaoPreview.itens.map(({ nome, quantidade, custoUnitario, linhaOrigem }) => ({
           nome,
           quantidade,
           custoUnitario,
+          linhaOrigem,
         })),
         retiradas: importacaoPreview.abasRetiradas.flatMap((aba) =>
           aba.itens.map((item) => ({
@@ -713,6 +746,7 @@ export default function PainelEstoque() {
             saldoFinal: item.saldoFinal,
             custoUnitario: item.custoUnitario,
             dataRetirada: item.dataRetirada,
+            linhaOrigem: item.linhaOrigem,
           }))),
       });
       const resultado = response.data;
@@ -732,6 +766,164 @@ export default function PainelEstoque() {
     }
   };
 
+  const selecionarNotaFiscal = async (event) => {
+    const arquivo = event.target.files?.[0];
+    event.target.value = "";
+    if (!arquivo) return;
+    const extensaoValida = /\.(xml|pdf)$/i.test(arquivo.name);
+    if (!extensaoValida) {
+      setError("Selecione uma nota fiscal nos formatos XML ou PDF.");
+      return;
+    }
+    if (arquivo.size > 10 * 1024 * 1024) {
+      setError("A nota fiscal excede o limite de 10 MB.");
+      return;
+    }
+    try {
+      setNotaFiscalProcessando(true);
+      setError(null);
+      const arquivoBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Não foi possível ler a nota fiscal."));
+        reader.readAsDataURL(arquivo);
+      });
+      const response = await api.post("/estoque/importacoes/notas-fiscais/analisar", {
+        nomeArquivo: arquivo.name,
+        contentType: arquivo.type,
+        arquivoBase64,
+      });
+      const depositoPadrao = locaisEstoque.find(
+        (local) => normalizarTextoPlanilha(local.nome) === "estoque principal",
+      ) || locaisEstoque.find((local) => local.ativo !== false);
+      setNotaFiscalLocalId(depositoPadrao?.id ? String(depositoPadrao.id) : "");
+      setNotaFiscalPreview({
+        ...response.data,
+        arquivoBase64,
+        contentType: arquivo.type,
+        itens: (response.data.itens || []).map((item) => {
+          const existente = materiais.find((material) => material.id === item.materialSugeridoId);
+          return {
+            ...item,
+            importar: true,
+            materialId: item.materialSugeridoId ? String(item.materialSugeridoId) : "",
+            nome: existente?.nome || item.descricao || "",
+            partNumber: item.codigoProduto || "",
+            categoria: existente?.categoria || "MATERIAL_CONSUMO",
+            tipoControle: existente?.tipoControle || item.tipoControleSugerido || "UNIDADE",
+            unidadeMedida: existente?.unidadeMedida || item.unidadeMedidaSugerida || "UNIDADE",
+          };
+        }),
+      });
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível analisar a nota fiscal."));
+    } finally {
+      setNotaFiscalProcessando(false);
+    }
+  };
+
+  const atualizarItemNotaFiscal = (indice, campo, valor) => {
+    setNotaFiscalPreview((atual) => ({
+      ...atual,
+      itens: atual.itens.map((item, posicao) => {
+        if (posicao !== indice) return item;
+        if (campo === "materialId") {
+          const material = materiais.find((registro) => String(registro.id) === String(valor));
+          return {
+            ...item,
+            materialId: valor,
+            nome: material?.nome || item.nome,
+            tipoControle: material?.tipoControle || item.tipoControle,
+            unidadeMedida: material?.unidadeMedida || item.unidadeMedida,
+          };
+        }
+        if (campo === "codigoProduto") {
+          return {
+            ...item,
+            codigoProduto: valor,
+            partNumber: !item.partNumber || item.partNumber === item.codigoProduto
+              ? valor
+              : item.partNumber,
+          };
+        }
+        if (campo === "tipoControle") {
+          return {
+            ...item,
+            tipoControle: valor,
+            unidadeMedida: unidadePadraoPorControle[valor] || "UNIDADE",
+          };
+        }
+        return { ...item, [campo]: valor };
+      }),
+    }));
+  };
+
+  const adicionarItemNotaFiscal = () => {
+    setNotaFiscalPreview((atual) => ({
+      ...atual,
+      itens: [...atual.itens, {
+        importar: true,
+        materialId: "",
+        codigoProduto: "",
+        nome: "",
+        partNumber: "",
+        descricao: "",
+        ncm: "",
+        cfop: "",
+        unidadeFiscal: "UN",
+        quantidade: 1,
+        valorUnitario: 0,
+        valorTotal: 0,
+        categoria: "MATERIAL_CONSUMO",
+        tipoControle: "UNIDADE",
+        unidadeMedida: "UNIDADE",
+      }],
+    }));
+  };
+
+  const confirmarImportacaoNotaFiscal = async () => {
+    if (!notaFiscalPreview || !notaFiscalLocalId) return;
+    const selecionados = notaFiscalPreview.itens.filter((item) => item.importar);
+    if (selecionados.length === 0) {
+      setError("Selecione ao menos um item da nota fiscal.");
+      return;
+    }
+    try {
+      setNotaFiscalProcessando(true);
+      setError(null);
+      const response = await api.post("/estoque/importacoes/notas-fiscais", {
+        nomeArquivo: notaFiscalPreview.nomeArquivo,
+        contentType: notaFiscalPreview.contentType,
+        arquivoBase64: notaFiscalPreview.arquivoBase64,
+        hashSha256: notaFiscalPreview.hashSha256,
+        localEstoqueId: Number(notaFiscalLocalId),
+        chaveAcesso: notaFiscalPreview.chaveAcesso,
+        numero: notaFiscalPreview.numero,
+        serie: notaFiscalPreview.serie,
+        emitenteNome: notaFiscalPreview.emitenteNome,
+        emitenteCnpj: notaFiscalPreview.emitenteCnpj,
+        dataEmissao: notaFiscalPreview.dataEmissao || null,
+        itens: notaFiscalPreview.itens.map((item) => ({
+          ...item,
+          materialId: item.materialId ? Number(item.materialId) : null,
+          quantidade: Number(item.quantidade),
+          valorUnitario: Number(item.valorUnitario),
+        })),
+      });
+      setSuccessMessage(
+        `NF ${response.data.numero || "sem número"} importada: ${response.data.itensProcessados} itens, `
+        + `${response.data.materiaisCriados} materiais criados e ${response.data.materiaisExistentes} vinculados.`,
+      );
+      setNotaFiscalPreview(null);
+      setNotaFiscalLocalId("");
+      await fetchData();
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível importar a nota fiscal."));
+    } finally {
+      setNotaFiscalProcessando(false);
+    }
+  };
+
   const abrirDetalheImportacao = async (importacaoId) => {
     try {
       setImportacaoDetalhe({ carregando: true });
@@ -740,6 +932,36 @@ export default function PainelEstoque() {
     } catch (err) {
       setImportacaoDetalhe(null);
       setError(getApiErrorMessage(err, "Não foi possível abrir os detalhes da importação."));
+    }
+  };
+
+  const abrirDetalheNotaFiscal = async (importacaoId) => {
+    try {
+      setNotaFiscalDetalhe({ carregando: true });
+      const response = await api.get(`/estoque/importacoes/notas-fiscais/${importacaoId}`);
+      setNotaFiscalDetalhe(response.data);
+    } catch (err) {
+      setNotaFiscalDetalhe(null);
+      setError(getApiErrorMessage(err, "Não foi possível abrir os detalhes da nota fiscal."));
+    }
+  };
+
+  const baixarArquivoNotaFiscal = async (importacao) => {
+    try {
+      const response = await api.get(
+        `/estoque/importacoes/notas-fiscais/${importacao.id}/arquivo`,
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = importacao.nomeArquivo || `nota-fiscal-${importacao.numero || importacao.id}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível baixar o arquivo original da nota fiscal."));
     }
   };
 
@@ -787,6 +1009,44 @@ export default function PainelEstoque() {
       custoMedio: String(material.custoMedio ?? 0),
     });
     setShowNovoMaterialModal(true);
+  };
+
+  const removerMaterial = async (material) => {
+    const saldoDisponivel = Number(material.quantidadeDisponivel || 0);
+    const saldoReservado = Number(material.quantidadeReservada || 0);
+    const metragemDisponivel = Number(material.metragemDisponivel || 0);
+    if (saldoDisponivel > 0 || saldoReservado > 0 || metragemDisponivel > 0) {
+      setError("Zere o saldo disponível, a metragem e as reservas antes de remover o material.");
+      return;
+    }
+    const confirmou = window.confirm(
+      `Remover "${material.nome}" do estoque? O histórico de movimentações será preservado.`,
+    );
+    if (!confirmou) return;
+    try {
+      setError(null);
+      await api.delete(`/estoque/materiais/${material.id}`);
+      setSuccessMessage(`Material "${material.nome}" removido do estoque.`);
+      await fetchData();
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível remover o material."));
+    }
+  };
+
+  const restaurarMaterial = async (material) => {
+    const confirmou = window.confirm(
+      `Restaurar "${material.nome}" para o catálogo operacional? O item continuará com saldo zero.`,
+    );
+    if (!confirmou) return;
+    try {
+      setError(null);
+      await api.patch(`/estoque/materiais/${material.id}/restaurar`);
+      setSuccessMessage(`Material "${material.nome}" restaurado no catálogo.`);
+      await fetchData();
+      setAbaEstoque("geral");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível restaurar o material."));
+    }
   };
 
   const handleInputChange = (e) => {
@@ -1850,6 +2110,13 @@ export default function PainelEstoque() {
               onChange={selecionarPlanilhaEstoque}
               className="hidden"
             />
+            <input
+              ref={notaFiscalInputRef}
+              type="file"
+              accept=".xml,.pdf,application/xml,text/xml,application/pdf"
+              onChange={selecionarNotaFiscal}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => importacaoInputRef.current?.click()}
@@ -1859,6 +2126,16 @@ export default function PainelEstoque() {
             >
               <Upload size={18} />
               {importacaoProcessando ? "Lendo..." : "Importar .xlsx"}
+            </button>
+            <button
+              type="button"
+              onClick={() => notaFiscalInputRef.current?.click()}
+              disabled={notaFiscalProcessando}
+              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              title="Cadastrar e dar entrada em materiais a partir de XML ou PDF de nota fiscal"
+            >
+              <Receipt size={18} />
+              {notaFiscalProcessando ? "Analisando..." : "Importar NF"}
             </button>
             <button
               type="button"
@@ -1953,6 +2230,21 @@ export default function PainelEstoque() {
             {item.comarca.nomeComarca}
           </button>
         ))}
+        {podeGerenciarEstoque && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={abaEstoque === "removidos"}
+            onClick={() => setAbaEstoque("removidos")}
+            className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
+              abaEstoque === "removidos"
+                ? "border-rose-600 text-rose-700"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            Materiais removidos ({materiaisRemovidos.length})
+          </button>
+        )}
       </div>
 
       {/* Tabela de Saldo Atual */}
@@ -2145,6 +2437,16 @@ export default function PainelEstoque() {
                         >
                           <ArrowRightLeft size={14} />
                         </button>
+                        {podeGerenciarEstoque && (
+                          <button
+                            type="button"
+                            onClick={() => removerMaterial(material)}
+                            className="rounded-md border border-slate-200 bg-white p-2 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                            title="Remover material do estoque"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -2161,6 +2463,59 @@ export default function PainelEstoque() {
           </tbody>
         </table>
       </div>
+      ) : abaEstoque === "removidos" ? (
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+            <h2 className="font-bold text-slate-900">Materiais removidos</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Itens sem saldo retirados da operação. O histórico de movimentações permanece preservado.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px]">
+              <thead className="border-b border-slate-200 bg-white">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Produto</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Categoria</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Part number</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Removido por</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Data da remoção</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold uppercase text-slate-500">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {materiaisRemovidos.map((material) => (
+                  <tr key={material.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-5 py-4 text-sm font-semibold text-slate-800">{material.nome}</td>
+                    <td className="px-5 py-4 text-sm text-slate-600">{getCategoriaMaterialLabel(material.categoria)}</td>
+                    <td className="px-5 py-4 font-mono text-sm text-slate-700">{material.partNumber}</td>
+                    <td className="px-5 py-4 text-sm text-slate-700">{material.removidoPor || "Não informado"}</td>
+                    <td className="px-5 py-4 text-sm text-slate-700">
+                      {material.removidoEm ? new Date(material.removidoEm).toLocaleString("pt-BR") : "Não informado"}
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => restaurarMaterial(material)}
+                        className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                        title="Restaurar material no catálogo"
+                      >
+                        <Undo2 size={15} /> Restaurar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {materiaisRemovidos.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="px-5 py-10 text-center text-sm text-slate-400">
+                      Nenhum material removido.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : (
         <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -3014,6 +3369,179 @@ export default function PainelEstoque() {
         title="Histórico de importações do estoque"
       >
         <div className="space-y-4">
+          <div className="flex w-fit rounded-lg border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setAbaHistoricoImportacoes("notas-fiscais");
+                setImportacaoDetalhe(null);
+              }}
+              className={`rounded-md px-4 py-2 text-xs font-bold ${
+                abaHistoricoImportacoes === "notas-fiscais"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Notas fiscais
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAbaHistoricoImportacoes("planilhas");
+                setNotaFiscalDetalhe(null);
+              }}
+              className={`rounded-md px-4 py-2 text-xs font-bold ${
+                abaHistoricoImportacoes === "planilhas"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Planilhas
+            </button>
+          </div>
+
+          {abaHistoricoImportacoes === "notas-fiscais" && (
+            <>
+              <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[880px] text-left text-xs">
+                  <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">NF / Emitente</th>
+                      <th className="px-3 py-2">Emissão</th>
+                      <th className="px-3 py-2">Destino</th>
+                      <th className="px-3 py-2 text-right">Itens</th>
+                      <th className="px-3 py-2 text-right">Valor</th>
+                      <th className="px-3 py-2">Importação</th>
+                      <th className="px-3 py-2 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {importacoesNotaFiscal.map((importacao) => (
+                      <tr key={importacao.id}>
+                        <td className="px-3 py-2">
+                          <strong className="block text-slate-800">
+                            NF {importacao.numero || "não identificada"}
+                          </strong>
+                          <span className="text-slate-500">{importacao.emitenteNome || "Emitente não identificado"}</span>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {importacao.dataEmissao
+                            ? new Date(importacao.dataEmissao).toLocaleDateString("pt-BR")
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{importacao.localEstoque}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{importacao.itensProcessados}</td>
+                        <td className="px-3 py-2 text-right font-bold text-slate-800">
+                          {formatarMoeda(importacao.valorTotal)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          <span className="block">{importacao.importadoPor}</span>
+                          <span className="text-[11px] text-slate-400">
+                            {new Date(importacao.dataImportacao).toLocaleString("pt-BR")}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => abrirDetalheNotaFiscal(importacao.id)}
+                              className="rounded border border-slate-200 p-2 text-blue-700 hover:bg-blue-50"
+                              title="Ver itens da nota fiscal"
+                            >
+                              <Eye size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => baixarArquivoNotaFiscal(importacao)}
+                              className="rounded border border-slate-200 p-2 text-emerald-700 hover:bg-emerald-50"
+                              title="Baixar arquivo original"
+                            >
+                              <Download size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {importacoesNotaFiscal.length === 0 && (
+                      <tr>
+                        <td colSpan="7" className="px-3 py-8 text-center text-slate-400">
+                          Nenhuma nota fiscal importada.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {notaFiscalDetalhe?.carregando && <LoadingSpinner />}
+              {notaFiscalDetalhe && !notaFiscalDetalhe.carregando && (
+                <section className="space-y-3 border-t border-slate-200 pt-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold text-slate-900">
+                        NF {notaFiscalDetalhe.numero || "não identificada"} · {notaFiscalDetalhe.emitenteNome}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {notaFiscalDetalhe.nomeArquivo} · Série {notaFiscalDetalhe.serie || "—"}
+                        {" · "}{notaFiscalDetalhe.localEstoque}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {notaFiscalDetalhe.materiaisCriados} criados · {notaFiscalDetalhe.materiaisExistentes} vinculados
+                        {" · "}{formatarMoeda(notaFiscalDetalhe.valorTotal)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotaFiscalDetalhe(null)}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                    >
+                      Fechar detalhes
+                    </button>
+                  </div>
+
+                  <div className="max-h-72 overflow-auto rounded border border-slate-200">
+                    <table className="w-full min-w-[920px] text-left text-xs">
+                      <thead className="sticky top-0 bg-slate-50 uppercase text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Código</th>
+                          <th className="px-3 py-2">Material / Descrição fiscal</th>
+                          <th className="px-3 py-2">NCM / CFOP</th>
+                          <th className="px-3 py-2 text-right">Quantidade</th>
+                          <th className="px-3 py-2 text-right">Valor unit.</th>
+                          <th className="px-3 py-2 text-right">Total</th>
+                          <th className="px-3 py-2">Resultado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(notaFiscalDetalhe.itens || []).map((item) => (
+                          <tr key={item.id}>
+                            <td className="px-3 py-2 font-mono text-slate-600">{item.codigoProduto || "—"}</td>
+                            <td className="px-3 py-2">
+                              <strong className="block text-slate-800">{item.material}</strong>
+                              <span className="block text-slate-500">{item.descricao}</span>
+                              <span className="text-[11px] text-slate-400">Part number: {item.partNumber || "—"}</span>
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {item.ncm || "—"} / {item.cfop || "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatarNumero(item.quantidade)} {item.unidadeFiscal || ""}
+                            </td>
+                            <td className="px-3 py-2 text-right">{formatarMoeda(item.valorUnitario)}</td>
+                            <td className="px-3 py-2 text-right font-bold">{formatarMoeda(item.valorTotal)}</td>
+                            <td className="px-3 py-2">{item.acao?.replaceAll("_", " ")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {abaHistoricoImportacoes === "planilhas" && (
+            <>
           <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[620px] text-left text-xs">
               <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
@@ -3149,6 +3677,8 @@ export default function PainelEstoque() {
               </div>
             </section>
           )}
+            </>
+          )}
         </div>
       </Modal>
 
@@ -3277,10 +3807,19 @@ export default function PainelEstoque() {
               </section>
             )}
             {importacaoPreview.avisos.length > 0 && (
-              <Alert
-                type="warning"
-                message={`${importacaoPreview.avisos.length} linhas inválidas foram ignoradas. ${importacaoPreview.avisos.slice(0, 2).join(" ")}`}
-              />
+              <div className="space-y-2">
+                <Alert
+                  type="error"
+                  message={`${importacaoPreview.avisos.length} linhas precisam ser corrigidas; nenhuma alteração será aplicada.`}
+                />
+                <ul className="max-h-32 overflow-auto rounded border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+                  {importacaoPreview.avisos.map((aviso, indice) => (
+                    <li key={`${indice}-${aviso}`} className="py-0.5">
+                      {aviso}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
@@ -3352,6 +3891,7 @@ export default function PainelEstoque() {
                 disabled={
                   importacaoProcessando
                   || !importacaoLocalId
+                  || importacaoPreview.avisos.length > 0
                   || importacaoPreview.itens.some((item) => item.erros.length > 0)
                   || importacaoPreview.abasRetiradas.some((aba) => !aba.comarcaId)
                 }
@@ -3359,6 +3899,74 @@ export default function PainelEstoque() {
               >
                 {importacaoProcessando ? "Importando..." : "Confirmar importação"}
               </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(notaFiscalPreview)}
+        onClose={() => {
+          if (!notaFiscalProcessando) {
+            setNotaFiscalPreview(null);
+            setNotaFiscalLocalId("");
+          }
+        }}
+        title="Revisar entrada por nota fiscal"
+      >
+        {notaFiscalPreview && (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-2 rounded border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div><strong className="block text-sm text-emerald-950">{notaFiscalPreview.nomeArquivo}</strong><span className="text-xs text-emerald-800">{notaFiscalPreview.tipoArquivo} · o estoque ainda não foi alterado</span></div>
+              <span className="text-xs font-bold uppercase text-emerald-800">Revisão obrigatória</span>
+            </div>
+
+            {(notaFiscalPreview.avisos || []).length > 0 && (
+              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                {(notaFiscalPreview.avisos || []).map((aviso) => <p key={aviso}>{aviso}</p>)}
+              </div>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs font-semibold text-slate-600">Número da NF<input value={notaFiscalPreview.numero || ""} onChange={(event) => setNotaFiscalPreview((atual) => ({ ...atual, numero: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" /></label>
+              <label className="text-xs font-semibold text-slate-600">Série<input value={notaFiscalPreview.serie || ""} onChange={(event) => setNotaFiscalPreview((atual) => ({ ...atual, serie: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" /></label>
+              <label className="text-xs font-semibold text-slate-600">Emissão<input type="datetime-local" value={notaFiscalPreview.dataEmissao?.slice(0, 16) || ""} onChange={(event) => setNotaFiscalPreview((atual) => ({ ...atual, dataEmissao: event.target.value || null }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" /></label>
+              <label className="text-xs font-semibold text-slate-600">Depósito *<select required value={notaFiscalLocalId} onChange={(event) => setNotaFiscalLocalId(event.target.value)} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Selecione</option>{locaisEstoque.filter((local) => local.ativo !== false).map((local) => <option key={local.id} value={local.id}>{local.nome}</option>)}</select></label>
+              <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Emitente<input value={notaFiscalPreview.emitenteNome || ""} onChange={(event) => setNotaFiscalPreview((atual) => ({ ...atual, emitenteNome: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" /></label>
+              <label className="text-xs font-semibold text-slate-600">CNPJ<input value={notaFiscalPreview.emitenteCnpj || ""} onChange={(event) => setNotaFiscalPreview((atual) => ({ ...atual, emitenteCnpj: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" /></label>
+              <label className="text-xs font-semibold text-slate-600">Chave de acesso<input value={notaFiscalPreview.chaveAcesso || ""} onChange={(event) => setNotaFiscalPreview((atual) => ({ ...atual, chaveAcesso: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" /></label>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div><h3 className="text-sm font-bold text-slate-900">Itens da entrada</h3><p className="text-xs text-slate-500">Vincule a um item existente ou deixe “Criar novo material”.</p></div>
+              <button type="button" onClick={adicionarItemNotaFiscal} className="flex items-center gap-1 rounded border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50"><Plus size={15} /> Item</button>
+            </div>
+
+            <div className="max-h-[48vh] overflow-auto rounded border border-slate-200">
+              <table className="w-full min-w-[1320px] text-left text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-100 uppercase text-slate-500"><tr><th className="px-2 py-2">Usar</th><th className="px-2 py-2">Material no sistema</th><th className="px-2 py-2">Nome / descrição</th><th className="px-2 py-2">Código do produto</th><th className="px-2 py-2">Part Number</th><th className="px-2 py-2">Qtd.</th><th className="px-2 py-2">Valor unit.</th><th className="px-2 py-2">Controle</th><th className="px-2 py-2">Categoria</th><th className="w-10 px-2 py-2"><span className="sr-only">Remover</span></th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {notaFiscalPreview.itens.map((item, indice) => (
+                    <tr key={`${item.codigoProduto || "item"}-${indice}`} className={!item.importar ? "bg-slate-50 opacity-60" : "bg-white"}>
+                      <td className="px-2 py-2 text-center"><input type="checkbox" checked={item.importar} onChange={(event) => atualizarItemNotaFiscal(indice, "importar", event.target.checked)} /></td>
+                      <td className="px-2 py-2"><select value={item.materialId} onChange={(event) => atualizarItemNotaFiscal(indice, "materialId", event.target.value)} className="w-56 rounded border border-slate-300 bg-white px-2 py-2"><option value="">Criar novo material</option>{materiais.map((material) => <option key={material.id} value={material.id}>{material.nome} · {material.partNumber}</option>)}</select></td>
+                      <td className="px-2 py-2"><input required={item.importar && !item.materialId} disabled={Boolean(item.materialId)} value={item.nome || ""} onChange={(event) => atualizarItemNotaFiscal(indice, "nome", event.target.value)} placeholder="Nome do material" className="mb-1 w-64 rounded border border-slate-300 px-2 py-1.5 disabled:bg-slate-100" /><input required={item.importar} value={item.descricao || ""} onChange={(event) => atualizarItemNotaFiscal(indice, "descricao", event.target.value)} placeholder="Descrição fiscal" className="w-64 rounded border border-slate-300 px-2 py-1.5" /></td>
+                      <td className="px-2 py-2"><input value={item.codigoProduto || ""} onChange={(event) => atualizarItemNotaFiscal(indice, "codigoProduto", event.target.value)} placeholder="Código da NF" className="w-36 rounded border border-slate-300 px-2 py-2" /></td>
+                      <td className="px-2 py-2"><input disabled={Boolean(item.materialId)} value={item.partNumber || ""} onChange={(event) => atualizarItemNotaFiscal(indice, "partNumber", event.target.value)} placeholder="Gerado se vazio" className="w-36 rounded border border-slate-300 px-2 py-2 disabled:bg-slate-100" /></td>
+                      <td className="px-2 py-2"><input type="number" min="0.001" step="0.001" required={item.importar} value={item.quantidade} onChange={(event) => atualizarItemNotaFiscal(indice, "quantidade", event.target.value)} className="w-24 rounded border border-slate-300 px-2 py-2 text-right" /></td>
+                      <td className="px-2 py-2"><input type="number" min="0" step="0.0001" required={item.importar} value={item.valorUnitario} onChange={(event) => atualizarItemNotaFiscal(indice, "valorUnitario", event.target.value)} className="w-28 rounded border border-slate-300 px-2 py-2 text-right" /></td>
+                      <td className="px-2 py-2"><select disabled={Boolean(item.materialId)} value={item.tipoControle} onChange={(event) => atualizarItemNotaFiscal(indice, "tipoControle", event.target.value)} className="w-36 rounded border border-slate-300 bg-white px-2 py-2 disabled:bg-slate-100"><option value="UNIDADE">Unidade</option><option value="METRAGEM">Metragem</option></select></td>
+                      <td className="px-2 py-2"><select disabled={Boolean(item.materialId)} value={item.categoria} onChange={(event) => atualizarItemNotaFiscal(indice, "categoria", event.target.value)} className="w-40 rounded border border-slate-300 bg-white px-2 py-2 disabled:bg-slate-100">{CATEGORIAS_MATERIAL.map((categoria) => <option key={categoria.value} value={categoria.value}>{categoria.label}</option>)}</select></td>
+                      <td className="px-2 py-2"><button type="button" onClick={() => setNotaFiscalPreview((atual) => ({ ...atual, itens: atual.itens.filter((_, posicao) => posicao !== indice) }))} className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-700" title="Remover linha"><Trash2 size={16} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-600"><strong className="text-slate-900">{notaFiscalPreview.itens.filter((item) => item.importar).length}</strong> itens selecionados · <strong className="text-slate-900">{formatarMoeda(notaFiscalPreview.itens.filter((item) => item.importar).reduce((total, item) => total + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0))}</strong></div>
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => { setNotaFiscalPreview(null); setNotaFiscalLocalId(""); }} disabled={notaFiscalProcessando} className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button><button type="button" onClick={confirmarImportacaoNotaFiscal} disabled={notaFiscalProcessando || !notaFiscalLocalId || notaFiscalPreview.itens.every((item) => !item.importar)} className="rounded bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:bg-slate-300">{notaFiscalProcessando ? "Importando..." : "Confirmar entrada"}</button></div>
             </div>
           </div>
         )}

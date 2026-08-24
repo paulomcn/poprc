@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AutenticacaoFluxoIntegrationTest {
 
     private static final String CPF = "11144477735";
+    private static final String CPF_ESTOQUE = "52998224725";
 
     @Autowired
     private MockMvc mockMvc;
@@ -56,10 +57,12 @@ class AutenticacaoFluxoIntegrationTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private Long funcionarioId;
+    private Long funcionarioEstoqueId;
 
     @BeforeEach
     void criarUsuario() {
         funcionarioRepository.findByCpf(CPF).ifPresent(funcionarioRepository::delete);
+        funcionarioRepository.findByCpf(CPF_ESTOQUE).ifPresent(funcionarioRepository::delete);
         Funcionario funcionario = new Funcionario();
         funcionario.setNome("Administrador Autenticacao");
         funcionario.setFuncao("Administrador");
@@ -74,7 +77,12 @@ class AutenticacaoFluxoIntegrationTest {
 
     @AfterEach
     void removerUsuario() {
-        funcionarioRepository.findById(funcionarioId).ifPresent(funcionarioRepository::delete);
+        if (funcionarioId != null) {
+            funcionarioRepository.findById(funcionarioId).ifPresent(funcionarioRepository::delete);
+        }
+        if (funcionarioEstoqueId != null) {
+            funcionarioRepository.findById(funcionarioEstoqueId).ifPresent(funcionarioRepository::delete);
+        }
     }
 
     @Test
@@ -186,15 +194,94 @@ class AutenticacaoFluxoIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void bancoVazioPermiteCriarSomenteOPrimeiroAdministrador() throws Exception {
+        funcionarioRepository.deleteById(funcionarioId);
+        funcionarioId = null;
+
+        mockMvc.perform(get("/api/auth/config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bootstrapRequired").value(true));
+
+        MvcResult resultado = mockMvc.perform(post("/api/auth/bootstrap")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Primeiro Administrador",
+                                  "cpf": "111.444.777-35",
+                                  "senha": "Definitiva123",
+                                  "cidade": "Natal"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.perfil").value("ADMIN"))
+                .andExpect(jsonPath("$.trocaSenhaObrigatoria").value(false))
+                .andReturn();
+        assertThat(resultado.getResponse().getCookie("SESSION")).isNotNull();
+        funcionarioId = funcionarioRepository.findByCpf(CPF).orElseThrow().getId();
+
+        mockMvc.perform(get("/api/auth/config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bootstrapRequired").value(false));
+
+        mockMvc.perform(post("/api/auth/bootstrap")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Segundo Administrador",
+                                  "cpf": "529.982.247-25",
+                                  "senha": "Definitiva123",
+                                  "cidade": "Natal"
+                                }
+                                """))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void duasSessoesDeUsuariosDiferentesPermanecemIndependentes() throws Exception {
+        Funcionario estoque = new Funcionario();
+        estoque.setNome("Operador Estoque Simultaneo");
+        estoque.setFuncao("Almoxarife");
+        estoque.setCidade("Natal");
+        estoque.setCpf(CPF_ESTOQUE);
+        estoque.setPerfilAcesso(PerfilAcesso.ESTOQUE);
+        estoque.setAtivo(true);
+        estoque.setSenhaHash(passwordEncoder.encode("Estoque123"));
+        estoque.setTrocaSenhaObrigatoria(false);
+        funcionarioEstoqueId = funcionarioRepository.saveAndFlush(estoque).getId();
+
+        Cookie sessaoAdmin = login(CPF, "Temporaria123");
+        Cookie sessaoEstoque = login(CPF_ESTOQUE, "Estoque123");
+
+        mockMvc.perform(get("/api/estoque/materiais").cookie(sessaoAdmin))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/estoque/materiais").cookie(sessaoEstoque))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/logout").cookie(sessaoEstoque).with(csrf()))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/auth/me").cookie(sessaoEstoque))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/auth/me").cookie(sessaoAdmin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.funcionarioId").value(funcionarioId));
+    }
+
     private Cookie login(String senha) throws Exception {
+        return login(CPF, senha);
+    }
+
+    private Cookie login(String cpf, String senha) throws Exception {
         Cookie sessao = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "cpf": "111.444.777-35",
+                                  "cpf": "%s",
                                   "senha": "%s"
                                 }
-                                """.formatted(senha)))
+                                """.formatted(cpf, senha)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()

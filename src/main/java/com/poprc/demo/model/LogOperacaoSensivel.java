@@ -22,6 +22,12 @@ public class LogOperacaoSensivel {
     private String caminho;
     private Integer statusHttp;
     private String enderecoIp;
+    @Column(name = "tipo_evento", length = 80)
+    private String tipoEvento;
+    @Column(name = "alvo_funcionario_id")
+    private Long alvoFuncionarioId;
+    @Column(length = 1000)
+    private String detalhes;
     private LocalDateTime registradoEm;
 
     public Long getId() { return id; }
@@ -39,6 +45,12 @@ public class LogOperacaoSensivel {
     public void setStatusHttp(Integer statusHttp) { this.statusHttp = statusHttp; }
     public String getEnderecoIp() { return enderecoIp; }
     public void setEnderecoIp(String enderecoIp) { this.enderecoIp = enderecoIp; }
+    public String getTipoEvento() { return tipoEvento; }
+    public void setTipoEvento(String tipoEvento) { this.tipoEvento = tipoEvento; }
+    public Long getAlvoFuncionarioId() { return alvoFuncionarioId; }
+    public void setAlvoFuncionarioId(Long alvoFuncionarioId) { this.alvoFuncionarioId = alvoFuncionarioId; }
+    public String getDetalhes() { return detalhes; }
+    public void setDetalhes(String detalhes) { this.detalhes = detalhes; }
     public LocalDateTime getRegistradoEm() { return registradoEm; }
     public void setRegistradoEm(LocalDateTime registradoEm) { this.registradoEm = registradoEm; }
 }

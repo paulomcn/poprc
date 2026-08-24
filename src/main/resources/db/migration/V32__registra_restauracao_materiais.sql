@@ -1,0 +1,3 @@
+ALTER TABLE materiais
+    ADD COLUMN IF NOT EXISTS restaurado_em TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS restaurado_por VARCHAR(255);

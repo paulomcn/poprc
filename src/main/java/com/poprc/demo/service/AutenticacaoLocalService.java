@@ -1,6 +1,7 @@
 package com.poprc.demo.service;
 
 import com.poprc.demo.model.Funcionario;
+import com.poprc.demo.model.PerfilAcesso;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.security.CpfUtils;
 import com.poprc.demo.security.UsuarioAutenticado;
@@ -87,6 +88,33 @@ public class AutenticacaoLocalService {
                 || senha.chars().noneMatch(Character::isDigit)) {
             throw new IllegalArgumentException("A senha deve ter ao menos 8 caracteres, com letras e números.");
         }
+    }
+
+    @Transactional
+    public synchronized Funcionario criarAdministradorInicial(
+            String nome, String cpfInformado, String senha, String cidade) {
+        if (funcionarioRepository.count() != 0) {
+            throw new IllegalStateException("A configuração inicial já foi concluída.");
+        }
+        if (nome == null || nome.isBlank()) {
+            throw new IllegalArgumentException("Informe o nome do administrador.");
+        }
+        if (!CpfUtils.valido(cpfInformado)) {
+            throw new IllegalArgumentException("CPF inválido.");
+        }
+        validarNovaSenha(senha);
+
+        Funcionario administrador = new Funcionario();
+        administrador.setNome(nome.trim());
+        administrador.setFuncao("Administrador");
+        administrador.setCidade(cidade == null || cidade.isBlank() ? "Não informada" : cidade.trim());
+        administrador.setCpf(CpfUtils.normalizar(cpfInformado));
+        administrador.setPerfilAcesso(PerfilAcesso.ADMIN);
+        administrador.setAtivo(true);
+        administrador.setSenhaHash(passwordEncoder.encode(senha));
+        administrador.setTrocaSenhaObrigatoria(false);
+        administrador.setTentativasLogin(0);
+        return funcionarioRepository.saveAndFlush(administrador);
     }
 
     private void validarAtivoEBloqueio(Funcionario funcionario) {

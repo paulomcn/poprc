@@ -48,6 +48,7 @@ public class ImportacaoEstoquePlanilhaService {
     public ImportacaoEstoquePlanilhaResultadoDTO importar(
             ImportacaoEstoquePlanilhaRequest request, String usuario) {
         validarRequest(request);
+        validarConteudoCompleto(request);
         String hash = request.hashSha256().trim().toLowerCase(Locale.ROOT);
         String responsavel = usuario != null && !usuario.isBlank() ? usuario : "Usuário autenticado";
         ImportacaoEstoquePlanilha importacaoExistente =
@@ -69,6 +70,12 @@ public class ImportacaoEstoquePlanilhaService {
                 throw new IllegalStateException(
                         "A importação existente não possui um depósito de destino válido.");
             }
+            if (!local.getId().equals(request.localEstoqueId())) {
+                throw new IllegalArgumentException(
+                        "A complementação deve usar o mesmo depósito da importação original: "
+                                + local.getNome() + ".");
+            }
+            validarInventarioBaseDaComplementacao(importacaoExistente, request.itens());
             importacao = importacaoExistente;
         } else {
             local = localEstoqueRepository.findById(request.localEstoqueId())
@@ -443,7 +450,17 @@ public class ImportacaoEstoquePlanilhaService {
                 || retirada.custoUnitario().signum() < 0) {
             throw new IllegalArgumentException(
                     "Valores inválidos para " + retirada.nomeMaterial()
-                            + " na aba " + retirada.aba() + ".");
+                            + " na aba " + retirada.aba()
+                            + referenciaLinha(retirada.linhaOrigem()) + ".");
+        }
+        if (!numeroInteiro(retirada.saldoInicial())
+                || !numeroInteiro(retirada.quantidadeRetirada())
+                || !numeroInteiro(retirada.saldoFinal())) {
+            throw new IllegalArgumentException(
+                    "Os saldos e a quantidade retirada de " + retirada.nomeMaterial()
+                            + " na aba " + retirada.aba()
+                            + referenciaLinha(retirada.linhaOrigem())
+                            + " precisam ser números inteiros.");
         }
     }
 
@@ -504,6 +521,100 @@ public class ImportacaoEstoquePlanilhaService {
         if (request.itens().size() > 1000) {
             throw new IllegalArgumentException("A planilha excede o limite de 1.000 materiais.");
         }
+        if (request.retiradas() != null && request.retiradas().size() > 5000) {
+            throw new IllegalArgumentException("A planilha excede o limite de 5.000 retiradas.");
+        }
+        if (request.avisos() != null && request.avisos().stream().anyMatch(this::possuiTexto)) {
+            String primeiroAviso = request.avisos().stream()
+                    .filter(this::possuiTexto)
+                    .findFirst()
+                    .orElse("Há linhas inválidas na planilha.");
+            throw new IllegalArgumentException(
+                    "A importação foi bloqueada porque há linhas inválidas. " + primeiroAviso);
+        }
+    }
+
+    private void validarConteudoCompleto(ImportacaoEstoquePlanilhaRequest request) {
+        Map<String, ImportacaoEstoquePlanilhaRequest.ItemImportacao> itensPorNome =
+                new LinkedHashMap<>();
+        for (ImportacaoEstoquePlanilhaRequest.ItemImportacao item : request.itens()) {
+            validarItem(item);
+            String chave = normalizar(item.nome());
+            if (itensPorNome.putIfAbsent(chave, item) != null) {
+                throw new IllegalArgumentException(
+                        "Material duplicado na planilha"
+                                + referenciaLinha(item.linhaOrigem()) + ": " + item.nome().trim() + ".");
+            }
+        }
+
+        Map<String, BigDecimal> saldoEsperadoPorMaterial = new HashMap<>();
+        Set<String> materiaisPorAba = new HashSet<>();
+        for (ImportacaoEstoquePlanilhaRequest.RetiradaImportacao retirada
+                : request.retiradas() != null ? request.retiradas() : List.<ImportacaoEstoquePlanilhaRequest.RetiradaImportacao>of()) {
+            validarRetirada(retirada);
+            String chaveMaterial = normalizar(retirada.nomeMaterial());
+            ImportacaoEstoquePlanilhaRequest.ItemImportacao itemBase = itensPorNome.get(chaveMaterial);
+            if (itemBase == null) {
+                throw new IllegalArgumentException(
+                        "O material " + retirada.nomeMaterial() + " da aba " + retirada.aba()
+                                + referenciaLinha(retirada.linhaOrigem())
+                                + " não existe no inventário-base da planilha.");
+            }
+            String chaveAbaMaterial = normalizar(retirada.aba()) + "|" + chaveMaterial;
+            if (!materiaisPorAba.add(chaveAbaMaterial)) {
+                throw new IllegalArgumentException(
+                        "O material " + retirada.nomeMaterial() + " aparece mais de uma vez na aba "
+                                + retirada.aba() + ".");
+            }
+
+            BigDecimal saldoEsperado = saldoEsperadoPorMaterial.getOrDefault(
+                    chaveMaterial, BigDecimal.valueOf(itemBase.quantidade()));
+            if (retirada.saldoInicial().compareTo(saldoEsperado) != 0) {
+                throw new IllegalArgumentException(
+                        "Sequência de saldo inválida para " + retirada.nomeMaterial() + " na aba "
+                                + retirada.aba() + referenciaLinha(retirada.linhaOrigem())
+                                + ": esperado " + saldoEsperado.toPlainString() + ", recebido "
+                                + retirada.saldoInicial().toPlainString() + ".");
+            }
+            BigDecimal saldoCalculado = retirada.saldoInicial().subtract(retirada.quantidadeRetirada());
+            if (retirada.saldoFinal().compareTo(saldoCalculado) != 0) {
+                throw new IllegalArgumentException(
+                        "Saldo final inválido para " + retirada.nomeMaterial() + " na aba "
+                                + retirada.aba() + referenciaLinha(retirada.linhaOrigem())
+                                + ": deveria ser " + saldoCalculado.toPlainString() + ".");
+            }
+            saldoEsperadoPorMaterial.put(chaveMaterial, retirada.saldoFinal());
+        }
+    }
+
+    private void validarInventarioBaseDaComplementacao(
+            ImportacaoEstoquePlanilha importacao,
+            List<ImportacaoEstoquePlanilhaRequest.ItemImportacao> itensRecebidos) {
+        List<ImportacaoEstoqueItemPlanilha> itensOriginais =
+                itemImportacaoRepository.findByImportacaoIdOrderByNomePlanilhaAsc(importacao.getId());
+        if (itensOriginais.isEmpty()) {
+            throw new IllegalStateException(
+                    "Não foi possível validar o inventário-base da importação original.");
+        }
+        Map<String, ImportacaoEstoqueItemPlanilha> originaisPorNome = new HashMap<>();
+        for (ImportacaoEstoqueItemPlanilha item : itensOriginais) {
+            originaisPorNome.put(normalizar(item.getNomePlanilha()), item);
+        }
+        if (originaisPorNome.size() != itensRecebidos.size()) {
+            throw new IllegalArgumentException(
+                    "O inventário-base foi alterado desde a importação original. Importe o arquivo original.");
+        }
+        for (ImportacaoEstoquePlanilhaRequest.ItemImportacao recebido : itensRecebidos) {
+            ImportacaoEstoqueItemPlanilha original = originaisPorNome.get(normalizar(recebido.nome()));
+            if (original == null
+                    || !recebido.quantidade().equals(original.getSaldoImportado())
+                    || recebido.custoUnitario().compareTo(original.getCustoUnitario()) != 0) {
+                throw new IllegalArgumentException(
+                        "O inventário-base foi alterado para " + recebido.nome()
+                                + referenciaLinha(recebido.linhaOrigem())
+                                + ". Use os mesmos dados da importação original.");
+            }
+        }
     }
 
     private void validarItem(ImportacaoEstoquePlanilhaRequest.ItemImportacao item) {
@@ -512,12 +623,26 @@ public class ImportacaoEstoquePlanilhaService {
         }
         if (item.quantidade() == null || item.quantidade() < 0) {
             throw new IllegalArgumentException(
-                    "Quantidade inválida para " + item.nome() + ".");
+                    "Quantidade inválida para " + item.nome()
+                            + referenciaLinha(item.linhaOrigem()) + ".");
         }
         if (item.custoUnitario() == null || item.custoUnitario().signum() < 0) {
             throw new IllegalArgumentException(
-                    "Custo unitário inválido para " + item.nome() + ".");
+                    "Custo unitário inválido para " + item.nome()
+                            + referenciaLinha(item.linhaOrigem()) + ".");
         }
+    }
+
+    private boolean possuiTexto(String valor) {
+        return valor != null && !valor.isBlank();
+    }
+
+    private boolean numeroInteiro(BigDecimal valor) {
+        return valor.stripTrailingZeros().scale() <= 0;
+    }
+
+    private String referenciaLinha(Integer linha) {
+        return linha != null ? ", linha " + linha : "";
     }
 
     private String normalizar(String valor) {

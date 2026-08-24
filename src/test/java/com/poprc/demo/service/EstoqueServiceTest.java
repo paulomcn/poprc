@@ -17,6 +17,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -74,6 +77,61 @@ class EstoqueServiceTest {
         assertEquals(new BigDecimal("20"), movimentacao.getSaldoPosterior());
         assertEquals(new BigDecimal("20.0000"), movimentacao.getCustoUnitario());
         assertEquals(new BigDecimal("200.0000"), movimentacao.getValorTotalMovimentacao());
+    }
+
+    @Test
+    void deveRemoverMaterialSemSaldoPreservandoRegistro() {
+        Material material = new Material();
+        material.setId(1L);
+        material.setAtivo(true);
+        material.setQuantidadeDisponivel(0);
+        material.setQuantidadeReservada(0);
+        material.setMetragemDisponivel(BigDecimal.ZERO);
+        when(materialRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(material));
+        when(materialRepository.save(any(Material.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+        service.removerMaterial(1L, "Administrador");
+
+        assertFalse(material.getAtivo());
+        assertEquals("Administrador", material.getRemovidoPor());
+    }
+
+    @Test
+    void deveBloquearRemocaoDeMaterialComSaldo() {
+        Material material = new Material();
+        material.setId(1L);
+        material.setAtivo(true);
+        material.setQuantidadeDisponivel(2);
+        material.setQuantidadeReservada(0);
+        material.setMetragemDisponivel(BigDecimal.ZERO);
+        when(materialRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(material));
+
+        IllegalArgumentException erro = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.removerMaterial(1L, "Administrador"));
+
+        assertEquals(
+                "Zere o saldo disponível, a metragem e as reservas antes de remover o material.",
+                erro.getMessage());
+    }
+
+    @Test
+    void deveRestaurarMaterialRemovidoPreservandoRastreabilidade() {
+        Material material = new Material();
+        material.setId(1L);
+        material.setAtivo(false);
+        material.setRemovidoPor("Administrador");
+        when(materialRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(material));
+        when(materialRepository.save(any(Material.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+        Material restaurado = service.restaurarMaterial(1L, "Responsável pelo estoque");
+
+        assertTrue(restaurado.getAtivo());
+        assertEquals("Administrador", restaurado.getRemovidoPor());
+        assertEquals("Responsável pelo estoque", restaurado.getRestauradoPor());
+        assertTrue(restaurado.getRestauradoEm() != null);
     }
 
     @Test

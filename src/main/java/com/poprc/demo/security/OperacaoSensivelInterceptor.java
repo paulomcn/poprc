@@ -64,6 +64,7 @@ public class OperacaoSensivelInterceptor implements HandlerInterceptor {
         log.setCaminho(request.getRequestURI());
         log.setStatusHttp(response.getStatus());
         log.setEnderecoIp(request.getRemoteAddr());
+        log.setTipoEvento("OPERACAO_SENSIVEL");
         log.setRegistradoEm(LocalDateTime.now());
         logRepository.save(log);
     }

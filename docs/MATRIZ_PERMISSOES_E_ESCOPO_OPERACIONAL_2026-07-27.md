@@ -71,7 +71,7 @@ As operacoes abaixo devem exigir sessao valida e confirmacao recente da senha:
 - [x] Restringir consultas de OR do tecnico ao seu escopo operacional.
 - [x] Cobrir as regras de escopo desta entrega com testes permitidos e negados.
 - [x] Ampliar os testes de integracao para toda a matriz de modulos.
-- [ ] Alinhar todos os comandos visiveis no frontend com a matriz.
+- [x] Alinhar todos os comandos visiveis no frontend com a matriz.
 - [ ] Projetar perfis personalizados e permissoes administraveis.
 
 ## Criterio para perfis personalizados
@@ -79,3 +79,8 @@ As operacoes abaixo devem exigir sessao valida e confirmacao recente da senha:
 A administracao dinamica de perfis sera iniciada somente depois que as regras
 fixas acima estiverem homologadas. Perfis de sistema nao poderao ser removidos,
 e o ultimo administrador ativo nunca podera perder o acesso administrativo.
+
+Em 04/08/2026, a matriz fixa foi homologada por testes de integracao e passou a
+ser exibida na area administrativa. Alteracoes de perfil, status e senha
+temporaria geram historico append-only. A criacao de perfis totalmente
+personalizados permanece adiada ate a aprovacao do time durante o piloto.

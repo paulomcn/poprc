@@ -13,7 +13,7 @@ export const homePorPerfil = (perfil) => {
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
   const [carregando, setCarregando] = useState(true);
-  const [configuracao, setConfiguracao] = useState({ securityEnabled: true, devLoginEnabled: false, zohoEnabled: false });
+  const [configuracao, setConfiguracao] = useState({ securityEnabled: true, devLoginEnabled: false, zohoEnabled: false, bootstrapRequired: false });
   const [reauthAberta, setReauthAberta] = useState(false);
   const [reauthErro, setReauthErro] = useState("");
   const [reauthProcessando, setReauthProcessando] = useState(false);
@@ -79,6 +79,15 @@ export function AuthProvider({ children }) {
     return response.data;
   };
 
+  const configurarAdministrador = async (dados) => {
+    await refreshCsrfToken();
+    const response = await api.post("/auth/bootstrap", dados);
+    await refreshCsrfToken();
+    setConfiguracao((atual) => ({ ...atual, bootstrapRequired: false }));
+    setUsuario(response.data);
+    return response.data;
+  };
+
   const logout = async () => {
     sessionStorage.setItem("auth:logout", "1");
     try {
@@ -124,7 +133,7 @@ export function AuthProvider({ children }) {
   };
 
   const value = useMemo(
-    () => ({ usuario, carregando, configuracao, login, loginDesenvolvimento, logout, alterarSenha, recarregar: carregarUsuario }),
+    () => ({ usuario, carregando, configuracao, login, loginDesenvolvimento, configurarAdministrador, logout, alterarSenha, recarregar: carregarUsuario }),
     [usuario, carregando, configuracao],
   );
 

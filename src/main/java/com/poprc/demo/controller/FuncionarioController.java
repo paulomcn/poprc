@@ -4,11 +4,14 @@ import com.poprc.demo.model.Funcionario;
 import com.poprc.demo.model.PerfilAcesso;
 import com.poprc.demo.repository.FuncionarioRepository;
 import com.poprc.demo.security.CpfUtils;
+import com.poprc.demo.service.AuditoriaAcessoService;
 import com.poprc.demo.service.AutenticacaoLocalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -22,12 +25,16 @@ public class FuncionarioController {
 
     private final FuncionarioRepository funcionarioRepository;
     private final AutenticacaoLocalService autenticacaoLocalService;
+    private final AuditoriaAcessoService auditoriaAcessoService;
 
     /**
      * POST: Inserir novo funcionário
      */
     @PostMapping
-    public ResponseEntity<Map<String, Object>> inserirFuncionario(@RequestBody Funcionario funcionario) {
+    @Transactional
+    public ResponseEntity<Map<String, Object>> inserirFuncionario(
+            @RequestBody Funcionario funcionario,
+            Authentication authentication) {
         try {
             Map<String, Object> response = new HashMap<>();
 
@@ -62,6 +69,10 @@ public class FuncionarioController {
                 funcionarioSalvo = autenticacaoLocalService.definirSenhaTemporaria(
                         funcionarioSalvo.getId(), senhaTemporaria);
             }
+            auditoriaAcessoService.registrar(authentication, "FUNCIONARIO_CRIADO",
+                    funcionarioSalvo.getId(),
+                    "Perfil inicial: " + funcionarioSalvo.getPerfilAcesso()
+                            + "; acesso ativo: " + Boolean.TRUE.equals(funcionarioSalvo.getAtivo()));
             response.put("funcionario", funcionarioSalvo);
             response.put("mensagem", "Funcionário inserido com sucesso");
 
@@ -69,6 +80,7 @@ public class FuncionarioController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("erro", e.getMessage()));
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             Map<String, Object> erro = new HashMap<>();
             erro.put("erro", "Erro ao inserir funcionário: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(erro);
@@ -91,7 +103,8 @@ public class FuncionarioController {
     @PutMapping("/{id}")
     @Transactional
     public ResponseEntity<Map<String, Object>> atualizarFuncionario(@PathVariable Long id,
-            @RequestBody Funcionario dadosAtualizados) {
+            @RequestBody Funcionario dadosAtualizados,
+            Authentication authentication) {
         Map<String, Object> response = new HashMap<>();
         String emailNormalizado = normalizarEmail(dadosAtualizados.getEmail());
         String cpfNormalizado = normalizarCpf(dadosAtualizados.getCpf());
@@ -106,40 +119,63 @@ public class FuncionarioController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
         }
 
-        return funcionarioRepository.findById(id)
-                .map(funcionario -> {
-                    funcionario.setNome(dadosAtualizados.getNome());
-                    funcionario.setFuncao(dadosAtualizados.getFuncao());
-                    funcionario.setCidade(dadosAtualizados.getCidade());
-                    if (cpfNormalizado != null) funcionario.setCpf(cpfNormalizado);
-                    funcionario.setTelefone(normalizarTelefone(dadosAtualizados.getTelefone()));
-                    funcionario.setEmail(emailNormalizado);
-                    funcionario.setPerfilAcesso(dadosAtualizados.getPerfilAcesso() == null
-                            ? funcionario.getPerfilAcesso()
-                            : dadosAtualizados.getPerfilAcesso());
-                    funcionario.setAtivo(dadosAtualizados.getAtivo() == null
-                            ? funcionario.getAtivo()
-                            : dadosAtualizados.getAtivo());
+        Funcionario funcionario = funcionarioRepository.findById(id).orElse(null);
+        if (funcionario == null) return ResponseEntity.notFound().build();
 
-                    if (dadosAtualizados.getCertificacoes() != null) {
-                        funcionario.setCertificacoes(dadosAtualizados.getCertificacoes());
-                    }
-                    if (dadosAtualizados.getDocumentPaths() != null) {
-                        funcionario.setDocumentPaths(dadosAtualizados.getDocumentPaths());
-                    }
+        PerfilAcesso perfilAnterior = funcionario.getPerfilAcesso();
+        boolean ativoAnterior = Boolean.TRUE.equals(funcionario.getAtivo());
+        PerfilAcesso novoPerfil = dadosAtualizados.getPerfilAcesso() == null
+                ? perfilAnterior
+                : dadosAtualizados.getPerfilAcesso();
+        boolean novoAtivo = dadosAtualizados.getAtivo() == null
+                ? ativoAnterior
+                : Boolean.TRUE.equals(dadosAtualizados.getAtivo());
+        try {
+            validarUltimoAdministrador(funcionario, novoPerfil, novoAtivo);
+            if (dadosAtualizados.getSenha() != null && !dadosAtualizados.getSenha().isBlank()) {
+                String cpfEfetivo = cpfNormalizado == null ? funcionario.getCpf() : cpfNormalizado;
+                if (cpfEfetivo == null) {
+                    throw new IllegalArgumentException("Informe o CPF para configurar o acesso por senha.");
+                }
+                autenticacaoLocalService.validarNovaSenha(dadosAtualizados.getSenha());
+            }
+            funcionario.setNome(dadosAtualizados.getNome());
+            funcionario.setFuncao(dadosAtualizados.getFuncao());
+            funcionario.setCidade(dadosAtualizados.getCidade());
+            if (cpfNormalizado != null) funcionario.setCpf(cpfNormalizado);
+            funcionario.setTelefone(normalizarTelefone(dadosAtualizados.getTelefone()));
+            funcionario.setEmail(emailNormalizado);
+            funcionario.setPerfilAcesso(novoPerfil);
+            funcionario.setAtivo(novoAtivo);
 
-                    Funcionario salvo = funcionarioRepository.save(funcionario);
-                    if (dadosAtualizados.getSenha() != null && !dadosAtualizados.getSenha().isBlank()) {
-                        if (salvo.getCpf() == null) {
-                            throw new IllegalArgumentException("Informe o CPF para configurar o acesso por senha.");
-                        }
-                        salvo = autenticacaoLocalService.definirSenhaTemporaria(id, dadosAtualizados.getSenha());
-                    }
-                    response.put("funcionario", salvo);
-                    response.put("mensagem", "Funcionário atualizado com sucesso!");
-                    return ResponseEntity.ok(response);
-                })
-                .orElse(ResponseEntity.notFound().build());
+            if (dadosAtualizados.getCertificacoes() != null) {
+                funcionario.setCertificacoes(dadosAtualizados.getCertificacoes());
+            }
+            if (dadosAtualizados.getDocumentPaths() != null) {
+                funcionario.setDocumentPaths(dadosAtualizados.getDocumentPaths());
+            }
+
+            Funcionario salvo = funcionarioRepository.save(funcionario);
+            if (!perfilAnterior.equals(novoPerfil)) {
+                auditoriaAcessoService.registrar(authentication, "PERFIL_ALTERADO", id,
+                        "Perfil: " + perfilAnterior + " -> " + novoPerfil);
+            }
+            if (ativoAnterior != novoAtivo) {
+                auditoriaAcessoService.registrar(authentication, "STATUS_ALTERADO", id,
+                        "Acesso: " + (ativoAnterior ? "ativo" : "inativo")
+                                + " -> " + (novoAtivo ? "ativo" : "inativo"));
+            }
+            if (dadosAtualizados.getSenha() != null && !dadosAtualizados.getSenha().isBlank()) {
+                salvo = autenticacaoLocalService.definirSenhaTemporaria(id, dadosAtualizados.getSenha());
+                auditoriaAcessoService.registrar(authentication, "SENHA_TEMPORARIA_REDEFINIDA", id,
+                        "Senha temporária redefinida; troca obrigatória no próximo login.");
+            }
+            response.put("funcionario", salvo);
+            response.put("mensagem", "Funcionário atualizado com sucesso!");
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().body(Map.of("erro", exception.getMessage()));
+        }
     }
 
     /**
@@ -170,11 +206,20 @@ public class FuncionarioController {
         return ResponseEntity.ok(List.of(PerfilAcesso.values()));
     }
 
+    @GetMapping("/auditoria-acessos")
+    public ResponseEntity<List<com.poprc.demo.model.LogOperacaoSensivel>> listarAuditoriaAcessos() {
+        return ResponseEntity.ok(auditoriaAcessoService.listarAlteracoesRecentes());
+    }
+
     @PostMapping("/{id}/redefinir-senha")
+    @Transactional
     public ResponseEntity<Map<String, Object>> redefinirSenha(
             @PathVariable Long id,
-            @RequestBody RedefinirSenhaRequest request) {
+            @RequestBody RedefinirSenhaRequest request,
+            Authentication authentication) {
         Funcionario funcionario = autenticacaoLocalService.definirSenhaTemporaria(id, request.senhaTemporaria());
+        auditoriaAcessoService.registrar(authentication, "SENHA_TEMPORARIA_REDEFINIDA", id,
+                "Senha temporária redefinida; troca obrigatória no próximo login.");
         return ResponseEntity.ok(Map.of(
                 "mensagem", "Senha temporária definida. A troca será exigida no próximo login.",
                 "funcionario", funcionario));
@@ -202,6 +247,18 @@ public class FuncionarioController {
 
     private String normalizarTelefone(String telefone) {
         return telefone == null || telefone.isBlank() ? null : telefone.trim();
+    }
+
+    private void validarUltimoAdministrador(
+            Funcionario funcionario, PerfilAcesso novoPerfil, boolean novoAtivo) {
+        boolean removeAdministradorAtivo = PerfilAcesso.ADMIN.equals(funcionario.getPerfilAcesso())
+                && Boolean.TRUE.equals(funcionario.getAtivo())
+                && (!PerfilAcesso.ADMIN.equals(novoPerfil) || !novoAtivo);
+        if (removeAdministradorAtivo
+                && funcionarioRepository.countByPerfilAcessoAndAtivoTrue(PerfilAcesso.ADMIN) <= 1) {
+            throw new IllegalArgumentException(
+                    "O último administrador ativo não pode ser desativado nem ter o perfil alterado.");
+        }
     }
 
     public record RedefinirSenhaRequest(String senhaTemporaria) { }

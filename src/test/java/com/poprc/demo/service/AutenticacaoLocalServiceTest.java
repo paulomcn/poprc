@@ -83,4 +83,29 @@ class AutenticacaoLocalServiceTest {
         assertEquals(false, atualizado.getTrocaSenhaObrigatoria());
         verify(repository).save(funcionario);
     }
+
+    @Test
+    void deveCriarSomenteOPrimeiroAdministradorDoBancoVazio() {
+        when(repository.count()).thenReturn(0L);
+        when(encoder.encode("Admin1234")).thenReturn("admin-hash");
+        when(repository.saveAndFlush(org.mockito.ArgumentMatchers.any(Funcionario.class)))
+                .thenAnswer(invocacao -> {
+                    Funcionario salvo = invocacao.getArgument(0);
+                    salvo.setId(99L);
+                    return salvo;
+                });
+
+        Funcionario administrador = service.criarAdministradorInicial(
+                "Administrador Local", "529.982.247-25", "Admin1234", "Natal");
+
+        assertEquals(99L, administrador.getId());
+        assertEquals(com.poprc.demo.model.PerfilAcesso.ADMIN, administrador.getPerfilAcesso());
+        assertEquals("52998224725", administrador.getCpf());
+        assertEquals("admin-hash", administrador.getSenhaHash());
+        assertEquals(false, administrador.getTrocaSenhaObrigatoria());
+
+        when(repository.count()).thenReturn(1L);
+        assertThrows(IllegalStateException.class, () -> service.criarAdministradorInicial(
+                "Outro", "111.444.777-35", "Admin1234", "Natal"));
+    }
 }

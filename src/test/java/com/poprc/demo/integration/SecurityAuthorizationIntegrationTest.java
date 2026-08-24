@@ -111,6 +111,19 @@ class SecurityAuthorizationIntegrationTest {
     }
 
     @Test
+    void somenteAdministradorPodeConsultarAuditoriaDeAcessos() throws Exception {
+        mockMvc.perform(get("/api/funcionarios/auditoria-acessos")
+                        .with(user("administrador").roles("ADMIN")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/funcionarios/auditoria-acessos")
+                        .with(user("supervisor").roles("SUPERVISOR_TECNICO")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/funcionarios/auditoria-acessos")
+                        .with(user("estoquista").roles("ESTOQUE")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void auditorNaoPodeRegistrarOperacoesDeCampo() throws Exception {
         int status = mockMvc.perform(post("/api/campo/ponto")
                         .with(user("auditor").roles("AUDITOR"))
