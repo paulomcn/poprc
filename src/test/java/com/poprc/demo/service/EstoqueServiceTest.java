@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -113,6 +114,24 @@ class EstoqueServiceTest {
         assertEquals(
                 "Zere o saldo disponível, a metragem e as reservas antes de remover o material.",
                 erro.getMessage());
+    }
+
+    @Test
+    void deveRestaurarMaterialRemovidoPreservandoRastreabilidade() {
+        Material material = new Material();
+        material.setId(1L);
+        material.setAtivo(false);
+        material.setRemovidoPor("Administrador");
+        when(materialRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(material));
+        when(materialRepository.save(any(Material.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+        Material restaurado = service.restaurarMaterial(1L, "Responsável pelo estoque");
+
+        assertTrue(restaurado.getAtivo());
+        assertEquals("Administrador", restaurado.getRemovidoPor());
+        assertEquals("Responsável pelo estoque", restaurado.getRestauradoPor());
+        assertTrue(restaurado.getRestauradoEm() != null);
     }
 
     @Test

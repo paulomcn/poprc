@@ -56,6 +56,11 @@ public class EstoqueController {
         return ResponseEntity.ok(materiais);
     }
 
+    @GetMapping("/materiais/removidos")
+    public ResponseEntity<List<Material>> listarMateriaisRemovidos() {
+        return ResponseEntity.ok(materialRepository.findByAtivoFalseOrderByRemovidoEmDesc());
+    }
+
     @PostMapping("/materiais")
     public ResponseEntity<Material> cadastrarNovoMaterial(@RequestBody Material material) {
         Material salvo = estoqueService.cadastrarMaterial(material);
@@ -75,6 +80,15 @@ public class EstoqueController {
         }
         estoqueService.removerMaterial(id, usuario);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/materiais/{id}/restaurar")
+    public ResponseEntity<Material> restaurarMaterial(@PathVariable Long id, Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        if (authentication != null && authentication.getPrincipal() instanceof UsuarioAutenticado autenticado) {
+            usuario = autenticado.getNome();
+        }
+        return ResponseEntity.ok(estoqueService.restaurarMaterial(id, usuario));
     }
 
     // ROTA DO HISTÓRICO CORRIGIDA: Buscando direto do banco pelo repository

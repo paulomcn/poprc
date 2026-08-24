@@ -19,6 +19,7 @@ import {
   Upload,
   Receipt,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
 import Modal from "../components/Modal";
@@ -228,6 +229,7 @@ export default function PainelEstoque() {
   const { usuario } = useAuth();
   const podeGerenciarEstoque = ["ADMIN", "ESTOQUE"].includes(usuario?.perfil);
   const [materiais, setMateriais] = useState([]);
+  const [materiaisRemovidos, setMateriaisRemovidos] = useState([]);
   const [funcionarios, setFuncionarios] = useState([]);
   const [comarcas, setComarcas] = useState([]);
   const [historico, setHistorico] = useState([]);
@@ -361,8 +363,14 @@ export default function PainelEstoque() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const materiaisResponse = await api.get("/estoque/materiais");
+      const [materiaisResponse, removidosResponse] = await Promise.all([
+        api.get("/estoque/materiais"),
+        podeGerenciarEstoque
+          ? api.get("/estoque/materiais/removidos")
+          : Promise.resolve({ data: [] }),
+      ]);
       setMateriais(materiaisResponse.data);
+      setMateriaisRemovidos(removidosResponse.data || []);
 
       const funcionariosResponse = await api.get("/funcionarios");
       setFuncionarios(funcionariosResponse.data);
@@ -1022,6 +1030,22 @@ export default function PainelEstoque() {
       await fetchData();
     } catch (err) {
       setError(getApiErrorMessage(err, "Não foi possível remover o material."));
+    }
+  };
+
+  const restaurarMaterial = async (material) => {
+    const confirmou = window.confirm(
+      `Restaurar "${material.nome}" para o catálogo operacional? O item continuará com saldo zero.`,
+    );
+    if (!confirmou) return;
+    try {
+      setError(null);
+      await api.patch(`/estoque/materiais/${material.id}/restaurar`);
+      setSuccessMessage(`Material "${material.nome}" restaurado no catálogo.`);
+      await fetchData();
+      setAbaEstoque("geral");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível restaurar o material."));
     }
   };
 
@@ -2206,6 +2230,21 @@ export default function PainelEstoque() {
             {item.comarca.nomeComarca}
           </button>
         ))}
+        {podeGerenciarEstoque && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={abaEstoque === "removidos"}
+            onClick={() => setAbaEstoque("removidos")}
+            className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
+              abaEstoque === "removidos"
+                ? "border-rose-600 text-rose-700"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            Materiais removidos ({materiaisRemovidos.length})
+          </button>
+        )}
       </div>
 
       {/* Tabela de Saldo Atual */}
@@ -2424,6 +2463,59 @@ export default function PainelEstoque() {
           </tbody>
         </table>
       </div>
+      ) : abaEstoque === "removidos" ? (
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+            <h2 className="font-bold text-slate-900">Materiais removidos</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Itens sem saldo retirados da operação. O histórico de movimentações permanece preservado.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px]">
+              <thead className="border-b border-slate-200 bg-white">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Produto</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Categoria</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Part number</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Removido por</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Data da remoção</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold uppercase text-slate-500">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {materiaisRemovidos.map((material) => (
+                  <tr key={material.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-5 py-4 text-sm font-semibold text-slate-800">{material.nome}</td>
+                    <td className="px-5 py-4 text-sm text-slate-600">{getCategoriaMaterialLabel(material.categoria)}</td>
+                    <td className="px-5 py-4 font-mono text-sm text-slate-700">{material.partNumber}</td>
+                    <td className="px-5 py-4 text-sm text-slate-700">{material.removidoPor || "Não informado"}</td>
+                    <td className="px-5 py-4 text-sm text-slate-700">
+                      {material.removidoEm ? new Date(material.removidoEm).toLocaleString("pt-BR") : "Não informado"}
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => restaurarMaterial(material)}
+                        className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                        title="Restaurar material no catálogo"
+                      >
+                        <Undo2 size={15} /> Restaurar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {materiaisRemovidos.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="px-5 py-10 text-center text-sm text-slate-400">
+                      Nenhum material removido.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : (
         <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">

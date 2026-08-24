@@ -84,6 +84,10 @@ public class Material {
 
     private String removidoPor;
 
+    private LocalDateTime restauradoEm;
+
+    private String restauradoPor;
+
     @Transient
     public BigDecimal getValorTotalEstoque() {
         BigDecimal saldo = controlaMetragem()

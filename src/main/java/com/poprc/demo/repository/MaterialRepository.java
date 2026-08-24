@@ -15,6 +15,7 @@ public interface MaterialRepository extends JpaRepository<Material, Long> {
     boolean existsByPartNumberIgnoreCase(String partNumber);
     Optional<Material> findByPartNumberIgnoreCase(String partNumber);
     List<Material> findByAtivoTrueOrderByNomeAsc();
+    List<Material> findByAtivoFalseOrderByRemovidoEmDesc();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from Material m where m.id = :id")

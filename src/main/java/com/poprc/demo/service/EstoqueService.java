@@ -30,6 +30,8 @@ public class EstoqueService {
         material.setAtivo(true);
         material.setRemovidoEm(null);
         material.setRemovidoPor(null);
+        material.setRestauradoEm(null);
+        material.setRestauradoPor(null);
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
             material.setQuantidadeDisponivel(0);
@@ -98,6 +100,20 @@ public class EstoqueService {
         material.setRemovidoEm(LocalDateTime.now());
         material.setRemovidoPor(valorTexto(removidoPor, "Usuário não identificado"));
         materialRepository.save(material);
+    }
+
+    @Transactional
+    public Material restaurarMaterial(Long id, String restauradoPor) {
+        Material material = materialRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
+        if (Boolean.TRUE.equals(material.getAtivo())) {
+            throw new IllegalArgumentException("Este material já está ativo no estoque.");
+        }
+
+        material.setAtivo(true);
+        material.setRestauradoEm(LocalDateTime.now());
+        material.setRestauradoPor(valorTexto(restauradoPor, "Usuário não identificado"));
+        return materialRepository.save(material);
     }
 
     @Transactional
