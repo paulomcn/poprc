@@ -70,6 +70,10 @@ public class ProjetoController {
             if (projeto.getAsBuiltStatus() == null) {
                 projeto.setAsBuiltStatus("PENDENTE");
             }
+            projeto.setArquivado(false);
+            projeto.setArquivadoEm(null);
+            projeto.setArquivadoPor(null);
+            projeto.setMotivoArquivamento(null);
 
             projeto.setContrato(contrato.get());
             if (projeto.getResponsavel() != null && projeto.getResponsavel().getId() != null) {

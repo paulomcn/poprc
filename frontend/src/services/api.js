@@ -22,6 +22,16 @@ export const refreshCsrfToken = async () => {
 
 export const getApiErrorMessage = (error, fallback = 'Não foi possível concluir a operação.') => {
   const data = error?.response?.data
+  const contentType = error?.response?.headers?.['content-type'] || ''
+  const respostaHtml = typeof data === 'string'
+    && (contentType.includes('text/html') || /<(!doctype|html|head|body)\b/i.test(data))
+
+  if (respostaHtml) {
+    if (error.response?.status === 404) {
+      return 'O serviço de autenticação não foi encontrado. Reinicie o backend e o frontend e tente novamente.'
+    }
+    return 'O servidor respondeu em um formato inesperado. Verifique se o backend correto está em execução.'
+  }
   if (typeof data === 'string' && data.trim()) return data
   if (data?.erro) return data.erro
   if (data?.message) return data.message
@@ -29,7 +39,7 @@ export const getApiErrorMessage = (error, fallback = 'Não foi possível conclui
   if (!error?.response && error?.request) {
     return 'Não foi possível conectar ao servidor. Verifique se o backend está em execução.'
   }
-  return error?.message || fallback
+  return error?.response ? fallback : error?.message || fallback
 }
 
 api.interceptors.response.use(

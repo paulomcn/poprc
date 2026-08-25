@@ -9,13 +9,27 @@ $frontendRoot = Join-Path $projectRoot "frontend"
 $runtimeRoot = Join-Path $projectRoot ".runtime"
 $localConfig = Join-Path $projectRoot "application-local.properties"
 
+function Test-TcpPortInUse([int]$Port) {
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $connection = $client.ConnectAsync("127.0.0.1", $Port)
+        return $connection.Wait(500) -and $client.Connected
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
 if (-not (Test-Path -LiteralPath $localConfig)) {
     throw "Crie application-local.properties a partir do arquivo de exemplo antes de iniciar."
 }
-if (Get-NetTCPConnection -State Listen -LocalPort $BackendPort -ErrorAction SilentlyContinue) {
+if (Test-TcpPortInUse -Port $BackendPort) {
     throw "A porta $BackendPort do backend já está em uso."
 }
-if (Get-NetTCPConnection -State Listen -LocalPort $FrontendPort -ErrorAction SilentlyContinue) {
+if (Test-TcpPortInUse -Port $FrontendPort) {
     throw "A porta $FrontendPort do frontend já está em uso."
 }
 
@@ -32,7 +46,7 @@ $backend = Start-Process -FilePath (Join-Path $projectRoot "mvnw.cmd") `
     -WindowStyle Hidden -PassThru
 
 $frontend = Start-Process -FilePath "npm.cmd" `
-    -ArgumentList @("run", "dev", "--", "--host", "0.0.0.0", "--port", $FrontendPort) `
+    -ArgumentList @("run", "dev", "--", "--host", "0.0.0.0", "--port", $FrontendPort, "--strictPort") `
     -WorkingDirectory $frontendRoot `
     -RedirectStandardOutput (Join-Path $runtimeRoot "frontend.log") `
     -RedirectStandardError (Join-Path $runtimeRoot "frontend.err.log") `
@@ -44,9 +58,17 @@ $frontend = Start-Process -FilePath "npm.cmd" `
     iniciadoEm = (Get-Date).ToString("o")
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtimeRoot "rede-local.json") -Encoding UTF8
 
-$ip = Get-NetIPAddress -AddressFamily IPv4 `
-    | Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } `
-    | Select-Object -First 1 -ExpandProperty IPAddress
+$ip = $null
+try {
+    $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop `
+        | Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } `
+        | Select-Object -First 1 -ExpandProperty IPAddress
+}
+catch {
+    $ip = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) `
+        | Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and $_.IPAddressToString -notlike "127.*" } `
+        | Select-Object -First 1 -ExpandProperty IPAddressToString
+}
 
 Write-Output "Backend iniciado: http://localhost:$BackendPort/actuator/health"
 Write-Output "Frontend local: http://localhost:$FrontendPort"

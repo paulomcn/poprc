@@ -43,6 +43,7 @@ public class Projeto {
     @Column(name = "as_built_status")
     private String asBuiltStatus = "PENDENTE";
 
+    @Column(nullable = false)
     private Boolean arquivado = false;
 
     private LocalDateTime arquivadoEm;
@@ -60,4 +61,17 @@ public class Projeto {
     // persistido
     @Transient
     private String nomeComarcaVinculada;
+
+    @PrePersist
+    void aplicarPadroesAntesDePersistir() {
+        if (arquivado == null) {
+            arquivado = false;
+        }
+        if (status == null) {
+            status = ProjetoStatus.EM_ANDAMENTO;
+        }
+        if (asBuiltStatus == null) {
+            asBuiltStatus = "PENDENTE";
+        }
+    }
 }

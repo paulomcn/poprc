@@ -6,6 +6,8 @@ import { useAuth, homePorPerfil } from "../contexts/AuthContext";
 import api, { getApiErrorMessage } from "../services/api";
 import { API_ORIGIN } from "../services/runtimeConfig";
 
+const limitarCpf = (valor) => valor.replace(/\D/g, "").slice(0, 11);
+
 export default function Login() {
   const { usuario, carregando, configuracao, login, loginDesenvolvimento, configurarAdministrador } = useAuth();
   const [credenciais, setCredenciais] = useState({ cpf: "", senha: "" });
@@ -80,14 +82,14 @@ export default function Login() {
           <form onSubmit={concluirBootstrap} className="space-y-4">
             <div className="rounded border border-blue-200 bg-blue-50 p-3"><h2 className="text-sm font-bold text-blue-950">Configurar primeiro administrador</h2><p className="mt-1 text-xs text-blue-800">Este cadastro aparece somente porque o ambiente está vazio.</p></div>
             <label className="block text-sm font-semibold text-slate-700">Nome<input value={primeiroAdmin.nome} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, nome: e.target.value })} required autoComplete="name" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
-            <label className="block text-sm font-semibold text-slate-700">CPF<input value={primeiroAdmin.cpf} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cpf: e.target.value })} inputMode="numeric" required placeholder="000.000.000-00" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+            <label className="block text-sm font-semibold text-slate-700">CPF<input value={primeiroAdmin.cpf} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cpf: limitarCpf(e.target.value) })} inputMode="numeric" maxLength={11} required placeholder="Somente 11 números" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
             <label className="block text-sm font-semibold text-slate-700">Cidade<input value={primeiroAdmin.cidade} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cidade: e.target.value })} className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
             <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Senha<input value={primeiroAdmin.senha} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, senha: e.target.value })} type="password" minLength={8} required autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label><label className="block text-sm font-semibold text-slate-700">Confirmar<input value={primeiroAdmin.confirmarSenha} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, confirmarSenha: e.target.value })} type="password" minLength={8} required autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label></div>
             <p className="text-xs text-slate-500">Use ao menos 8 caracteres, com letras e números.</p>
             <button disabled={entrando} className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><ShieldCheck size={18} /> {entrando ? "Configurando..." : "Criar administrador"}</button>
           </form>
         ) : <form onSubmit={entrarLocal} className="space-y-4">
-          <label className="block text-sm font-semibold text-slate-700">CPF<input value={credenciais.cpf} onChange={(e) => setCredenciais({ ...credenciais, cpf: e.target.value })} inputMode="numeric" autoComplete="username" required placeholder="000.000.000-00" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+          <label className="block text-sm font-semibold text-slate-700">CPF<input value={credenciais.cpf} onChange={(e) => setCredenciais({ ...credenciais, cpf: limitarCpf(e.target.value) })} inputMode="numeric" maxLength={11} autoComplete="username" required placeholder="Somente 11 números" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
           <label className="block text-sm font-semibold text-slate-700">Senha<input value={credenciais.senha} onChange={(e) => setCredenciais({ ...credenciais, senha: e.target.value })} type="password" autoComplete="current-password" required className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
           <button disabled={entrando} className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><LogIn size={18} /> {entrando ? "Entrando..." : "Entrar com CPF"}</button>
         </form>}
