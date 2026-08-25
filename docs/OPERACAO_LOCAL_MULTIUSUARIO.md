@@ -14,7 +14,9 @@ cadastro do primeiro administrador. Esse cadastro inicial deixa de existir autom
 o primeiro usuário ser criado.
 
 Se `poprc_local` já existir, o script não apaga dados. Para recriá-lo, use `-Recreate`; será exigida
-uma confirmação textual e um backup será criado antes da remoção.
+uma confirmação textual e um backup completo do banco e dos uploads será criado antes da remoção.
+Os arquivos de upload permanecem no diretório original, embora o novo banco não tenha referências
+a eles. Exclua arquivos antigos somente depois de validar e guardar o pacote de backup.
 
 ## Importação por nota fiscal
 
@@ -83,7 +85,7 @@ Os logs ficam em `.runtime/`, fora do Git.
 Ao final do expediente, execute:
 
 ```powershell
-.\scripts\backup-completo.ps1 -Database poprc
+.\scripts\backup-completo.ps1 -Database poprc_local
 ```
 
 O pacote inclui banco e arquivos enviados. Guarde uma cópia fora do computador

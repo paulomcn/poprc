@@ -4,6 +4,7 @@ param(
     [int]$Port = 5432,
     [string]$Username = "postgres",
     [string]$Password = $env:DB_PASSWORD,
+    [string]$UploadDirectory = $(if ($env:APP_UPLOAD_DIR) { $env:APP_UPLOAD_DIR } else { Join-Path $env:USERPROFILE "rc_uploads" }),
     [switch]$Recreate
 )
 
@@ -28,22 +29,25 @@ $databaseQuery = Invoke-WithPgPassword $Password {
     ($result | Out-String).Trim()
 }
 $databaseExists = ($databaseQuery | Out-String).Trim() -eq "1"
+$databaseRecreated = $false
 
 if ($databaseExists -and -not $Recreate) {
     throw "O banco $Database ja existe. Use -Recreate para recria-lo com backup e confirmacao."
 }
 
 if ($databaseExists -and $Recreate) {
-    $confirmation = Read-Host "Digite RECRIAR $Database para fazer backup e apagar o banco local"
+    $confirmation = Read-Host "Digite RECRIAR $Database para fazer backup completo e apagar o banco local"
     if ($confirmation -ne "RECRIAR $Database") {
         throw "Recriacao cancelada."
     }
-    $backupScript = Join-Path $PSScriptRoot "backup-postgres.ps1"
-    & $backupScript -Database $Database -HostName $HostName -Port $Port `
-        -Username $Username -Password $Password
-    if ($LASTEXITCODE -ne 0) {
-        throw "O backup falhou; o banco nao foi removido."
+    $backupScript = Join-Path $PSScriptRoot "backup-completo.ps1"
+    $backupPackage = & $backupScript -Database $Database -HostName $HostName -Port $Port `
+        -Username $Username -Password $Password -UploadDirectory $UploadDirectory |
+        Select-Object -Last 1
+    if (-not $backupPackage -or -not (Test-Path -LiteralPath $backupPackage)) {
+        throw "O pacote de backup completo nao foi confirmado; o banco nao foi removido."
     }
+    Write-Output "Backup completo confirmado: $backupPackage"
     Invoke-WithPgPassword $Password {
         & $dropdb --host $HostName --port $Port --username $Username --no-password `
             --if-exists --force $Database
@@ -51,6 +55,7 @@ if ($databaseExists -and $Recreate) {
             throw "Nao foi possivel remover o banco local."
         }
     }
+    $databaseRecreated = $true
 }
 
 Invoke-WithPgPassword $Password {
@@ -80,7 +85,11 @@ if (-not $found) {
 }
 $updated | Set-Content -LiteralPath $localConfig -Encoding UTF8
 
-Write-Output "Banco local vazio criado: $Database"
+if ($databaseRecreated) {
+    Write-Output "Banco local recriado vazio: $Database"
+    Write-Output "Os uploads foram incluidos no backup e preservados no diretorio original."
+} else {
+    Write-Output "Banco local vazio criado: $Database"
+}
 Write-Output "Configuracao local atualizada: $localConfig"
-Write-Output "O banco anterior nao foi alterado."
 Write-Output "Inicie o sistema e configure o primeiro administrador na tela de login."
