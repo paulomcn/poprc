@@ -195,9 +195,26 @@ export default function Projetos() {
     }).length,
   }), [projetos]);
 
+  const rotulosStatus = {
+    APROVADO: "Aprovado",
+    ARQUIVADO: "Arquivado",
+    CONCLUIDO: "Concluído",
+    DIVERGENTE: "Divergente",
+    EM_ANDAMENTO: "Em andamento",
+    EM_REVISAO: "Em revisão",
+    HOMOLOGADO: "Homologado",
+    HOMOLOGADO_COM_DIVERGENCIA: "Homologado com divergência",
+    PENDENTE: "Pendente",
+    REABERTO: "Reaberto",
+    SUSPENSO: "Suspenso",
+  };
+
+  const formatarStatus = (status, padrao = "Pendente") =>
+    rotulosStatus[status] || status?.replaceAll("_", " ") || padrao;
+
   const statusProjeto = (projeto) => projeto.arquivado
-    ? "ARQUIVADO"
-    : projeto.status?.replaceAll("_", " ") || "ATIVO";
+    ? rotulosStatus.ARQUIVADO
+    : formatarStatus(projeto.status, "Ativo");
 
   const statusClasses = (projeto) => projeto.arquivado
     ? "bg-slate-100 text-slate-600"
@@ -290,7 +307,7 @@ export default function Projetos() {
                 <td className="px-4 py-3 font-medium text-slate-700">{p.contrato?.contrato || "Não vinculado"}</td>
                 <td className="px-4 py-3 text-slate-600"><p>{p.dataInicio || "Sem início"}</p><p className="text-xs text-slate-400">até {p.dataFim || "sem término"}</p></td>
                 <td className="px-4 py-3"><p className="font-medium text-slate-700">{p.responsavel?.nome || "Não atribuído"}</p><p className="text-xs text-slate-500">{p.equipe?.length || 0} membro(s) na equipe</p></td>
-                <td className="px-4 py-3 text-xs font-bold text-slate-600">{p.asBuiltStatus || "PENDENTE"}</td>
+                <td className="px-4 py-3 text-xs font-bold text-slate-600">{formatarStatus(p.asBuiltStatus)}</td>
                 <td className="px-4 py-3"><span className={`rounded px-2 py-1 text-xs font-bold ${statusClasses(p)}`}>{statusProjeto(p)}</span></td>
                 <td className="px-4 py-3"><div className="flex justify-end gap-1"><button title="Visualizar detalhes" onClick={() => handleOpenModal(p, false)} className="rounded border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><Eye size={16} /></button><button title="Editar projeto" onClick={() => handleOpenModal(p, true)} disabled={p.arquivado} className="rounded border border-slate-200 p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-30"><Edit size={16} /></button><button onClick={() => alterarArquivamento(p)} title={p.arquivado ? "Restaurar projeto" : "Arquivar projeto"} className={`rounded border border-slate-200 p-2 ${p.arquivado ? "text-emerald-700 hover:bg-emerald-50" : "text-red-700 hover:bg-red-50"}`}>{p.arquivado ? <RotateCcw size={16} /> : <Archive size={16} />}</button></div></td>
               </tr>
@@ -314,7 +331,7 @@ export default function Projetos() {
                 <div><dt className="font-bold uppercase text-slate-400">Responsável</dt><dd className="mt-1 text-slate-700">{p.responsavel?.nome || "Não atribuído"}</dd></div>
                 <div><dt className="font-bold uppercase text-slate-400">Equipe</dt><dd className="mt-1 text-slate-700">{p.equipe?.length || 0} membro(s)</dd></div>
                 <div><dt className="font-bold uppercase text-slate-400">Período</dt><dd className="mt-1 text-slate-700">{p.dataInicio || "Sem início"} a {p.dataFim || "sem término"}</dd></div>
-                <div><dt className="font-bold uppercase text-slate-400">As-Built</dt><dd className="mt-1 font-semibold text-slate-700">{p.asBuiltStatus || "PENDENTE"}</dd></div>
+                <div><dt className="font-bold uppercase text-slate-400">As-Built</dt><dd className="mt-1 font-semibold text-slate-700">{formatarStatus(p.asBuiltStatus)}</dd></div>
               </dl>
               <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
                 <button title="Visualizar detalhes" onClick={() => handleOpenModal(p, false)} className="rounded border border-slate-200 p-2 text-slate-600"><Eye size={16} /></button>

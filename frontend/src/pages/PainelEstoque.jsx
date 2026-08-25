@@ -2228,6 +2228,9 @@ export default function PainelEstoque() {
             }`}
           >
             {item.comarca.nomeComarca}
+            <span className="ml-1 font-medium text-slate-400">
+              · {item.comarca.ordemServico?.numeroOs || `Obra #${item.comarca.id}`}
+            </span>
           </button>
         ))}
         {podeGerenciarEstoque && (
@@ -2249,7 +2252,113 @@ export default function PainelEstoque() {
 
       {/* Tabela de Saldo Atual */}
       {abaEstoque === "geral" ? (
-      <div className="bg-white rounded-lg shadow-md overflow-x-auto border border-slate-200">
+      <>
+      <div className="space-y-5 md:hidden">
+        {materiaisPorCategoria.map((grupo) => grupo.materiais.length > 0 && (
+          <section key={grupo.value} aria-labelledby={`categoria-${grupo.value}`}>
+            <h2
+              id={`categoria-${grupo.value}`}
+              className="mb-2 text-xs font-black uppercase text-slate-500"
+            >
+              {grupo.label} ({grupo.materiais.length})
+            </h2>
+            <div className="space-y-3">
+              {grupo.materiais.map((material) => (
+                <article
+                  key={material.id}
+                  className={`rounded-lg border bg-white p-4 shadow-sm ${
+                    isCriticalStock(material) ? "border-red-200 bg-red-50/40" : "border-slate-200"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {material.fotoProdutoUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setFotoExpandida(material)}
+                        className="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        title="Expandir foto do produto"
+                      >
+                        <img
+                          src={material.fotoProdutoUrl}
+                          alt={`Foto de ${material.nome}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ) : (
+                      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-400">
+                        <Package size={20} />
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="break-words text-sm font-bold text-slate-900">{material.nome}</h3>
+                      <p className="mt-1 break-all font-mono text-xs text-slate-500">
+                        {material.partNumber || "Sem part number"}
+                      </p>
+                      {material.descricao && (
+                        <p className="mt-1 break-words text-xs text-slate-500">{material.descricao}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-md bg-slate-100 p-2">
+                      <dt className="text-[10px] font-bold uppercase text-slate-500">Em estoque</dt>
+                      <dd className="mt-1 text-xs font-bold text-slate-800">
+                        {controlaMetragem(material)
+                          ? `${formatarNumero(material.metragemDisponivel)} m`
+                          : `${material.quantidadeDisponivel ?? 0} ${unidadeMaterial(material)}`}
+                      </dd>
+                    </div>
+                    <div className="rounded-md bg-amber-50 p-2">
+                      <dt className="text-[10px] font-bold uppercase text-amber-700">Reservado</dt>
+                      <dd className="mt-1 text-xs font-bold text-amber-800">
+                        {formatarNumero(getReservado(material))} {unidadeMaterial(material)}
+                      </dd>
+                    </div>
+                    <div className={`rounded-md p-2 ${isCriticalStock(material) ? "bg-red-100" : "bg-green-50"}`}>
+                      <dt className={`text-[10px] font-bold uppercase ${isCriticalStock(material) ? "text-red-700" : "text-green-700"}`}>Disponível</dt>
+                      <dd className={`mt-1 text-xs font-bold ${isCriticalStock(material) ? "text-red-800" : "text-green-800"}`}>
+                        {formatarNumero(getLivre(material))} {unidadeMaterial(material)}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-xs">
+                    <div>
+                      <span className="block text-slate-400">Custo médio</span>
+                      <strong className="text-slate-800">{formatarMoeda(material.custoMedio)}</strong>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-slate-400">Valor em estoque</span>
+                      <strong className="text-slate-900">{formatarMoeda(valorTotalMaterial(material))}</strong>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <p className="min-w-0 break-words text-xs text-slate-500">
+                      {saldosDoMaterial(material.id).map((saldo) => saldo.localEstoque?.nome).filter(Boolean).join(", ") || "Local não informado"}
+                    </p>
+                    <div className="flex shrink-0 gap-1">
+                      <button type="button" onClick={() => abrirModalEditarMaterial(material)} className="rounded-md border border-slate-200 bg-white p-2 text-slate-500" title="Editar cadastro" aria-label={`Editar ${material.nome}`}><Edit2 size={15} /></button>
+                      <button type="button" onClick={() => abrirAjuste(material)} disabled={rastreavel(material)} className="rounded-md border border-slate-200 bg-white p-2 text-slate-500 disabled:opacity-30" title="Ajustar saldo" aria-label={`Ajustar saldo de ${material.nome}`}><SlidersHorizontal size={15} /></button>
+                      <button type="button" onClick={() => abrirTransferencia(material)} disabled={rastreavel(material)} className="rounded-md border border-slate-200 bg-white p-2 text-slate-500 disabled:opacity-30" title="Transferir localização" aria-label={`Transferir ${material.nome}`}><ArrowRightLeft size={15} /></button>
+                      {podeGerenciarEstoque && (
+                        <button type="button" onClick={() => removerMaterial(material)} className="rounded-md border border-red-100 bg-white p-2 text-red-600" title="Remover material do estoque" aria-label={`Remover ${material.nome}`}><Trash2 size={15} /></button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ))}
+        {materiais.length === 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+            Nenhum produto cadastrado no estoque.
+          </div>
+        )}
+      </div>
+      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-md md:block">
         <table className="w-full min-w-[1400px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -2463,6 +2572,7 @@ export default function PainelEstoque() {
           </tbody>
         </table>
       </div>
+      </>
       ) : abaEstoque === "removidos" ? (
         <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
