@@ -203,7 +203,8 @@ class FluxoOperacionalIntegrationTest {
         OrdemRetirada ordemRetirada = ordemRetiradaService.executarRetirada(
                 unicaOrDaOs(os).getId(), retiradaAssinada());
         comarcaService.salvarViradaRede(
-                cenario.comarcaId(), "/uploads/teste/prova.png", "Ping e conectividade validados", true);
+                cenario.comarcaId(), "/uploads/comarcas/virada-rede/prova.png",
+                "Ping e conectividade validados", true);
         assertEquals(0, BigDecimal.valueOf(90).compareTo(
                 comarcaRepository.findById(cenario.comarcaId()).orElseThrow().getPercentualConcluido()));
 
@@ -293,7 +294,8 @@ class FluxoOperacionalIntegrationTest {
         comarcaService.atualizarQuantidadeAuditada(consumo.getId(), BigDecimal.valueOf(2));
         comarcaService.homologarAsBuilt(cenario.comarcaId());
         comarcaService.salvarViradaRede(
-                cenario.comarcaId(), "/uploads/teste/prova.png", "Conectividade validada", true);
+                cenario.comarcaId(), "/uploads/comarcas/virada-rede/prova.png",
+                "Conectividade validada", true);
 
         IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
                 () -> comarcaService.concluirObra(cenario.comarcaId(), "Gestor Teste"));
@@ -316,7 +318,8 @@ class FluxoOperacionalIntegrationTest {
 
         IllegalArgumentException concluirSemRetirada = assertThrows(IllegalArgumentException.class,
                 () -> comarcaService.salvarViradaRede(
-                        cenario.comarcaId(), "/uploads/teste/prova.png", "Conectividade validada", true));
+                        cenario.comarcaId(), "/uploads/comarcas/virada-rede/prova.png",
+                        "Conectividade validada", true));
         assertTrue(concluirSemRetirada.getMessage().contains("retirada"));
 
         ordemRetiradaService.executarRetirada(unicaOrDaOs(os).getId(), retiradaAssinada());
@@ -324,6 +327,21 @@ class FluxoOperacionalIntegrationTest {
         Comarca viradaLiberada = comarcaService.avancarParaInfraestrutura(cenario.comarcaId());
         assertEquals(3, viradaLiberada.getEtapaAtual());
         assertEquals("VIRADA_DE_REDE", viradaLiberada.getSituacao());
+    }
+
+    @Test
+    void bloqueiaSubstituicaoDaFotoDaViradaDeRedePorTexto() {
+        Cenario cenario = prepararCenario(false);
+        String prova = "/uploads/comarcas/virada-rede/prova.png";
+        comarcaService.salvarViradaRede(cenario.comarcaId(), prova, "Checklist inicial", false);
+
+        IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                () -> comarcaService.salvarViradaRede(
+                        cenario.comarcaId(), "Conectividade validada por texto", "Checklist final", false));
+
+        assertTrue(erro.getMessage().contains("foto enviada"));
+        assertEquals(prova, comarcaRepository.findById(cenario.comarcaId()).orElseThrow()
+                .getViradaRedeProvasFuncionamento());
     }
 
     @Test

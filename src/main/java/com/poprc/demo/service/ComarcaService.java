@@ -48,6 +48,7 @@ public class ComarcaService {
     private static final Set<String> MIME_FOTO_VISTORIA = Set.of("image/jpeg", "image/jpg", "image/png");
     private static final String DIRETORIO_FOTO_VISTORIA = "comarcas/vistoria";
     private static final String DIRETORIO_PROVA_VIRADA_REDE = "comarcas/virada-rede";
+    private static final String URL_PROVA_VIRADA_REDE = "/uploads/comarcas/virada-rede/";
     private static final String AS_BUILT_PENDENTE = "PENDENTE";
     private static final String AS_BUILT_DIVERGENTE = "DIVERGENTE";
     private static final String AS_BUILT_HOMOLOGADO = "HOMOLOGADO";
@@ -256,6 +257,11 @@ public class ComarcaService {
         Comarca comarca = comarcaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Comarca não encontrada."));
 
+        if (provasFuncionamento != null && !provasFuncionamento.isBlank()
+                && !provasFuncionamento.startsWith(URL_PROVA_VIRADA_REDE)) {
+            throw new IllegalArgumentException(
+                    "A prova de funcionamento deve ser uma foto enviada pela Virada de Rede.");
+        }
         String provaAtual = provasFuncionamento != null && !provasFuncionamento.isBlank()
                 ? provasFuncionamento
                 : comarca.getViradaRedeProvasFuncionamento();

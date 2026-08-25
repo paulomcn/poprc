@@ -32,6 +32,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Base64;
@@ -189,7 +190,7 @@ public class DocumentoInternoController {
 
         documento.setAssinaturaBase64(request.getAssinaturaBase64());
         documento.setStatus(STATUS_REGISTRADO);
-        documento.setDataAssinatura(LocalDateTime.now());
+        documento.setDataAssinatura(agoraPersistivel());
         documento.setHashRegistro(gerarHash(documento));
         DocumentoInterno salvo = documentoInternoRepository.save(documento);
         registrarLogAssinatura(salvo, "LEGADO", usuarioAtual, usuarioAtual, request.getAssinaturaBase64());
@@ -219,7 +220,7 @@ public class DocumentoInternoController {
         String assinadoPor = request.getNomeAssinante() != null && !request.getNomeAssinante().isBlank()
                 ? request.getNomeAssinante().trim()
                 : usuarioAtual;
-        LocalDateTime agora = LocalDateTime.now();
+        LocalDateTime agora = agoraPersistivel();
         String papelNormalizado = papel.toUpperCase();
         switch (papelNormalizado) {
             case "TECNICO" -> {
@@ -366,6 +367,10 @@ public class DocumentoInternoController {
 
     private boolean temTexto(String valor) {
         return valor != null && !valor.isBlank();
+    }
+
+    private LocalDateTime agoraPersistivel() {
+        return LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
     }
 
     private void validarPapelPendente(String assinaturaExistente, String papel) {
