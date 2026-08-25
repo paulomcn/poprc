@@ -4,6 +4,7 @@ param(
     [int]$Port = 5432,
     [string]$Username = "postgres",
     [string]$Password = $env:TEST_DB_PASSWORD,
+    [string]$TestClasses,
     [switch]$KeepDatabase
 )
 
@@ -54,7 +55,11 @@ try {
 
         Push-Location $projectRoot
         try {
-            & .\mvnw.cmd test
+            $mavenArguments = @("test")
+            if ($TestClasses) {
+                $mavenArguments = @("-Dtest=$TestClasses", "test")
+            }
+            & .\mvnw.cmd @mavenArguments
             $testExitCode = $LASTEXITCODE
         }
         finally {
