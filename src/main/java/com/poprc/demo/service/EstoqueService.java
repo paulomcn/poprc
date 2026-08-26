@@ -139,7 +139,8 @@ public class EstoqueService {
         Funcionario funcionario = funcionarioRepository.findById(funcionarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Funcionário não encontrado"));
 
-        boolean controleMetragem = TipoControleEstoque.METRAGEM.equals(material.getTipoControle());
+        boolean controleMetragem = TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())
+                || TipoControleEstoque.METRAGEM.equals(material.getTipoControle());
         if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
             throw new IllegalArgumentException("Cadastre a bobina/rolo individual para registrar esta entrada.");
@@ -238,11 +239,11 @@ public class EstoqueService {
     public MovimentacaoEstoque reconciliarSaldoPlanilha(
             Long materialId,
             Long localEstoqueId,
-            Integer saldoDesejado,
+            BigDecimal saldoDesejado,
             BigDecimal custoUnitario,
             String motivo,
             String responsavel) {
-        if (saldoDesejado == null || saldoDesejado < 0) {
+        if (saldoDesejado == null || saldoDesejado.signum() < 0) {
             throw new IllegalArgumentException("O saldo importado não pode ser negativo.");
         }
         if (custoUnitario == null || custoUnitario.signum() < 0) {
@@ -251,13 +252,18 @@ public class EstoqueService {
 
         Material material = materialRepository.findByIdForUpdate(materialId)
                 .orElseThrow(() -> new IllegalArgumentException("Material não encontrado."));
-        if (controlaMetragem(material)) {
+        if ((TipoControleEstoque.BOBINA.equals(material.getTipoControle())
+                || TipoControleEstoque.ROLO.equals(material.getTipoControle()))) {
             throw new IllegalArgumentException(
-                    "A importação unitária não suporta materiais controlados por metragem, bobina ou rolo.");
+                    "Bobinas e rolos rastreáveis devem ser importados por unidade física.");
+        }
+        if (!controlaMetragem(material) && saldoDesejado.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException(
+                    "O saldo de materiais por unidade precisa ser inteiro.");
         }
 
         BigDecimal saldoAnterior = saldoControle(material);
-        BigDecimal saldoPosterior = BigDecimal.valueOf(saldoDesejado);
+        BigDecimal saldoPosterior = saldoDesejado;
         BigDecimal diferenca = saldoPosterior.subtract(saldoAnterior);
         material.setCustoMedio(custoUnitario.setScale(4, RoundingMode.HALF_UP));
         if (diferenca.signum() == 0) {
@@ -295,6 +301,23 @@ public class EstoqueService {
                 material.getCustoMedio().multiply(valorAjuste).setScale(4, RoundingMode.HALF_UP));
         movimentacao.setCustoEstimado(false);
         return movimentacaoEstoqueRepository.save(movimentacao);
+    }
+
+    @Transactional
+    public MovimentacaoEstoque reconciliarSaldoPlanilha(
+            Long materialId,
+            Long localEstoqueId,
+            Integer saldoDesejado,
+            BigDecimal custoUnitario,
+            String motivo,
+            String responsavel) {
+        return reconciliarSaldoPlanilha(
+                materialId,
+                localEstoqueId,
+                saldoDesejado != null ? BigDecimal.valueOf(saldoDesejado) : null,
+                custoUnitario,
+                motivo,
+                responsavel);
     }
 
     @Transactional
@@ -444,7 +467,8 @@ public class EstoqueService {
     }
 
     private boolean controlaMetragem(Material material) {
-        return material != null && (TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+        return material != null && (TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())
+                || TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
                 || TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle()));
     }
@@ -473,6 +497,7 @@ public class EstoqueService {
 
     private UnidadeMedida unidadePadrao(TipoControleEstoque tipoControle) {
         return switch (tipoControle) {
+            case FRACIONADO -> UnidadeMedida.UNIDADE;
             case PECA_COM_COMPRIMENTO -> UnidadeMedida.PECA;
             case METRAGEM -> UnidadeMedida.METRO;
             case ROLO -> UnidadeMedida.ROLO;

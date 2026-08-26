@@ -5,16 +5,26 @@ import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
 import com.poprc.demo.model.ImportacaoEstoquePlanilha;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.ImportacaoEstoqueItemPlanilha;
+import com.poprc.demo.model.ImportacaoEntradaPlanilha;
 import com.poprc.demo.model.ImportacaoRetiradaPlanilha;
 import com.poprc.demo.model.LocalEstoque;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.TipoControleEstoque;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.ImportacaoEstoqueItemPlanilhaRepository;
+import com.poprc.demo.repository.ImportacaoEntradaPlanilhaRepository;
 import com.poprc.demo.repository.ImportacaoEstoquePlanilhaRepository;
 import com.poprc.demo.repository.ImportacaoRetiradaPlanilhaRepository;
+import com.poprc.demo.repository.ImportacaoRetornoPlanilhaRepository;
 import com.poprc.demo.repository.LocalEstoqueRepository;
 import com.poprc.demo.repository.MaterialRepository;
+import com.poprc.demo.repository.ContratoRepository;
+import com.poprc.demo.repository.FuncionarioRepository;
+import com.poprc.demo.repository.ProjetoRepository;
+import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.repository.OrdemRetiradaRepository;
+import com.poprc.demo.repository.OrdemRetiradaItemRepository;
+import com.poprc.demo.repository.MaterialItemRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -28,16 +38,26 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class ImportacaoEstoquePlanilhaServiceTest {
 
     private ImportacaoEstoquePlanilhaRepository importacaoRepository;
     private ImportacaoEstoqueItemPlanilhaRepository itemImportacaoRepository;
+    private ImportacaoEntradaPlanilhaRepository entradaImportacaoRepository;
     private ImportacaoRetiradaPlanilhaRepository retiradaImportacaoRepository;
+    private ImportacaoRetornoPlanilhaRepository retornoImportacaoRepository;
     private MaterialRepository materialRepository;
     private LocalEstoqueRepository localRepository;
     private ComarcaRepository comarcaRepository;
+    private ContratoRepository contratoRepository;
+    private FuncionarioRepository funcionarioRepository;
+    private ProjetoRepository projetoRepository;
+    private OrdemServicoRepository ordemServicoRepository;
+    private OrdemRetiradaRepository ordemRetiradaRepository;
+    private OrdemRetiradaItemRepository ordemRetiradaItemRepository;
+    private MaterialItemRepository materialItemRepository;
     private EstoqueService estoqueService;
     private ImportacaoEstoquePlanilhaService service;
 
@@ -45,18 +65,36 @@ class ImportacaoEstoquePlanilhaServiceTest {
     void setUp() {
         importacaoRepository = mock(ImportacaoEstoquePlanilhaRepository.class);
         itemImportacaoRepository = mock(ImportacaoEstoqueItemPlanilhaRepository.class);
+        entradaImportacaoRepository = mock(ImportacaoEntradaPlanilhaRepository.class);
         retiradaImportacaoRepository = mock(ImportacaoRetiradaPlanilhaRepository.class);
+        retornoImportacaoRepository = mock(ImportacaoRetornoPlanilhaRepository.class);
         materialRepository = mock(MaterialRepository.class);
         localRepository = mock(LocalEstoqueRepository.class);
         comarcaRepository = mock(ComarcaRepository.class);
+        contratoRepository = mock(ContratoRepository.class);
+        funcionarioRepository = mock(FuncionarioRepository.class);
+        projetoRepository = mock(ProjetoRepository.class);
+        ordemServicoRepository = mock(OrdemServicoRepository.class);
+        ordemRetiradaRepository = mock(OrdemRetiradaRepository.class);
+        ordemRetiradaItemRepository = mock(OrdemRetiradaItemRepository.class);
+        materialItemRepository = mock(MaterialItemRepository.class);
         estoqueService = mock(EstoqueService.class);
         service = new ImportacaoEstoquePlanilhaService(
                 importacaoRepository,
                 itemImportacaoRepository,
+                entradaImportacaoRepository,
                 retiradaImportacaoRepository,
+                retornoImportacaoRepository,
                 materialRepository,
                 localRepository,
                 comarcaRepository,
+                contratoRepository,
+                funcionarioRepository,
+                projetoRepository,
+                ordemServicoRepository,
+                ordemRetiradaRepository,
+                ordemRetiradaItemRepository,
+                materialItemRepository,
                 estoqueService);
     }
 
@@ -111,6 +149,139 @@ class ImportacaoEstoquePlanilhaServiceTest {
                 new BigDecimal("12.50"),
                 "Inventário importado de estoque.xlsx",
                 "gestor");
+    }
+
+    @Test
+    void devePreservarEntradaHistoricaSemSomarNovamenteAoSaldoConsolidado() {
+        String hash = "7".repeat(64);
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+        local.setAtivo(true);
+        Material material = new Material();
+        material.setId(7L);
+        material.setNome("Patch Cord");
+        material.setTipoControle(TipoControleEstoque.UNIDADE);
+        material.setQuantidadeDisponivel(10);
+
+        when(importacaoRepository.findByHashSha256(hash)).thenReturn(Optional.empty());
+        when(localRepository.findById(3L)).thenReturn(Optional.of(local));
+        when(materialRepository.findAll()).thenReturn(List.of(material));
+        when(importacaoRepository.saveAndFlush(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> {
+                    ImportacaoEstoquePlanilha importacao = invocacao.getArgument(0);
+                    importacao.setId(12L);
+                    return importacao;
+                });
+        when(importacaoRepository.save(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "estoque.xlsx",
+                hash,
+                3L,
+                true,
+                false,
+                null,
+                null,
+                BigDecimal.TEN,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Patch Cord", null, BigDecimal.TEN, new BigDecimal("12.50"), 5)),
+                List.of(new ImportacaoEstoquePlanilhaRequest.EntradaImportacao(
+                        "ADICAO",
+                        "Fornecedor | 20/08/26",
+                        "Fornecedor",
+                        java.time.LocalDate.of(2026, 8, 20),
+                        "Patch Cord",
+                        new BigDecimal("2"),
+                        new BigDecimal("12.50"),
+                        5,
+                        6)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of());
+
+        ImportacaoEstoquePlanilhaResultadoDTO resultado = service.importar(request, "gestor");
+
+        assertEquals(1, resultado.entradasImportadas());
+        verify(entradaImportacaoRepository).save(any(ImportacaoEntradaPlanilha.class));
+        verify(estoqueService).reconciliarSaldoPlanilha(
+                7L,
+                3L,
+                10,
+                new BigDecimal("12.50"),
+                "Inventário importado de estoque.xlsx",
+                "gestor");
+        verifyNoMoreInteractions(estoqueService);
+    }
+
+    @Test
+    void saldoConsolidadoNaoDeveDebitarRetiradasHistoricasNovamente() {
+        String hash = "c".repeat(64);
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+        local.setAtivo(true);
+        Material material = new Material();
+        material.setId(7L);
+        material.setNome("Patch Cord");
+        material.setTipoControle(TipoControleEstoque.UNIDADE);
+        material.setQuantidadeDisponivel(10);
+        Comarca comarca = new Comarca();
+        comarca.setId(9L);
+        comarca.setNomeComarca("Cuité");
+
+        when(importacaoRepository.findByHashSha256(hash)).thenReturn(Optional.empty());
+        when(localRepository.findById(3L)).thenReturn(Optional.of(local));
+        when(materialRepository.findAll()).thenReturn(List.of(material));
+        when(comarcaRepository.findById(9L)).thenReturn(Optional.of(comarca));
+        when(importacaoRepository.saveAndFlush(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> {
+                    ImportacaoEstoquePlanilha importacao = invocacao.getArgument(0);
+                    importacao.setId(21L);
+                    return importacao;
+                });
+        when(importacaoRepository.save(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "estoque-consolidado.xlsx",
+                hash,
+                3L,
+                true,
+                false,
+                null,
+                null,
+                BigDecimal.TEN,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        "Patch Cord", null, new BigDecimal("8"), new BigDecimal("12.50"), 5)),
+                List.of(),
+                List.of(new ImportacaoEstoquePlanilhaRequest.RetiradaImportacao(
+                        "ORDEM DE RETIRADA - CUITÉ",
+                        9L,
+                        null,
+                        "Patch Cord",
+                        new BigDecimal("10"),
+                        new BigDecimal("2"),
+                        new BigDecimal("8"),
+                        new BigDecimal("12.50"),
+                        null,
+                        8)),
+                List.of(),
+                List.of(),
+                List.of());
+
+        service.importar(request, "gestor");
+
+        verify(estoqueService).reconciliarSaldoPlanilha(
+                7L,
+                3L,
+                8,
+                new BigDecimal("12.50"),
+                "Inventário importado de estoque-consolidado.xlsx",
+                "gestor");
+        verifyNoMoreInteractions(estoqueService);
     }
 
     @Test
@@ -398,8 +569,8 @@ class ImportacaoEstoquePlanilhaServiceTest {
         item.setImportacao(importacao);
         item.setMaterial(material);
         item.setNomePlanilha(nome);
-        item.setSaldoAnterior(0);
-        item.setSaldoImportado(quantidade);
+        item.setSaldoAnterior(BigDecimal.ZERO);
+        item.setSaldoImportado(BigDecimal.valueOf(quantidade));
         item.setCustoUnitario(new BigDecimal(custo));
         item.setAcao("ATUALIZADO");
         return item;

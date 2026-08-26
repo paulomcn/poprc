@@ -10,4 +10,6 @@ public interface ComarcaRepository extends JpaRepository<Comarca, Long> {
     Optional<Comarca> findByProjetoId(Long projetoId);
     Optional<Comarca> findByOrdemServicoNumeroOs(String numeroOs);
     Optional<Comarca> findByOrdemServicoId(Long ordemServicoId);
+    Optional<Comarca> findByNomeComarcaIgnoreCaseAndProjetoContratoId(
+            String nomeComarca, Long contratoId);
 }

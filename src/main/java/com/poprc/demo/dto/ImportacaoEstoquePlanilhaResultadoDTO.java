@@ -15,8 +15,14 @@ public record ImportacaoEstoquePlanilhaResultadoDTO(
         Integer ajustesPositivos,
         Integer ajustesNegativos,
         BigDecimal valorTotalImportado,
+        Integer entradasImportadas,
         Integer abasRetiradaProcessadas,
         Integer retiradasImportadas,
         Integer faltasIdentificadas,
+        Integer projetosCriados,
+        Integer ordensServicoCriadas,
+        Integer ordensRetiradaCriadas,
+        Integer retornosImportados,
+        Integer simulacaoFaltas,
         String resultado) {
 }

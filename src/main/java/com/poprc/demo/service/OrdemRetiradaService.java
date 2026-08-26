@@ -601,7 +601,8 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
     }
 
     private boolean controlaMetragem(Material material) {
-        return material != null && (TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+        return material != null && (TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())
+                || TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
                 || TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle()));
     }

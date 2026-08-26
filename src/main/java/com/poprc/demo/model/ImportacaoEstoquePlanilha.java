@@ -59,6 +59,9 @@ public class ImportacaoEstoquePlanilha {
     @Column(name = "valor_total_importado", precision = 19, scale = 2, nullable = false)
     private BigDecimal valorTotalImportado = BigDecimal.ZERO;
 
+    @Column(name = "entradas_importadas", nullable = false)
+    private Integer entradasImportadas = 0;
+
     @Column(name = "abas_retirada_processadas", nullable = false)
     private Integer abasRetiradaProcessadas = 0;
 
@@ -73,4 +76,30 @@ public class ImportacaoEstoquePlanilha {
 
     @Column(name = "complementado_por")
     private String complementadoPor;
+
+    @Column(name = "saldo_consolidado", nullable = false)
+    private Boolean saldoConsolidado = false;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "contrato_id")
+    private Contrato contrato;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "responsavel_id")
+    private Funcionario responsavel;
+
+    @Column(name = "projetos_criados", nullable = false)
+    private Integer projetosCriados = 0;
+
+    @Column(name = "ordens_servico_criadas", nullable = false)
+    private Integer ordensServicoCriadas = 0;
+
+    @Column(name = "ordens_retirada_criadas", nullable = false)
+    private Integer ordensRetiradaCriadas = 0;
+
+    @Column(name = "retornos_importados", nullable = false)
+    private Integer retornosImportados = 0;
+
+    @Column(name = "simulacao_faltas", nullable = false)
+    private Integer simulacaoFaltas = 0;
 }

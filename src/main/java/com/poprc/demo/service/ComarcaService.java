@@ -1092,7 +1092,8 @@ public class ComarcaService {
     }
 
     private boolean controlaMetragem(Material material) {
-        return material != null && (com.poprc.demo.model.TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+        return material != null && (com.poprc.demo.model.TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())
+                || com.poprc.demo.model.TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
                 || com.poprc.demo.model.TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || com.poprc.demo.model.TipoControleEstoque.ROLO.equals(material.getTipoControle()));
     }

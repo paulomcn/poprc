@@ -12,4 +12,7 @@ public interface ImportacaoRetiradaPlanilhaRepository
     List<ImportacaoRetiradaPlanilha> findAllByOrderByImportacaoDataImportacaoDescAbaOrigemAsc();
 
     boolean existsByImportacaoId(Long importacaoId);
+
+    boolean existsByAbaOrigemIgnoreCaseAndComarcaProjetoContratoId(
+            String abaOrigem, Long contratoId);
 }

@@ -19,6 +19,7 @@ public record ImportacaoEstoquePlanilhaDetalheDTO(
         Integer ajustesPositivos,
         Integer ajustesNegativos,
         BigDecimal valorTotalImportado,
+        Integer entradasImportadas,
         Integer abasRetiradaProcessadas,
         Integer retiradasImportadas,
         Integer faltasIdentificadas,
@@ -28,8 +29,8 @@ public record ImportacaoEstoquePlanilhaDetalheDTO(
     public record ItemEstoque(
             Long materialId,
             String material,
-            Integer saldoAnterior,
-            Integer saldoImportado,
+            BigDecimal saldoAnterior,
+            BigDecimal saldoImportado,
             BigDecimal custoUnitario,
             String acao) {
     }

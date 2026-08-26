@@ -324,7 +324,7 @@ export default function GestaoOrdensServico() {
   const quantidadeMaterial = (valor) => Number(valor || 0);
 
   const controlaMetragem = (material) =>
-    ["METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
+    ["FRACIONADO", "METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
   const unidadeMaterial = (material) => (controlaMetragem(material) ? "m" : "un");
   const saldoEstoqueMaterial = (material) =>
     controlaMetragem(material)

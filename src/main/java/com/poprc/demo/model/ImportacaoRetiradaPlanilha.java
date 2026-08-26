@@ -34,6 +34,10 @@ public class ImportacaoRetiradaPlanilha {
     @JoinColumn(name = "material_id", nullable = false)
     private Material material;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "ordem_retirada_id")
+    private OrdemRetirada ordemRetirada;
+
     @Column(name = "aba_origem", nullable = false)
     private String abaOrigem;
 

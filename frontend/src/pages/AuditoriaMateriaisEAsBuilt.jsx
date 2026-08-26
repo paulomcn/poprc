@@ -192,7 +192,7 @@ export default function AuditoriaMateriaisEAsBuilt() {
   const numeroOsSelecionada =
     dados?.numeroOs || comarcaSelecionada?.ordemServico?.numeroOs || "OS não vinculada";
   const quantidadeAuditadaModal = parseFloat(novaQuantidade) || 0;
-  const incrementoAuditoria = ["METRAGEM", "BOBINA", "ROLO"].includes(
+  const incrementoAuditoria = ["FRACIONADO", "METRAGEM", "BOBINA", "ROLO"].includes(
     selectedMaterial?.tipoControle,
   )
     ? 0.001

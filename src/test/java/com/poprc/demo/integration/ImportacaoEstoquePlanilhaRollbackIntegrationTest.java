@@ -49,8 +49,8 @@ class ImportacaoEstoquePlanilhaRollbackIntegrationTest {
         LocalEstoque local = novoLocal("Depósito rollback " + sufixo);
         Material unidade = novoMaterial("Material unidade " + sufixo, "RB-U-" + sufixo,
                 TipoControleEstoque.UNIDADE, 5);
-        Material metragem = novoMaterial("Material metragem " + sufixo, "RB-M-" + sufixo,
-                TipoControleEstoque.METRAGEM, 0);
+        Material bobina = novoMaterial("Material bobina " + sufixo, "RB-B-" + sufixo,
+                TipoControleEstoque.BOBINA, 0);
 
         try {
             ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
@@ -61,7 +61,7 @@ class ImportacaoEstoquePlanilhaRollbackIntegrationTest {
                             new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
                                     unidade.getNome(), 8, BigDecimal.TEN, 2),
                             new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
-                                    metragem.getNome(), 3, BigDecimal.ONE, 3)),
+                                    bobina.getNome(), 3, BigDecimal.ONE, 3)),
                     List.of());
 
             IllegalArgumentException exception = assertThrows(
@@ -79,7 +79,7 @@ class ImportacaoEstoquePlanilhaRollbackIntegrationTest {
                     .getSingleResult();
             assertEquals(0L, movimentos);
         } finally {
-            limpar(local.getId(), List.of(unidade.getId(), metragem.getId()));
+            limpar(local.getId(), List.of(unidade.getId(), bobina.getId()));
         }
     }
 
@@ -101,7 +101,7 @@ class ImportacaoEstoquePlanilhaRollbackIntegrationTest {
         material.setCategoria("MATERIAL_CONSUMO");
         material.setTipoControle(tipo);
         material.setUnidadeMedida(
-                TipoControleEstoque.UNIDADE.equals(tipo) ? UnidadeMedida.UNIDADE : UnidadeMedida.METRO);
+                TipoControleEstoque.UNIDADE.equals(tipo) ? UnidadeMedida.UNIDADE : UnidadeMedida.BOBINA);
         material.setQuantidadeDisponivel(quantidade);
         material.setQuantidadeReservada(0);
         material.setCustoMedio(BigDecimal.ZERO);
@@ -112,6 +112,10 @@ class ImportacaoEstoquePlanilhaRollbackIntegrationTest {
     private void limpar(Long localId, List<Long> materiaisIds) {
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             for (Long materialId : materiaisIds) {
+                entityManager.createNativeQuery(
+                                "delete from importacoes_estoque_planilha_itens where material_id = :id")
+                        .setParameter("id", materialId)
+                        .executeUpdate();
                 entityManager.createQuery("delete from MovimentacaoEstoque m where m.material.id = :id")
                         .setParameter("id", materialId)
                         .executeUpdate();
@@ -119,6 +123,11 @@ class ImportacaoEstoquePlanilhaRollbackIntegrationTest {
                         .setParameter("id", materialId)
                         .executeUpdate();
             }
+            entityManager.createNativeQuery(
+                            "delete from importacoes_estoque_planilha p where not exists "
+                                    + "(select 1 from importacoes_estoque_planilha_itens i "
+                                    + "where i.importacao_id = p.id)")
+                    .executeUpdate();
             materialRepository.deleteAllById(materiaisIds);
             localRepository.deleteById(localId);
         });

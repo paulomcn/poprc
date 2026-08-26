@@ -250,7 +250,8 @@ public class DashboardService {
 
     private boolean estoqueCritico(Material material) {
         BigDecimal minimo = valor(material.getEstoqueMinimo());
-        BigDecimal disponivel = material.getTipoControle() == TipoControleEstoque.METRAGEM
+        BigDecimal disponivel = material.getTipoControle() == TipoControleEstoque.FRACIONADO
+                || material.getTipoControle() == TipoControleEstoque.METRAGEM
                 || material.getTipoControle() == TipoControleEstoque.BOBINA
                 || material.getTipoControle() == TipoControleEstoque.ROLO
                         ? valor(material.getMetragemDisponivel())

@@ -233,7 +233,8 @@ public class AgendadorAlertasService {
     }
 
     private boolean controlaMetragem(Material material) {
-        return TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+        return TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())
+                || TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
                 || TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                 || TipoControleEstoque.ROLO.equals(material.getTipoControle());
     }

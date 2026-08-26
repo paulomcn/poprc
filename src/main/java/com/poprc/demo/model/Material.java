@@ -97,7 +97,8 @@ public class Material {
     }
 
     private boolean controlaMetragem() {
-        return TipoControleEstoque.METRAGEM.equals(tipoControle)
+        return TipoControleEstoque.FRACIONADO.equals(tipoControle)
+                || TipoControleEstoque.METRAGEM.equals(tipoControle)
                 || TipoControleEstoque.BOBINA.equals(tipoControle)
                 || TipoControleEstoque.ROLO.equals(tipoControle);
     }

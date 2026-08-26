@@ -1545,7 +1545,7 @@ export default function GestaoComarcas() {
     (material) => String(material.id) === String(materialForm.materialId),
   );
   const controlaMetragem = (material) =>
-    ["METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
+    ["FRACIONADO", "METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
   const saldoEstoqueMaterial = (material) =>
     controlaMetragem(material)
       ? Number(material?.metragemDisponivel || 0)

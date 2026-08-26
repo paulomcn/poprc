@@ -31,6 +31,8 @@ public class OrdemServico {
     @Column(unique = true, nullable = false)
     private String numeroOs;
 
+    private String titulo;
+
     private LocalDate dataExecucao;
 
     private LocalDateTime dataHoraInicio;
