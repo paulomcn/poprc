@@ -18,6 +18,21 @@ uma confirmação textual e um backup completo do banco e dos uploads será cria
 Os arquivos de upload permanecem no diretório original, embora o novo banco não tenha referências
 a eles. Exclua arquivos antigos somente depois de validar e guardar o pacote de backup.
 
+## Limpeza seletiva antes da operação real
+
+Para preservar funcionários, configurações e o contrato `0001`, removendo somente estoque e
+operações de teste, execute primeiro em modo de simulação:
+
+```powershell
+.\scripts\limpar-dados-operacionais.ps1
+```
+
+Depois de conferir o escopo exibido, execute com a confirmação exata indicada pelo próprio script.
+A rotina exige banco com sufixo `_local`, confirma a existência do contrato preservado, valida um
+backup completo antes da transação, encerra sessões antigas e arquiva os uploads de teste em
+`backups/dados-teste-arquivados/`. Funcionários, atividades padrão, configurações de notificação e
+locais de estoque permanecem cadastrados.
+
 ## Importação por nota fiscal
 
 Na página **Estoque**, use **Importar NF** para enviar XML ou PDF. O sistema primeiro apresenta uma
