@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plane,
   Smartphone,
   TrendingUp,
@@ -53,7 +55,7 @@ const secoesMenu = [
   },
 ];
 
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapsed }) {
   const { usuario, configuracao, logout } = useAuth();
   const navigate = useNavigate();
   const handleLogout = async () => {
@@ -69,16 +71,29 @@ export default function Sidebar({ isOpen, onClose }) {
     <>
       <aside
         aria-label="Navegação principal"
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-transform duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-[width,transform] duration-200 md:static md:translate-x-0 ${
+          collapsed ? "md:w-20" : "md:w-64"
+        } ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex min-h-18 items-center gap-3 border-b border-slate-800 px-4">
+        <div className={`flex min-h-18 items-center gap-3 border-b border-slate-800 px-4 ${
+          collapsed ? "md:justify-center md:gap-1 md:px-2" : ""
+        }`}>
           <img src={rcLogo} alt="RC Technology" className="h-10 w-10 rounded object-cover" />
-          <div className="min-w-0 flex-1">
+          <div className={`min-w-0 flex-1 ${collapsed ? "md:hidden" : ""}`}>
             <p className="truncate text-sm font-bold text-white">RC Operations Hub</p>
             <p className="text-xs text-slate-400">Central operacional</p>
           </div>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
+            title={collapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
+            className="hidden rounded p-2 text-slate-400 hover:bg-slate-800 hover:text-white md:flex"
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
           <button
             type="button"
             onClick={onClose}
@@ -90,12 +105,15 @@ export default function Sidebar({ isOpen, onClose }) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
+        <nav className={`flex-1 overflow-y-auto px-3 py-3 ${collapsed ? "md:px-2" : ""}`}>
           {secoesVisiveis.map((secao) => (
             <div key={secao.titulo} className="mb-4">
-              <p className="mb-1 px-3 text-[10px] font-bold uppercase text-slate-500">
+              <p className={`mb-1 px-3 text-[10px] font-bold uppercase text-slate-500 ${
+                collapsed ? "md:hidden" : ""
+              }`}>
                 {secao.titulo}
               </p>
+              {collapsed && <div className="mx-2 mb-2 hidden border-t border-slate-800 md:block" />}
               <ul className="space-y-0.5">
                 {secao.itens.map((item) => (
                   <li key={item.path}>
@@ -103,16 +121,22 @@ export default function Sidebar({ isOpen, onClose }) {
                       to={item.path}
                       end={item.end}
                       onClick={onClose}
+                      title={collapsed ? item.label : undefined}
+                      aria-label={collapsed ? item.label : undefined}
                       className={({ isActive }) =>
                         `flex min-h-9 items-center gap-3 rounded px-3 py-2 text-sm transition-colors ${
+                          collapsed ? "md:justify-center md:gap-0 md:px-2" : ""
+                        } ${
                           isActive
                             ? "bg-blue-600 font-semibold text-white"
                             : "text-slate-300 hover:bg-slate-800 hover:text-white"
                         }`
                       }
                     >
-                      <item.icon size={17} aria-hidden="true" />
-                      <span className="min-w-0 leading-4">{item.label}</span>
+                      <item.icon size={collapsed ? 19 : 17} aria-hidden="true" className="shrink-0" />
+                      <span className={`min-w-0 leading-4 ${collapsed ? "md:hidden" : ""}`}>
+                        {item.label}
+                      </span>
                     </NavLink>
                   </li>
                 ))}
@@ -121,24 +145,32 @@ export default function Sidebar({ isOpen, onClose }) {
           ))}
         </nav>
 
-        <div className="border-t border-slate-800 p-3">
+        <div className={`border-t border-slate-800 p-3 ${collapsed ? "md:p-2" : ""}`}>
           {temPermissao(usuario?.perfil, PERMISSOES.PORTAL_TECNICO_VISUALIZAR) && (
             <NavLink
               to="/tecnico"
               onClick={onClose}
-              className="mb-2 flex min-h-10 items-center gap-3 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:bg-slate-900"
+              title={collapsed ? "Área do Técnico" : undefined}
+              aria-label={collapsed ? "Área do Técnico" : undefined}
+              className={`mb-2 flex min-h-10 items-center gap-3 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:bg-slate-900 ${
+                collapsed ? "md:justify-center md:gap-0 md:px-2" : ""
+              }`}
             >
               <Smartphone size={17} />
-              <span>Área do Técnico</span>
+              <span className={collapsed ? "md:hidden" : ""}>Área do Técnico</span>
             </NavLink>
           )}
           {configuracao.securityEnabled && <button
             type="button"
             onClick={handleLogout}
-            className="flex min-h-9 w-full items-center gap-3 rounded px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
+            title={collapsed ? "Sair" : undefined}
+            aria-label={collapsed ? "Sair" : undefined}
+            className={`flex min-h-9 w-full items-center gap-3 rounded px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white ${
+              collapsed ? "md:justify-center md:gap-0 md:px-2" : ""
+            }`}
           >
             <LogOut size={17} />
-            <span>Sair</span>
+            <span className={collapsed ? "md:hidden" : ""}>Sair</span>
           </button>}
         </div>
       </aside>

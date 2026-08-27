@@ -29,6 +29,7 @@ import { API_BASE_URL, buildApiFileUrl } from "../services/runtimeConfig";
 import rcLogo from "../assets/rclogo.jpg";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSOES, temPermissao } from "../security/permissions";
+import { formatarCpf } from "../utils/cpf";
 
 const DOCUMENTO_INICIAL = "VISTORIA_INICIAL_OS";
 const DOCUMENTO_FINAL = "ENCERRAMENTO_OS";
@@ -2715,10 +2716,22 @@ export default function GestaoComarcas() {
                   </span>
                   <input
                     type={type}
-                    value={documentoVistoriaForm[campo] || ""}
-                    onChange={(e) =>
-                      atualizarDocumentoVistoria(campo, e.target.value)
+                    value={
+                      campo === "cpfTecnico"
+                        ? formatarCpf(documentoVistoriaForm[campo])
+                        : documentoVistoriaForm[campo] || ""
                     }
+                    onChange={(e) =>
+                      atualizarDocumentoVistoria(
+                        campo,
+                        campo === "cpfTecnico"
+                          ? formatarCpf(e.target.value)
+                          : e.target.value,
+                      )
+                    }
+                    inputMode={campo === "cpfTecnico" ? "numeric" : undefined}
+                    maxLength={campo === "cpfTecnico" ? 14 : undefined}
+                    placeholder={campo === "cpfTecnico" ? "000.000.000-00" : undefined}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </label>

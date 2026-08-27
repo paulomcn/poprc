@@ -138,7 +138,54 @@ class ImportacaoEstoquePlanilhaOperacoesIntegrationTest {
         var ordensServico = ordemServicoRepository.findByContratoId(contrato.getId());
         assertEquals(1, ordensServico.size());
         assertTrue(ordensServico.getFirst().getTitulo().contains("Cuité"));
-        assertEquals(1, ordemRetiradaRepository
-                .findByOrdemServicoIdOrderByDataGeracaoDesc(ordensServico.getFirst().getId()).size());
+        var ordensRetirada = ordemRetiradaRepository
+                .findByOrdemServicoIdOrderByDataGeracaoDesc(ordensServico.getFirst().getId());
+        assertEquals(1, ordensRetirada.size());
+        Long materialId = material.getId();
+        var retiradaImportada = importacaoService.listarRetiradasImportadas().stream()
+                .filter(retirada -> retirada.materialId().equals(materialId))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(ordensRetirada.getFirst().getId(), retiradaImportada.ordemRetiradaId());
+        assertEquals(ordensRetirada.getFirst().getNumeroOr(), retiradaImportada.numeroOr());
+    }
+
+    @Test
+    void cadastraMaterialFracionadoQuandoSaldoDaPlanilhaPossuiDecimais() {
+        String sufixo = UUID.randomUUID().toString().substring(0, 8);
+
+        LocalEstoque local = new LocalEstoque();
+        local.setNome("Depósito fracionado " + sufixo);
+        local.setAtivo(true);
+        local = localRepository.saveAndFlush(local);
+
+        String nomeMaterial = "Caixa de cabo " + sufixo;
+        ImportacaoEstoquePlanilhaRequest request = new ImportacaoEstoquePlanilhaRequest(
+                "controle-estoque-fracionado.xlsx",
+                UUID.randomUUID().toString().replace("-", "")
+                        + UUID.randomUUID().toString().replace("-", ""),
+                local.getId(),
+                true,
+                false,
+                null,
+                null,
+                BigDecimal.TEN,
+                List.of(new ImportacaoEstoquePlanilhaRequest.ItemImportacao(
+                        nomeMaterial, null, new BigDecimal("2.94"), new BigDecimal("2196.00"), 41)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of());
+
+        ImportacaoEstoquePlanilhaResultadoDTO resultado = importacaoService.importar(request, "JUnit");
+
+        assertEquals(1, resultado.materiaisCriados());
+        Material material = materialRepository.findAll().stream()
+                .filter(atual -> nomeMaterial.equals(atual.getNome()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(TipoControleEstoque.FRACIONADO, material.getTipoControle());
+        assertEquals(0, new BigDecimal("2.94").compareTo(material.getMetragemDisponivel()));
     }
 }

@@ -20,6 +20,7 @@ import {
   Receipt,
   Trash2,
   Undo2,
+  Calculator,
 } from "lucide-react";
 import api, { getApiErrorMessage } from "../services/api";
 import Modal from "../components/Modal";
@@ -27,6 +28,16 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import Alert from "../components/Alert";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  celulaPossuiFormulaSemResultado,
+  localizarCabecalhoEstoque,
+  normalizarTextoPlanilha,
+  valorDaCelula,
+} from "../utils/planilhaEstoque";
+import {
+  calcularSimulacaoRetirada,
+  consolidarRetiradasPorObra,
+} from "../utils/estoqueOperacional";
 
 const CATEGORIAS_MATERIAL = [
   { value: "MATERIAL_CONSUMO", label: "Materiais de Consumo" },
@@ -58,27 +69,6 @@ const unidadePadraoPorControle = {
   METRAGEM: "METRO",
   ROLO: "ROLO",
   BOBINA: "BOBINA",
-};
-
-const normalizarTextoPlanilha = (valor) =>
-  String(valor ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-
-const valorDaCelula = (celula) => {
-  const valor = celula?.value;
-  if (valor && typeof valor === "object") {
-    if (valor.result != null) return valor.result;
-    if (valor.text != null) return valor.text;
-    if (Array.isArray(valor.richText)) {
-      return valor.richText.map((item) => item.text || "").join("");
-    }
-  }
-  return valor;
 };
 
 const dataPlanilhaParaIso = (valor) => {
@@ -120,6 +110,12 @@ const lerImagemComoDataUrl = (arquivo) =>
     reader.onerror = () => reject(new Error("Não foi possível ler a foto selecionada."));
     reader.readAsDataURL(arquivo);
   });
+
+const novaLinhaSimulacao = () => ({
+  id: `${Date.now()}-${Math.random()}`,
+  materialId: "",
+  quantidade: "",
+});
 
 function SignatureBox({ label, value, onChange }) {
   const canvasRef = useRef(null);
@@ -268,6 +264,7 @@ export default function PainelEstoque() {
   const [showTransferenciaUnidadeModal, setShowTransferenciaUnidadeModal] = useState(false);
   const [showMinimoLocalModal, setShowMinimoLocalModal] = useState(false);
   const [showHistoricoImportacoesModal, setShowHistoricoImportacoesModal] = useState(false);
+  const [showSimulacaoModal, setShowSimulacaoModal] = useState(false);
   const [importacaoDetalhe, setImportacaoDetalhe] = useState(null);
   const [notaFiscalDetalhe, setNotaFiscalDetalhe] = useState(null);
   const [abaHistoricoImportacoes, setAbaHistoricoImportacoes] = useState("notas-fiscais");
@@ -352,6 +349,8 @@ export default function PainelEstoque() {
   });
   const [minimoLocalForm, setMinimoLocalForm] = useState({ saldoId: "", estoqueMinimo: "" });
   const [abaEstoque, setAbaEstoque] = useState("geral");
+  const [abaOrdemEstoque, setAbaOrdemEstoque] = useState("resumo");
+  const [simulacaoItens, setSimulacaoItens] = useState([novaLinhaSimulacao()]);
   const [importacaoPreview, setImportacaoPreview] = useState(null);
   const [importacaoLocalId, setImportacaoLocalId] = useState("");
   const [importacaoContratoId, setImportacaoContratoId] = useState("");
@@ -434,6 +433,7 @@ export default function PainelEstoque() {
     setShowTransferenciaUnidadeModal(false);
     setShowMinimoLocalModal(false);
     setShowHistoricoImportacoesModal(false);
+    setShowSimulacaoModal(false);
     setImportacaoDetalhe(null);
     setNotaFiscalDetalhe(null);
     setImportacaoPreview(null);
@@ -485,6 +485,7 @@ export default function PainelEstoque() {
       custoMedio: "0",
     });
     setFotoExpandida(null);
+    setSimulacaoItens([novaLinhaSimulacao()]);
   };
 
   const selecionarPlanilhaEstoque = async (event) => {
@@ -511,32 +512,7 @@ export default function PainelEstoque() {
       const origem = workbook.worksheets.find(
         (sheet) => normalizarTextoPlanilha(sheet.name) === "estoque atual",
       );
-      const localizarCabecalho = (sheet) => {
-        const limiteLinhas = Math.min(sheet.rowCount, 20);
-        const limiteColunas = Math.min(sheet.columnCount, 15);
-        for (let linha = 1; linha <= limiteLinhas; linha += 1) {
-          const mapa = {};
-          for (let coluna = 1; coluna <= limiteColunas; coluna += 1) {
-            const texto = normalizarTextoPlanilha(valorDaCelula(sheet.getCell(linha, coluna)));
-            if (texto === "produto") mapa.produto = coluna;
-            if ([
-              "estoque atual",
-              "estoque apos retiradas",
-              "quantidade em estoque",
-            ].includes(texto)) mapa.quantidade = coluna;
-            if (texto === "valor unitario") mapa.custo = coluna;
-            if (texto === "quantidade da retirada") mapa.retirada = coluna;
-            if (texto === "data de retirada") mapa.dataRetirada = coluna;
-            if (texto === "estoque apos retirada") mapa.saldoFinal = coluna;
-          }
-          if (mapa.produto && mapa.quantidade && mapa.custo) {
-            return { linha, ...mapa };
-          }
-        }
-        return null;
-      };
-
-      const cabecalho = origem ? localizarCabecalho(origem) : null;
+      const cabecalho = origem ? localizarCabecalhoEstoque(origem) : null;
       if (!origem || !cabecalho) {
         throw new Error(
           "Não foi encontrada a tabela consolidada da aba ESTOQUE ATUAL.",
@@ -559,58 +535,28 @@ export default function PainelEstoque() {
         const nomeBruto = valorDaCelula(origem.getCell(linha, cabecalho.produto));
         const nome = typeof nomeBruto === "string" ? nomeBruto.trim() : "";
         const nomeNormalizado = normalizarTextoPlanilha(nome);
-        if (!nome || nomeNormalizado.startsWith("valor total") || nomeNormalizado === "total geral") {
+        if (!nomeNormalizado || nomeNormalizado.startsWith("valor total") || nomeNormalizado === "total geral") {
           continue;
         }
-        const saldo = Number(valorDaCelula(origem.getCell(linha, cabecalho.quantidade)));
-        const custoUnitario = Number(valorDaCelula(origem.getCell(linha, cabecalho.custo)));
+        const celulaSaldo = origem.getCell(linha, cabecalho.quantidade);
+        const celulaCusto = origem.getCell(linha, cabecalho.custo);
+        const saldo = Number(valorDaCelula(celulaSaldo));
+        const custoUnitario = Number(valorDaCelula(celulaCusto));
         if (!Number.isFinite(saldo) || saldo < 0) {
-          avisos.push(`Linha ${linha}: saldo inválido para ${nome}.`);
+          if (!celulaPossuiFormulaSemResultado(celulaSaldo)) {
+            avisos.push(`Linha ${linha}: saldo inválido para ${nome}.`);
+          }
           continue;
         }
         if (!Number.isFinite(custoUnitario) || custoUnitario < 0) {
-          avisos.push(`Linha ${linha}: custo unitário inválido para ${nome}.`);
+          if (!celulaPossuiFormulaSemResultado(celulaCusto)) {
+            avisos.push(`Linha ${linha}: custo unitário inválido para ${nome}.`);
+          }
           continue;
         }
         itens.push({ nome, saldo, custoUnitario, linhaOrigem: linha });
       }
-      if (itens.length === 0) {
-        throw new Error("A aba de estoque não possui materiais válidos para importar.");
-      }
-
-      const nomesExistentes = materiais.reduce((mapa, material) => {
-        const chave = normalizarTextoPlanilha(material.nome);
-        mapa.set(chave, [...(mapa.get(chave) || []), material]);
-        return mapa;
-      }, new Map());
-      const nomesPlanilha = new Set();
-      const itensPreview = itens.map((item) => {
-        const chave = normalizarTextoPlanilha(item.nome);
-        const correspondencias = nomesExistentes.get(chave) || [];
-        const erros = [];
-        if (nomesPlanilha.has(chave)) erros.push("Nome duplicado na planilha");
-        nomesPlanilha.add(chave);
-        if (correspondencias.length > 1) erros.push("Nome duplicado no sistema");
-        const existente = correspondencias[0];
-        if (existente && ["BOBINA", "ROLO"].includes(existente.tipoControle)) {
-          erros.push("Bobina/rolo rastreável exige cadastro físico individual");
-        }
-        const saldoAtual = existente
-          ? controlaMetragem(existente)
-            ? Number(existente.metragemDisponivel || 0)
-            : Number(existente.quantidadeDisponivel || 0)
-          : 0;
-        return {
-          ...item,
-          materialId: existente?.id,
-          saldoAtual,
-          tipoControle: Number.isInteger(item.saldo) ? "UNIDADE" : "FRACIONADO",
-          acao: existente ? "ATUALIZAR" : "CRIAR",
-          erros,
-        };
-      });
-
-      const dadosBasePorMaterial = new Map(
+      const estoqueAtualPorMaterial = new Map(
         itens.map((item) => [normalizarTextoPlanilha(item.nome), item]),
       );
 
@@ -618,6 +564,7 @@ export default function PainelEstoque() {
         (sheet) => normalizarTextoPlanilha(sheet.name) === "cadastro produtos",
       );
       const entradas = [];
+      const catalogoItens = [];
       if (cadastroProdutos) {
         let cabecalhoCadastro = null;
         for (let linha = 1; linha <= Math.min(cadastroProdutos.rowCount, 20); linha += 1) {
@@ -675,19 +622,23 @@ export default function PainelEstoque() {
             const nome = String(
               valorDaCelula(cadastroProdutos.getCell(linha, cabecalhoCadastro.produto)) || "",
             ).trim();
-            if (!nome || normalizarTextoPlanilha(nome).startsWith("total")) continue;
             const chaveMaterial = normalizarTextoPlanilha(nome);
+            if (!chaveMaterial || chaveMaterial.startsWith("total")
+              || chaveMaterial.startsWith("valor total")) continue;
             const estoqueInicial = Number(
               valorDaCelula(cadastroProdutos.getCell(linha, cabecalhoCadastro.inicial)),
             );
-            const estoqueAposAdicoes = Number(
-              valorDaCelula(cadastroProdutos.getCell(linha, cabecalhoCadastro.aposAdicoes)),
+            const celulaEstoqueAposAdicoes = cadastroProdutos.getCell(
+              linha,
+              cabecalhoCadastro.aposAdicoes,
+            );
+            const estoqueAposAdicoesInformado = Number(
+              valorDaCelula(celulaEstoqueAposAdicoes),
             );
             const custoUnitario = Number(
               valorDaCelula(cadastroProdutos.getCell(linha, cabecalhoCadastro.custo)),
             );
             if (!Number.isFinite(estoqueInicial) || estoqueInicial < 0
-              || !Number.isFinite(estoqueAposAdicoes) || estoqueAposAdicoes < 0
               || !Number.isFinite(custoUnitario) || custoUnitario < 0) {
               avisos.push(`CADASTRO_PRODUTOS, linha ${linha}: valores inválidos para ${nome}.`);
               continue;
@@ -701,19 +652,26 @@ export default function PainelEstoque() {
               (total, entrada) => total + entrada.quantidade,
               estoqueInicial,
             );
-            if (Math.abs(totalCalculado - estoqueAposAdicoes) > 0.001) {
+            if (Number.isFinite(estoqueAposAdicoesInformado)
+              && Math.abs(totalCalculado - estoqueAposAdicoesInformado) > 0.001) {
               avisos.push(
                 `CADASTRO_PRODUTOS, linha ${linha}: estoque após adições não confere para ${nome}.`,
               );
               continue;
             }
-            if (!dadosBasePorMaterial.has(chaveMaterial)
-              && (estoqueInicial > 0 || adicoesMaterial.length > 0)) {
+            if (!Number.isFinite(estoqueAposAdicoesInformado)
+              && !celulaPossuiFormulaSemResultado(celulaEstoqueAposAdicoes)) {
               avisos.push(
-                `CADASTRO_PRODUTOS, linha ${linha}: ${nome} não existe na aba ESTOQUE ATUAL.`,
+                `CADASTRO_PRODUTOS, linha ${linha}: estoque após adições inválido para ${nome}.`,
               );
               continue;
             }
+            catalogoItens.push({
+              nome,
+              saldoBase: totalCalculado,
+              custoUnitario,
+              linhaOrigem: linha,
+            });
             if (estoqueInicial > 0) {
               entradas.push({
                 tipo: "ESTOQUE_INICIAL",
@@ -744,6 +702,17 @@ export default function PainelEstoque() {
         avisos.push("Não foi encontrada a aba CADASTRO_PRODUTOS.");
       }
 
+      if (catalogoItens.length === 0) {
+        throw new Error("A aba CADASTRO_PRODUTOS não possui materiais válidos para importar.");
+      }
+
+      const catalogoPorMaterial = new Map(
+        catalogoItens.map((item) => [normalizarTextoPlanilha(item.nome), item]),
+      );
+      const saldoHistoricoPorMaterial = new Map(
+        catalogoItens.map((item) => [normalizarTextoPlanilha(item.nome), item.saldoBase]),
+      );
+
       const identificarCidade = (sheet) => {
         for (let linha = 1; linha <= Math.min(sheet.rowCount, 10); linha += 1) {
           for (let coluna = 1; coluna <= Math.min(sheet.columnCount, 10); coluna += 1) {
@@ -762,7 +731,7 @@ export default function PainelEstoque() {
       };
       const abasRetiradas = workbook.worksheets
         .filter((sheet) => sheet.id !== origem.id)
-        .map((sheet) => ({ sheet, cabecalho: localizarCabecalho(sheet) }))
+        .map((sheet) => ({ sheet, cabecalho: localizarCabecalhoEstoque(sheet) }))
         .filter(({ cabecalho: cabecalhoRetirada }) =>
           cabecalhoRetirada?.retirada && cabecalhoRetirada?.saldoFinal)
         .map(({ sheet, cabecalho: cabecalhoRetirada }) => {
@@ -781,7 +750,7 @@ export default function PainelEstoque() {
             if (chaveMaterial.startsWith("total") || chaveMaterial.startsWith("valor total")) {
               continue;
             }
-            const saldoInicial = Number(
+            const saldoInicialInformado = Number(
               valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.quantidade)),
             );
             const retiradaInformada = Number(
@@ -795,10 +764,17 @@ export default function PainelEstoque() {
             );
             const custoUnitario = Number.isFinite(custoInformado)
               ? custoInformado
-              : dadosBasePorMaterial.get(chaveMaterial)?.custoUnitario;
+              : catalogoPorMaterial.get(chaveMaterial)?.custoUnitario;
+            const itemCatalogo = catalogoPorMaterial.get(chaveMaterial);
+            if (!itemCatalogo) {
+              avisos.push(
+                `Aba ${sheet.name}, linha ${linha}: ${nome} não existe no CADASTRO_PRODUTOS.`,
+              );
+              continue;
+            }
+            const saldoInicial = saldoHistoricoPorMaterial.get(chaveMaterial) ?? 0;
             if (
-              !Number.isFinite(saldoInicial)
-              || quantidadeRetirada < 0
+              quantidadeRetirada < 0
               || !Number.isFinite(custoUnitario)
               || custoUnitario < 0
             ) {
@@ -808,16 +784,23 @@ export default function PainelEstoque() {
             const saldoFinalInformado = Number(
               valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.saldoFinal)),
             );
-            const saldoFinal = Number.isFinite(saldoFinalInformado)
-              ? saldoFinalInformado
-              : saldoInicial - quantidadeRetirada;
+            const saldoFinal = saldoInicial - quantidadeRetirada;
             if (quantidadeRetirada === 0) continue;
-            if (Math.abs(saldoFinal - (saldoInicial - quantidadeRetirada)) > 0.001) {
+            if (Number.isFinite(saldoInicialInformado)
+              && Math.abs(saldoInicialInformado - saldoInicial) > 0.001) {
+              avisos.push(
+                `Aba ${sheet.name}, linha ${linha}: saldo inicial não confere para ${nome}.`,
+              );
+              continue;
+            }
+            if (Number.isFinite(saldoFinalInformado)
+              && Math.abs(saldoFinalInformado - saldoFinal) > 0.001) {
               avisos.push(
                 `Aba ${sheet.name}, linha ${linha}: saldo final não confere para ${nome}.`,
               );
               continue;
             }
+            saldoHistoricoPorMaterial.set(chaveMaterial, saldoFinal);
             itensRetirada.push({
               nomeMaterial: nome,
               linhaOrigem: linha,
@@ -877,6 +860,13 @@ export default function PainelEstoque() {
               if (!nome || !Number.isFinite(quantidadeRetornada) || quantidadeRetornada <= 0) {
                 continue;
               }
+              const chaveMaterial = normalizarTextoPlanilha(nome);
+              if (!catalogoPorMaterial.has(chaveMaterial)) {
+                avisos.push(
+                  `Aba ${abaRetornos.name}, linha ${linha}: ${nome} não existe no CADASTRO_PRODUTOS.`,
+                );
+                continue;
+              }
               retornos.push({
                 aba: abaRetornos.name,
                 cidade,
@@ -884,10 +874,58 @@ export default function PainelEstoque() {
                 quantidadeRetornada,
                 linhaOrigem: linha,
               });
+              saldoHistoricoPorMaterial.set(
+                chaveMaterial,
+                (saldoHistoricoPorMaterial.get(chaveMaterial) || 0) + quantidadeRetornada,
+              );
             }
           }
         }
       }
+
+      const nomesExistentes = materiais.reduce((mapa, material) => {
+        const chave = normalizarTextoPlanilha(material.nome);
+        mapa.set(chave, [...(mapa.get(chave) || []), material]);
+        return mapa;
+      }, new Map());
+      const nomesPlanilha = new Set();
+      const itensPreview = catalogoItens.map((item) => {
+        const chave = normalizarTextoPlanilha(item.nome);
+        const correspondencias = nomesExistentes.get(chave) || [];
+        const erros = [];
+        if (nomesPlanilha.has(chave)) erros.push("Nome duplicado na planilha");
+        nomesPlanilha.add(chave);
+        if (correspondencias.length > 1) erros.push("Nome duplicado no sistema");
+        const existente = correspondencias[0];
+        if (existente && ["BOBINA", "ROLO"].includes(existente.tipoControle)) {
+          erros.push("Bobina/rolo rastreável exige cadastro físico individual");
+        }
+        const saldoAtual = existente
+          ? controlaMetragem(existente)
+            ? Number(existente.metragemDisponivel || 0)
+            : Number(existente.quantidadeDisponivel || 0)
+          : 0;
+        const saldoCalculado = Math.max(0, saldoHistoricoPorMaterial.get(chave) ?? item.saldoBase);
+        const consolidadoInformado = estoqueAtualPorMaterial.get(chave)?.saldo;
+        if (Number.isFinite(consolidadoInformado)
+          && Math.abs(consolidadoInformado - saldoCalculado) > 0.001) {
+          avisos.push(`ESTOQUE ATUAL: saldo não confere para ${item.nome}.`);
+        }
+        return {
+          nome: item.nome,
+          saldo: saldoCalculado,
+          custoUnitario: item.custoUnitario,
+          linhaOrigem: item.linhaOrigem,
+          materialId: existente?.id,
+          saldoAtual,
+          tipoControle: Number.isInteger(saldoCalculado) ? "UNIDADE" : "FRACIONADO",
+          acao: existente ? "ATUALIZAR" : "CRIAR",
+          erros,
+        };
+      });
+      const dadosBasePorMaterial = new Map(
+        itensPreview.map((item) => [normalizarTextoPlanilha(item.nome), item]),
+      );
 
       const abaSimulacao = workbook.worksheets.find(
         (sheet) => normalizarTextoPlanilha(sheet.name) === "simulacao",
@@ -949,6 +987,7 @@ export default function PainelEstoque() {
         nomeArquivo: arquivo.name,
         hashSha256,
         abaOrigem: origem.name,
+        abaCatalogo: cadastroProdutos?.name,
         abasRetiradas,
         retornos,
         simulacao,
@@ -956,7 +995,7 @@ export default function PainelEstoque() {
         itens: itensPreview,
         entradas,
         avisos,
-        valorTotal: itens.reduce(
+        valorTotal: itensPreview.reduce(
           (total, item) => total + item.saldo * item.custoUnitario,
           0,
         ),
@@ -2189,138 +2228,35 @@ export default function PainelEstoque() {
     return partes;
   };
 
-  const estoquePorComarca = useMemo(() => {
-    const agrupado = new Map(
-      comarcas.map((comarca) => [
-        String(comarca.id),
-        {
-          comarca,
-          itens: new Map(),
-          totalRetirado: 0,
-          totalDevolvido: 0,
-          totalFaltante: 0,
-          valorLiquido: 0,
-        },
-      ]),
-    );
-
-    ordensRetirada.forEach((ordem) => {
-      const comarca = ordem.comarca;
-      if (!comarca?.id) return;
-      const chaveComarca = String(comarca.id);
-      if (!agrupado.has(chaveComarca)) {
-        agrupado.set(chaveComarca, {
-          comarca,
-          itens: new Map(),
-          totalRetirado: 0,
-          totalDevolvido: 0,
-          totalFaltante: 0,
-          valorLiquido: 0,
-        });
-      }
-      const resumo = agrupado.get(chaveComarca);
-      (ordem.itens || []).forEach((item) => {
-        const retirada = Number(item.quantidadeRetirada || 0);
-        const devolvida = Number(item.quantidadeDevolvida || 0);
-        if (retirada === 0 && devolvida === 0) return;
-        const material = item.material
-          || materiais.find((atual) => atual.id === item.material?.id)
-          || materiais.find(
-            (atual) =>
-              normalizarTextoPlanilha(atual.nome)
-              === normalizarTextoPlanilha(item.nomeMaterial),
-          );
-        const chaveMaterial = String(material?.id || normalizarTextoPlanilha(item.nomeMaterial));
-        const atual = resumo.itens.get(chaveMaterial) || {
-          material,
-          nome: item.nomeMaterial || material?.nome || "Material",
-          retirada: 0,
-          devolvida: 0,
-          faltante: 0,
-          ordens: new Set(),
-        };
-        atual.retirada += retirada;
-        atual.devolvida += devolvida;
-        if (ordem.numeroOr) atual.ordens.add(ordem.numeroOr);
-        resumo.itens.set(chaveMaterial, atual);
-        resumo.totalRetirado += retirada;
-        resumo.totalDevolvido += devolvida;
-        resumo.valorLiquido +=
-          (retirada - devolvida) * Number(material?.custoMedio || 0);
-      });
-    });
-
-    retiradasImportadas.forEach((retirada) => {
-      if (!retirada.comarcaId) return;
-      const chaveComarca = String(retirada.comarcaId);
-      const comarca =
-        comarcas.find((item) => String(item.id) === chaveComarca)
-        || { id: retirada.comarcaId, nomeComarca: retirada.comarca, ordemServico: { numeroOs: retirada.numeroOs } };
-      if (!agrupado.has(chaveComarca)) {
-        agrupado.set(chaveComarca, {
-          comarca,
-          itens: new Map(),
-          totalRetirado: 0,
-          totalDevolvido: 0,
-          totalFaltante: 0,
-          valorLiquido: 0,
-        });
-      }
-      const resumo = agrupado.get(chaveComarca);
-      const material =
-        materiais.find((item) => item.id === retirada.materialId)
-        || materiais.find(
-          (item) =>
-            normalizarTextoPlanilha(item.nome)
-            === normalizarTextoPlanilha(retirada.material),
-        );
-      const chaveMaterial = String(material?.id || normalizarTextoPlanilha(retirada.material));
-      const atual = resumo.itens.get(chaveMaterial) || {
-        material,
-        nome: retirada.material || material?.nome || "Material",
-        retirada: 0,
-        devolvida: 0,
-        faltante: 0,
-        ordens: new Set(),
-      };
-      atual.retirada += Number(retirada.quantidadeRetirada || 0);
-      atual.faltante = Math.max(
-        atual.faltante,
-        Number(retirada.quantidadeFaltante || 0),
-      );
-      atual.ordens.add(
-        retirada.numeroOs
-          ? `${retirada.numeroOs} · planilha ${retirada.aba}`
-          : `Planilha ${retirada.aba}`,
-      );
-      resumo.itens.set(chaveMaterial, atual);
-      resumo.totalRetirado += Number(retirada.quantidadeRetirada || 0);
-      resumo.totalFaltante += Number(retirada.quantidadeFaltante || 0);
-      resumo.valorLiquido +=
-        Number(retirada.quantidadeRetirada || 0)
-        * Number(retirada.custoUnitario || material?.custoMedio || 0);
-    });
-
-    return [...agrupado.values()]
-      .map((resumo) => ({
-        ...resumo,
-        itens: [...resumo.itens.values()]
-          .map((item) => ({
-            ...item,
-            saldoLiquido: item.retirada - item.devolvida,
-            ordens: [...item.ordens],
-          }))
-          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
-      }))
-      .sort((a, b) =>
-        String(a.comarca?.nomeComarca || "").localeCompare(
-          String(b.comarca?.nomeComarca || ""),
-          "pt-BR",
-        ));
-  }, [comarcas, materiais, ordensRetirada, retiradasImportadas]);
+  const estoquePorComarca = useMemo(
+    () => consolidarRetiradasPorObra({
+      comarcas,
+      materiais,
+      ordensRetirada,
+      retiradasImportadas,
+    }),
+    [comarcas, materiais, ordensRetirada, retiradasImportadas],
+  );
 
   const estoqueComarcaSelecionada = estoquePorComarca.find(
     (item) => String(item.comarca?.id) === String(abaEstoque),
+  );
+  const estoqueOrdemSelecionada = estoqueComarcaSelecionada?.ordens?.find(
+    (ordem) => String(ordem.id) === String(abaOrdemEstoque),
+  );
+  const estoqueOperacionalSelecionado = abaOrdemEstoque === "resumo"
+    ? estoqueComarcaSelecionada
+    : estoqueOrdemSelecionada || estoqueComarcaSelecionada;
+  const atalhosOrdensEstoque = estoquePorComarca.flatMap((obra) =>
+    obra.ordens.map((ordem) => ({
+      ...ordem,
+      comarcaId: obra.comarca?.id,
+      comarcaNome: obra.comarca?.nomeComarca,
+    })),
+  );
+  const resultadoSimulacao = useMemo(
+    () => calcularSimulacaoRetirada(materiais, simulacaoItens),
+    [materiais, simulacaoItens],
   );
 
   const inicioMesAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -2360,11 +2296,30 @@ export default function PainelEstoque() {
       ).length,
     },
   ];
+  const abasRetiradaImportadas = new Set(
+    retiradasImportadas.map((retirada) => retirada.aba).filter(Boolean),
+  ).size;
+  const ordensHistoricasImportadas = ordensRetirada.filter(
+    (ordem) => ordem.status === "HISTORICA_IMPORTADA",
+  ).length;
+
+  const atualizarLinhaSimulacao = (id, campo, valor) => {
+    setSimulacaoItens((itens) => itens.map((item) => (
+      item.id === id ? { ...item, [campo]: valor } : item
+    )));
+  };
+
+  const removerLinhaSimulacao = (id) => {
+    setSimulacaoItens((itens) => {
+      const restantes = itens.filter((item) => item.id !== id);
+      return restantes.length > 0 ? restantes : [novaLinhaSimulacao()];
+    });
+  };
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-8">
+    <div className="estoque-responsive w-full min-w-0 space-y-6 2xl:space-y-8">
       {/* Header */}
       <div>
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -2376,7 +2331,7 @@ export default function PainelEstoque() {
               Gerenciamento de entrada e saída de materiais
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="estoque-acoes flex flex-wrap gap-2">
             <input
               ref={importacaoInputRef}
               type="file"
@@ -2420,6 +2375,15 @@ export default function PainelEstoque() {
               <FileClock size={18} />
               Histórico
             </button>
+            <button
+              type="button"
+              onClick={() => setShowSimulacaoModal(true)}
+              className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+              title="Projetar uma retirada sem alterar o estoque"
+            >
+              <Calculator size={18} />
+              Simular retirada
+            </button>
             {/*   BOTAO NOVO: Cadastrar no Catálogo */}
             <button
               onClick={abrirModalNovoMaterial}
@@ -2459,7 +2423,7 @@ export default function PainelEstoque() {
         {successMessage && <Alert type="success" message={successMessage} />}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
         {indicadoresEstoque.map((indicador) => (
           <div key={indicador.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
             <span className="block text-xs font-semibold text-slate-500">{indicador.label}</span>
@@ -2479,7 +2443,10 @@ export default function PainelEstoque() {
           type="button"
           role="tab"
           aria-selected={abaEstoque === "geral"}
-          onClick={() => setAbaEstoque("geral")}
+          onClick={() => {
+            setAbaEstoque("geral");
+            setAbaOrdemEstoque("resumo");
+          }}
           className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
             abaEstoque === "geral"
               ? "border-blue-600 text-blue-700"
@@ -2494,7 +2461,10 @@ export default function PainelEstoque() {
             type="button"
             role="tab"
             aria-selected={String(abaEstoque) === String(item.comarca.id)}
-            onClick={() => setAbaEstoque(String(item.comarca.id))}
+            onClick={() => {
+              setAbaEstoque(String(item.comarca.id));
+              setAbaOrdemEstoque("resumo");
+            }}
             className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
               String(abaEstoque) === String(item.comarca.id)
                 ? "border-blue-600 text-blue-700"
@@ -2505,6 +2475,11 @@ export default function PainelEstoque() {
             <span className="ml-1 font-medium text-slate-400">
               · {item.comarca.ordemServico?.numeroOs || `Obra #${item.comarca.id}`}
             </span>
+            {item.ordens.length > 0 && (
+              <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-500">
+                {item.ordens.length} OR{item.ordens.length > 1 ? "s" : ""}
+              </span>
+            )}
           </button>
         ))}
         {podeGerenciarEstoque && (
@@ -2512,7 +2487,10 @@ export default function PainelEstoque() {
             type="button"
             role="tab"
             aria-selected={abaEstoque === "removidos"}
-            onClick={() => setAbaEstoque("removidos")}
+            onClick={() => {
+              setAbaEstoque("removidos");
+              setAbaOrdemEstoque("resumo");
+            }}
             className={`shrink-0 border-b-2 px-4 py-3 text-sm font-bold ${
               abaEstoque === "removidos"
                 ? "border-rose-600 text-rose-700"
@@ -2632,6 +2610,50 @@ export default function PainelEstoque() {
           </div>
         )}
       </div>
+
+      {abasRetiradaImportadas > 0 && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <strong>{abasRetiradaImportadas} abas de retirada</strong> foram importadas em {" "}
+          <strong>{ordensHistoricasImportadas} ORs</strong>. As abas CADASTRO_PRODUTOS,
+          ESTOQUE ATUAL, SOBRAS - RETORNOS, SIMULACAO e Configurações são auxiliares e não
+          geram uma OR própria.
+        </div>
+      )}
+
+      {atalhosOrdensEstoque.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-slate-800">Ordens de retirada disponíveis</h2>
+            <span className="text-xs font-semibold text-slate-500">
+              {atalhosOrdensEstoque.length} ORs
+            </span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {atalhosOrdensEstoque.map((ordem) => (
+              <button
+                key={`atalho-${ordem.id}`}
+                type="button"
+                onClick={() => {
+                  setAbaEstoque(String(ordem.comarcaId));
+                  setAbaOrdemEstoque(String(ordem.id));
+                }}
+                className={`shrink-0 rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                  String(abaEstoque) === String(ordem.comarcaId)
+                    && String(abaOrdemEstoque) === String(ordem.id)
+                    ? "border-blue-600 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"
+                }`}
+              >
+                <strong className="block">{ordem.numeroOr}</strong>
+                <span className="mt-0.5 block text-[10px] text-slate-400">
+                  {ordem.comarcaNome}
+                  {ordem.abasOrigem?.[0] ? ` · ${ordem.abasOrigem[0]}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-md md:block">
         <table className="w-full min-w-[1400px]">
           <thead className="bg-slate-50 border-b border-slate-200">
@@ -2909,30 +2931,80 @@ export default function PainelEstoque() {
               </h2>
               <p className="text-xs text-slate-500">
                 {estoqueComarcaSelecionada?.comarca?.ordemServico?.numeroOs || "OS não vinculada"}
-                {" · "}Retiradas e devoluções executadas por OR
+                {" · "}
+                {abaOrdemEstoque === "resumo"
+                  ? "Resumo consolidado das ORs"
+                  : estoqueOperacionalSelecionado?.numeroOr || "Ordem de Retirada"}
               </p>
+              {estoqueOperacionalSelecionado?.abasOrigem?.length > 0 && (
+                <p className="mt-1 text-xs font-semibold text-blue-700">
+                  Origem: {estoqueOperacionalSelecionado.abasOrigem.join(", ")}
+                </p>
+              )}
             </div>
             <div className="flex gap-5 text-sm">
               <div>
                 <span className="block text-xs text-slate-500">Retirado</span>
-                <strong>{formatarNumero(estoqueComarcaSelecionada?.totalRetirado)}</strong>
+                <strong>{formatarNumero(estoqueOperacionalSelecionado?.totalRetirado)}</strong>
               </div>
               <div>
                 <span className="block text-xs text-slate-500">Devolvido</span>
-                <strong>{formatarNumero(estoqueComarcaSelecionada?.totalDevolvido)}</strong>
+                <strong>{formatarNumero(estoqueOperacionalSelecionado?.totalDevolvido)}</strong>
               </div>
               <div>
                 <span className="block text-xs text-slate-500">Faltante</span>
                 <strong className="text-rose-700">
-                  {formatarNumero(estoqueComarcaSelecionada?.totalFaltante)}
+                  {formatarNumero(estoqueOperacionalSelecionado?.totalFaltante)}
                 </strong>
               </div>
               <div>
                 <span className="block text-xs text-slate-500">Valor líquido</span>
-                <strong>{formatarMoeda(estoqueComarcaSelecionada?.valorLiquido)}</strong>
+                <strong>{formatarMoeda(estoqueOperacionalSelecionado?.valorLiquido)}</strong>
               </div>
             </div>
           </div>
+          {(estoqueComarcaSelecionada?.ordens || []).length > 0 && (
+            <div
+              role="tablist"
+              aria-label="Ordens de retirada da obra"
+              className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-5 py-3"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={abaOrdemEstoque === "resumo"}
+                onClick={() => setAbaOrdemEstoque("resumo")}
+                className={`shrink-0 rounded-md border px-3 py-2 text-xs font-bold ${
+                  abaOrdemEstoque === "resumo"
+                    ? "border-blue-600 bg-blue-50 text-blue-700"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Resumo da obra
+              </button>
+              {estoqueComarcaSelecionada.ordens.map((ordem) => (
+                <button
+                  key={ordem.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={String(abaOrdemEstoque) === String(ordem.id)}
+                  onClick={() => setAbaOrdemEstoque(String(ordem.id))}
+                  className={`shrink-0 rounded-md border px-3 py-2 text-left text-xs ${
+                    String(abaOrdemEstoque) === String(ordem.id)
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <strong className="block">{ordem.numeroOr}</strong>
+                  {ordem.abasOrigem?.[0] && (
+                    <span className="mt-0.5 block max-w-56 truncate text-[10px] text-slate-400">
+                      {ordem.abasOrigem[0]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="bg-white text-xs uppercase text-slate-500">
@@ -2947,7 +3019,7 @@ export default function PainelEstoque() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(estoqueComarcaSelecionada?.itens || []).map((item) => (
+                {(estoqueOperacionalSelecionado?.itens || []).map((item) => (
                   <tr key={`${abaEstoque}-${item.material?.id || item.nome}`}>
                     <td className="px-5 py-3">
                       <strong className="block text-slate-800">{item.nome}</strong>
@@ -2973,7 +3045,7 @@ export default function PainelEstoque() {
                     </td>
                   </tr>
                 ))}
-                {(estoqueComarcaSelecionada?.itens || []).length === 0 && (
+                {(estoqueOperacionalSelecionado?.itens || []).length === 0 && (
                   <tr>
                     <td colSpan="7" className="px-5 py-10 text-center text-slate-400">
                       Esta obra ainda não possui retirada de material executada por OR.
@@ -3467,6 +3539,163 @@ export default function PainelEstoque() {
           </tbody>
         </table>
       </div>
+
+      <Modal isOpen={showSimulacaoModal} onClose={handleCloseModal} title="Simular retirada">
+        <div className="space-y-5">
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            A simulação usa o saldo livre atual e não baixa materiais, não reserva estoque e não
+            cria uma OR.
+          </div>
+
+          <div className="space-y-3">
+            {simulacaoItens.map((item) => {
+              const materialSelecionado = materiais.find(
+                (material) => String(material.id) === String(item.materialId),
+              );
+              return (
+                <div
+                  key={item.id}
+                  className="grid gap-2 rounded-md border border-slate-200 p-3 sm:grid-cols-[1fr_8rem_2.5rem]"
+                >
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                      Material
+                    </label>
+                    <select
+                      value={item.materialId}
+                      onChange={(event) => atualizarLinhaSimulacao(
+                        item.id,
+                        "materialId",
+                        event.target.value,
+                      )}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Selecione</option>
+                      {materiais.map((material) => {
+                        const selecionadoEmOutraLinha = simulacaoItens.some(
+                          (linha) => linha.id !== item.id
+                            && String(linha.materialId) === String(material.id),
+                        );
+                        return (
+                          <option
+                            key={material.id}
+                            value={material.id}
+                            disabled={selecionadoEmOutraLinha}
+                          >
+                            {material.nome} · saldo {formatarNumero(getLivre(material))} {unidadeMaterial(material)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                      Quantidade
+                    </label>
+                    <input
+                      type="number"
+                      min={controlaMetragem(materialSelecionado) ? "0.001" : "1"}
+                      step={controlaMetragem(materialSelecionado) ? "0.001" : "1"}
+                      value={item.quantidade}
+                      onChange={(event) => atualizarLinhaSimulacao(
+                        item.id,
+                        "quantidade",
+                        event.target.value,
+                      )}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removerLinhaSimulacao(item.id)}
+                    className="mt-auto flex h-10 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                    title="Remover item da simulação"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSimulacaoItens((itens) => [...itens, novaLinhaSimulacao()])}
+            disabled={simulacaoItens.length >= materiais.length}
+            className="inline-flex items-center gap-2 rounded-md border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-40"
+          >
+            <Plus size={16} /> Adicionar material
+          </button>
+
+          {resultadoSimulacao.itens.length > 0 && (
+            <section className="overflow-hidden rounded-md border border-slate-200">
+              <div className={`border-b px-4 py-3 text-sm font-bold ${
+                resultadoSimulacao.possuiFalta
+                  ? "border-rose-200 bg-rose-50 text-rose-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              }`}
+              >
+                {resultadoSimulacao.possuiFalta
+                  ? `Retirada inviável: faltam ${formatarNumero(resultadoSimulacao.quantidadeFaltante)} unidades de controle.`
+                  : "Retirada viável com o saldo livre atual."}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Material</th>
+                      <th className="px-3 py-2 text-right">Saldo atual</th>
+                      <th className="px-3 py-2 text-right">Solicitado</th>
+                      <th className="px-3 py-2 text-right">Saldo projetado</th>
+                      <th className="px-3 py-2 text-right">Faltante</th>
+                      <th className="px-3 py-2 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {resultadoSimulacao.itens.map((item) => (
+                      <tr key={item.id}>
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          {item.material.nome}
+                        </td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.saldoAtual)}</td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.quantidade)}</td>
+                        <td className={`px-3 py-2 text-right font-bold ${
+                          item.saldoProjetado < 0 ? "text-rose-700" : "text-slate-800"
+                        }`}
+                        >
+                          {formatarNumero(item.saldoProjetado)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold text-rose-700">
+                          {item.quantidadeFaltante > 0
+                            ? formatarNumero(item.quantidadeFaltante)
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold">
+                          {formatarMoeda(item.valorSolicitado)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap justify-end gap-5 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                <span>Solicitado: <strong>{formatarNumero(resultadoSimulacao.quantidadeSolicitada)}</strong></span>
+                <span>Valor estimado: <strong>{formatarMoeda(resultadoSimulacao.valorSolicitado)}</strong></span>
+              </div>
+            </section>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleCloseModal}
+              className="rounded-md bg-slate-800 px-5 py-2 font-bold text-white hover:bg-slate-700"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={showMinimoLocalModal} onClose={handleCloseModal} title="Estoque Mínimo por Depósito">
         <form onSubmit={salvarMinimoLocal} className="space-y-4">
@@ -4085,7 +4314,8 @@ export default function PainelEstoque() {
                 {importacaoPreview.nomeArquivo}
               </strong>
               <span className="text-xs text-blue-700">
-                Fonte: aba {importacaoPreview.abaOrigem} · {importacaoPreview.itens.length} materiais
+                Catálogo: {importacaoPreview.abaCatalogo} · saldos conferidos com {importacaoPreview.abaOrigem}
+                {" · "}{importacaoPreview.itens.length} materiais
               </span>
             </div>
 

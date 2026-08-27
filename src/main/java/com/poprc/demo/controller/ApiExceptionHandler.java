@@ -42,9 +42,28 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<Map<String, Object>> tratarConflitoDeDados() {
+    public ResponseEntity<Map<String, Object>> tratarConflitoDeDados(
+            DataIntegrityViolationException exception) {
+        String detalhes = mensagensDasCausas(exception).toLowerCase();
+        if (detalhes.contains("materiais_tipo_controle_check")) {
+            return resposta(HttpStatus.CONFLICT,
+                    "O banco ainda não aceita o tipo de controle deste material. "
+                            + "Reinicie o backend para aplicar as migrações pendentes e tente novamente.");
+        }
         return resposta(HttpStatus.CONFLICT,
                 "A operação conflita com um registro existente ou com um vínculo obrigatório.");
+    }
+
+    private String mensagensDasCausas(Throwable exception) {
+        StringBuilder mensagens = new StringBuilder();
+        Throwable atual = exception;
+        while (atual != null) {
+            if (atual.getMessage() != null) {
+                mensagens.append(' ').append(atual.getMessage());
+            }
+            atual = atual.getCause();
+        }
+        return mensagens.toString();
     }
 
     private ResponseEntity<Map<String, Object>> resposta(HttpStatus status, String mensagem) {

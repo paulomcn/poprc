@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, LogIn, ShieldCheck, User } from "lucide-react";
+import { ChevronDown, LogIn, Moon, ShieldCheck, Sun, User } from "lucide-react";
 import rcLogo from "../assets/rclogo.jpg";
 import { useAuth, homePorPerfil } from "../contexts/AuthContext";
 import api, { getApiErrorMessage } from "../services/api";
 import { API_ORIGIN } from "../services/runtimeConfig";
-
-const limitarCpf = (valor) => valor.replace(/\D/g, "").slice(0, 11);
+import { useTheme } from "../contexts/ThemeContext";
+import { formatarCpf } from "../utils/cpf";
 
 export default function Login() {
   const { usuario, carregando, configuracao, login, loginDesenvolvimento, configurarAdministrador } = useAuth();
@@ -20,6 +20,7 @@ export default function Login() {
   const [mensagem, setMensagem] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     const codigo = new URLSearchParams(location.search).get("error");
@@ -73,8 +74,17 @@ export default function Login() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
-      <section className="w-full max-w-md rounded border border-slate-800 bg-white p-6 shadow-xl">
+    <main className="relative flex min-h-screen items-center justify-center bg-slate-950 p-4">
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
+        title={theme === "dark" ? "Tema claro" : "Tema escuro"}
+        className="absolute right-4 top-4 rounded border border-slate-700 bg-slate-900 p-2 text-slate-300 hover:bg-slate-800 hover:text-white"
+      >
+        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+      <section className="w-full max-w-md rounded border border-slate-800 bg-white p-6 shadow-xl dark:bg-slate-900">
         <div className="mb-6 flex items-center gap-3 border-b border-slate-200 pb-5"><img src={rcLogo} alt="RC Technology" className="h-12 w-12 rounded object-cover" /><div><h1 className="text-lg font-bold text-slate-950">RC Operations Hub</h1><p className="text-sm text-slate-500">Acesso ao ambiente operacional</p></div></div>
         {erro && <p className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
         {mensagem && <p className="mb-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{mensagem}</p>}
@@ -82,14 +92,14 @@ export default function Login() {
           <form onSubmit={concluirBootstrap} className="space-y-4">
             <div className="rounded border border-blue-200 bg-blue-50 p-3"><h2 className="text-sm font-bold text-blue-950">Configurar primeiro administrador</h2><p className="mt-1 text-xs text-blue-800">Este cadastro aparece somente porque o ambiente está vazio.</p></div>
             <label className="block text-sm font-semibold text-slate-700">Nome<input value={primeiroAdmin.nome} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, nome: e.target.value })} required autoComplete="name" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
-            <label className="block text-sm font-semibold text-slate-700">CPF<input value={primeiroAdmin.cpf} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cpf: limitarCpf(e.target.value) })} inputMode="numeric" maxLength={11} required placeholder="Somente 11 números" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+            <label className="block text-sm font-semibold text-slate-700">CPF<input value={primeiroAdmin.cpf} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cpf: formatarCpf(e.target.value) })} inputMode="numeric" maxLength={14} pattern="[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}" required placeholder="000.000.000-00" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
             <label className="block text-sm font-semibold text-slate-700">Cidade<input value={primeiroAdmin.cidade} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, cidade: e.target.value })} className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
             <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Senha<input value={primeiroAdmin.senha} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, senha: e.target.value })} type="password" minLength={8} required autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label><label className="block text-sm font-semibold text-slate-700">Confirmar<input value={primeiroAdmin.confirmarSenha} onChange={(e) => setPrimeiroAdmin({ ...primeiroAdmin, confirmarSenha: e.target.value })} type="password" minLength={8} required autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label></div>
             <p className="text-xs text-slate-500">Use ao menos 8 caracteres, com letras e números.</p>
             <button disabled={entrando} className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><ShieldCheck size={18} /> {entrando ? "Configurando..." : "Criar administrador"}</button>
           </form>
         ) : <form onSubmit={entrarLocal} className="space-y-4">
-          <label className="block text-sm font-semibold text-slate-700">CPF<input value={credenciais.cpf} onChange={(e) => setCredenciais({ ...credenciais, cpf: limitarCpf(e.target.value) })} inputMode="numeric" maxLength={11} autoComplete="username" required placeholder="Somente 11 números" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
+          <label className="block text-sm font-semibold text-slate-700">CPF<input value={credenciais.cpf} onChange={(e) => setCredenciais({ ...credenciais, cpf: formatarCpf(e.target.value) })} inputMode="numeric" maxLength={14} pattern="[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}" autoComplete="username" required placeholder="000.000.000-00" className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
           <label className="block text-sm font-semibold text-slate-700">Senha<input value={credenciais.senha} onChange={(e) => setCredenciais({ ...credenciais, senha: e.target.value })} type="password" autoComplete="current-password" required className="mt-1 w-full rounded border border-slate-300 px-3 py-2.5 text-sm" /></label>
           <button disabled={entrando} className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><LogIn size={18} /> {entrando ? "Entrando..." : "Entrar com CPF"}</button>
         </form>}

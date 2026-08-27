@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api, { refreshCsrfToken, setReauthHandler } from "../services/api";
+import { normalizarCpf } from "../utils/cpf";
 
 const AuthContext = createContext(null);
 
@@ -66,7 +67,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (cpf, senha) => {
-    const response = await api.post("/auth/login", { cpf, senha });
+    const response = await api.post("/auth/login", { cpf: normalizarCpf(cpf), senha });
     await refreshCsrfToken();
     setUsuario(response.data);
     return response.data;
@@ -81,7 +82,10 @@ export function AuthProvider({ children }) {
 
   const configurarAdministrador = async (dados) => {
     await refreshCsrfToken();
-    const response = await api.post("/auth/bootstrap", dados);
+    const response = await api.post("/auth/bootstrap", {
+      ...dados,
+      cpf: normalizarCpf(dados.cpf),
+    });
     await refreshCsrfToken();
     setConfiguracao((atual) => ({ ...atual, bootstrapRequired: false }));
     setUsuario(response.data);

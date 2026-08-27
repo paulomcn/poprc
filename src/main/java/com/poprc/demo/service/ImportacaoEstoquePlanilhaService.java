@@ -818,6 +818,8 @@ public class ImportacaoEstoquePlanilhaService {
             ImportacaoRetiradaPlanilha retirada) {
         return new ImportacaoEstoquePlanilhaDetalheDTO.Retirada(
                 retirada.getAbaOrigem(),
+                retirada.getOrdemRetirada() != null ? retirada.getOrdemRetirada().getId() : null,
+                retirada.getOrdemRetirada() != null ? retirada.getOrdemRetirada().getNumeroOr() : null,
                 retirada.getComarca().getId(),
                 retirada.getComarca().getNomeComarca(),
                 retirada.getComarca().getOrdemServico() != null

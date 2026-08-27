@@ -37,6 +37,8 @@ public record ImportacaoEstoquePlanilhaDetalheDTO(
 
     public record Retirada(
             String aba,
+            Long ordemRetiradaId,
+            String numeroOr,
             Long comarcaId,
             String comarca,
             String numeroOs,

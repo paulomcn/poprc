@@ -6,6 +6,7 @@ import Modal from "../components/Modal";
 import api, { getApiErrorMessage } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSOES, temPermissao } from "../security/permissions";
+import { formatarCpf, normalizarCpf } from "../utils/cpf";
 
 const perfis = [
   ["ADMIN", "Administrador"], ["SUPERVISOR_TECNICO", "Supervisor técnico"],
@@ -67,7 +68,7 @@ export default function Funcionarios() {
   const lista = (texto) => texto ? texto.split(",").map((item) => item.trim()).filter(Boolean) : [];
   const salvar = async (event) => {
     event.preventDefault(); setSalvando(true); setError(""); setSuccess("");
-    const payload = { ...form, cpf: form.cpf || null, email: form.email || null, senha: form.senha || null, certificacoes: lista(form.certificacoes), documentPaths: lista(form.documentPaths) };
+    const payload = { ...form, cpf: form.cpf ? normalizarCpf(form.cpf) : null, email: form.email || null, senha: form.senha || null, certificacoes: lista(form.certificacoes), documentPaths: lista(form.documentPaths) };
     try {
       const response = editando
         ? await api.put(`/funcionarios/${editando.id}`, payload)
@@ -107,7 +108,7 @@ export default function Funcionarios() {
         <form onSubmit={salvar} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2"><Campo label="Nome *"><input required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="campo" /></Campo><Campo label="Cidade *"><input required value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} className="campo" /></Campo></div>
           <div className="grid gap-4 sm:grid-cols-2"><Campo label="Função operacional *"><input required list="funcoes-equipe" value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value })} className="campo" /><datalist id="funcoes-equipe">{funcoes.map((item) => <option key={item} value={item} />)}</datalist></Campo><Campo label="Perfil de acesso *"><select value={form.perfilAcesso} onChange={(e) => setForm({ ...form, perfilAcesso: e.target.value })} className="campo bg-white">{perfis.map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}</select></Campo></div>
-          <div className="grid gap-4 sm:grid-cols-2"><Campo label={editando?.cpfMascarado ? `CPF (atual: ${editando.cpfMascarado})` : "CPF *"}><input required={!editando} value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} inputMode="numeric" placeholder={editando ? "Deixe vazio para manter" : "000.000.000-00"} className="campo" /></Campo><Campo label="Telefone"><input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="(00) 00000-0000" className="campo" /></Campo></div>
+          <div className="grid gap-4 sm:grid-cols-2"><Campo label={editando?.cpfMascarado ? `CPF (atual: ${editando.cpfMascarado})` : "CPF *"}><input required={!editando} value={form.cpf} onChange={(e) => setForm({ ...form, cpf: formatarCpf(e.target.value) })} inputMode="numeric" maxLength={14} pattern="[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}" placeholder={editando ? "Deixe vazio para manter" : "000.000.000-00"} className="campo" /></Campo><Campo label="Telefone"><input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="(00) 00000-0000" className="campo" /></Campo></div>
           <Campo label="E-mail Zoho (opcional)"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="campo" /><p className="mt-1 text-xs text-slate-500">Necessário somente para entrar pela Zoho.</p></Campo>
           <Campo label={editando ? "Nova senha temporária (opcional)" : "Senha temporária *"}><input type="password" required={!editando} minLength={8} value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} className="campo" /><p className="mt-1 text-xs text-slate-500">O funcionário deverá trocá-la no primeiro acesso. Use letras e números.</p></Campo>
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Acesso ativo</label>

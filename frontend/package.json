@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:planilha-estoque": "node --test src/utils/planilhaEstoque.test.js src/utils/estoqueOperacional.test.js",
+    "test:utils": "node --test src/utils/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
