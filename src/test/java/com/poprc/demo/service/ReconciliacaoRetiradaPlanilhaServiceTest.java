@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaRequest;
+import com.poprc.demo.dto.EdicaoRetiradaHistoricaRequest;
 import com.poprc.demo.model.ImportacaoRetiradaPlanilha;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MaterialItem;
@@ -98,6 +99,43 @@ class ReconciliacaoRetiradaPlanilhaServiceTest {
         verify(ordemItemRepository).save(itemOr);
         verify(materialItemRepository).save(itemObra);
         verify(retiradaRepository).save(retirada);
+    }
+
+    @Test
+    void edicaoManualDeveRecalcularFaltaERegistrarJustificativa() {
+        ImportacaoRetiradaPlanilha retirada = retiradaHistorica();
+        MaterialItem itemObra = new MaterialItem();
+        itemObra.setQuantidadePrevista(new BigDecimal("100.000"));
+        itemObra.setQuantidadeAuditada(new BigDecimal("100.000"));
+        OrdemRetiradaItem itemOr = new OrdemRetiradaItem();
+        itemOr.setMaterialItem(itemObra);
+        itemOr.setQuantidadeSolicitada(new BigDecimal("19.000"));
+        itemOr.setQuantidadeRetirada(new BigDecimal("19.000"));
+
+        when(retiradaRepository.findById(8L)).thenReturn(Optional.of(retirada));
+        when(ordemItemRepository.findByOrdemRetiradaIdAndMaterialId(4L, 7L))
+                .thenReturn(Optional.of(itemOr));
+
+        var resultado = service.editarHistorico(
+                8L,
+                new EdicaoRetiradaHistoricaRequest(
+                        new BigDecimal("140"),
+                        LocalDate.of(2026, 8, 25),
+                        "Conferido com a OR física"),
+                "Paulo");
+
+        assertEquals("EDICAO_MANUAL", resultado.origem());
+        assertEquals("Conferido com a OR física", resultado.motivo());
+        assertEquals(new BigDecimal("140.000"), retirada.getQuantidadeRetirada());
+        assertEquals(new BigDecimal("-7.000"), retirada.getSaldoFinal());
+        assertEquals(new BigDecimal("7.000"), retirada.getQuantidadeFaltante());
+        assertEquals(new BigDecimal("133.000"), itemOr.getQuantidadeRetirada());
+
+        ArgumentCaptor<ReconciliacaoRetiradaPlanilha> evento =
+                ArgumentCaptor.forClass(ReconciliacaoRetiradaPlanilha.class);
+        verify(reconciliacaoRepository).save(evento.capture());
+        assertEquals("EDICAO_MANUAL", evento.getValue().getOrigem());
+        assertEquals("Conferido com a OR física", evento.getValue().getMotivo());
     }
 
     private ReconciliacaoRetiradasPlanilhaRequest request(boolean confirmar) {

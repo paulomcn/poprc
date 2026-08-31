@@ -2,6 +2,7 @@ package com.poprc.demo.service;
 
 import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaDTO;
 import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaRequest;
+import com.poprc.demo.dto.EdicaoRetiradaHistoricaRequest;
 import com.poprc.demo.model.ImportacaoRetiradaPlanilha;
 import com.poprc.demo.model.MaterialItem;
 import com.poprc.demo.model.OrdemRetiradaItem;
@@ -12,7 +13,11 @@ import com.poprc.demo.repository.OrdemRetiradaItemRepository;
 import com.poprc.demo.repository.ReconciliacaoRetiradaPlanilhaRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -53,7 +58,9 @@ public class ReconciliacaoRetiradaPlanilhaService {
                     alteracao,
                     request.nomeArquivo().trim(),
                     request.hashSha256().toLowerCase(),
-                    responsavel));
+                    responsavel,
+                    "PLANILHA",
+                    "Reconciliação confirmada a partir da planilha de origem."));
         }
 
         return new ReconciliacaoRetiradasPlanilhaDTO.Resultado(
@@ -71,11 +78,54 @@ public class ReconciliacaoRetiradaPlanilhaService {
                         evento.getAbaOrigem(),
                         evento.getMaterial().getNome(),
                         evento.getNomeArquivo(),
+                        evento.getOrigem(),
+                        evento.getMotivo(),
                         evento.getQuantidadeAnterior(),
                         evento.getQuantidadeNova(),
                         evento.getReconciliadoPor(),
                         evento.getReconciliadoEm()))
                 .toList();
+    }
+
+    @Transactional
+    public ReconciliacaoRetiradasPlanilhaDTO.Evento editarHistorico(
+            Long retiradaId,
+            EdicaoRetiradaHistoricaRequest request,
+            String usuario) {
+        if (retiradaId == null) {
+            throw new IllegalArgumentException("Informe a retirada histórica.");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Informe os dados da correção.");
+        }
+        BigDecimal retirada = quantidade(request.quantidadeRetirada(), "quantidade retirada");
+        String motivo = validarMotivo(request.motivo());
+        ImportacaoRetiradaPlanilha atual = retiradaRepository.findById(retiradaId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Retirada histórica não encontrada: " + retiradaId + "."));
+        BigDecimal saldoInicial = atual.getSaldoInicial().setScale(3, RoundingMode.HALF_UP);
+        BigDecimal saldoFinal = saldoInicial.subtract(retirada).setScale(3, RoundingMode.HALF_UP);
+        Alteracao alteracao = new Alteracao(
+                atual,
+                saldoInicial,
+                retirada,
+                saldoFinal,
+                saldoFinal.signum() < 0 ? saldoFinal.abs() : ZERO,
+                request.dataRetirada());
+        if (!alteracao.divergente()) {
+            throw new IllegalArgumentException("Nenhuma alteração foi informada para esta retirada.");
+        }
+        String responsavel = usuario == null || usuario.isBlank()
+                ? "Usuário autenticado"
+                : usuario.trim();
+        ReconciliacaoRetiradaPlanilha evento = aplicar(
+                alteracao,
+                "Edição manual do histórico",
+                gerarHashManual(atual.getId(), retirada, responsavel),
+                responsavel,
+                "EDICAO_MANUAL",
+                motivo);
+        return mapearEvento(evento);
     }
 
     private Alteracao prepararAlteracao(
@@ -108,11 +158,13 @@ public class ReconciliacaoRetiradaPlanilhaService {
                 item.dataRetirada());
     }
 
-    private void aplicar(
+    private ReconciliacaoRetiradaPlanilha aplicar(
             Alteracao alteracao,
             String nomeArquivo,
             String hash,
-            String usuario) {
+            String usuario,
+            String origem,
+            String motivo) {
         ImportacaoRetiradaPlanilha atual = alteracao.atual();
         if (reconciliacaoRepository.existsByRetiradaImportadaIdAndHashOrigem(
                 atual.getId(), hash)) {
@@ -134,6 +186,8 @@ public class ReconciliacaoRetiradaPlanilhaService {
         evento.setAbaOrigem(atual.getAbaOrigem());
         evento.setNomeArquivo(nomeArquivo);
         evento.setHashOrigem(hash);
+        evento.setOrigem(origem);
+        evento.setMotivo(motivo);
         evento.setQuantidadeAnterior(atual.getQuantidadeRetirada());
         evento.setQuantidadeNova(alteracao.quantidadeRetirada());
         evento.setSaldoInicialAnterior(atual.getSaldoInicial());
@@ -174,6 +228,23 @@ public class ReconciliacaoRetiradaPlanilhaService {
         atual.setQuantidadeFaltante(alteracao.falta());
         atual.setDataRetirada(alteracao.dataRetirada());
         retiradaRepository.save(atual);
+        return evento;
+    }
+
+    private ReconciliacaoRetiradasPlanilhaDTO.Evento mapearEvento(
+            ReconciliacaoRetiradaPlanilha evento) {
+        return new ReconciliacaoRetiradasPlanilhaDTO.Evento(
+                evento.getId(),
+                evento.getRetiradaImportada().getId(),
+                evento.getAbaOrigem(),
+                evento.getMaterial().getNome(),
+                evento.getNomeArquivo(),
+                evento.getOrigem(),
+                evento.getMotivo(),
+                evento.getQuantidadeAnterior(),
+                evento.getQuantidadeNova(),
+                evento.getReconciliadoPor(),
+                evento.getReconciliadoEm());
     }
 
     private ReconciliacaoRetiradasPlanilhaDTO.Divergencia mapearDivergencia(Alteracao alteracao) {
@@ -209,6 +280,31 @@ public class ReconciliacaoRetiradaPlanilhaService {
         }
         if (request.itens().size() > 5000) {
             throw new IllegalArgumentException("A planilha excede o limite de retiradas por operação.");
+        }
+    }
+
+    private String validarMotivo(String motivo) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new IllegalArgumentException("Informe o motivo da correção histórica.");
+        }
+        String valor = motivo.trim();
+        if (valor.length() < 5) {
+            throw new IllegalArgumentException("Descreva o motivo da correção com pelo menos 5 caracteres.");
+        }
+        if (valor.length() > 500) {
+            throw new IllegalArgumentException("O motivo da correção deve ter no máximo 500 caracteres.");
+        }
+        return valor;
+    }
+
+    private String gerarHashManual(Long retiradaId, BigDecimal quantidade, String usuario) {
+        String origem = "MANUAL|" + retiradaId + "|" + quantidade.toPlainString()
+                + "|" + usuario + "|" + LocalDateTime.now() + "|" + java.util.UUID.randomUUID();
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(origem.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 não está disponível no servidor.", exception);
         }
     }
 

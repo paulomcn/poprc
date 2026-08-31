@@ -40,6 +40,12 @@ public class ReconciliacaoRetiradaPlanilha {
     @Column(name = "hash_origem", length = 64, nullable = false)
     private String hashOrigem;
 
+    @Column(name = "origem", length = 30, nullable = false)
+    private String origem;
+
+    @Column(name = "motivo", length = 500, nullable = false)
+    private String motivo;
+
     @Column(name = "quantidade_anterior", precision = 14, scale = 3, nullable = false)
     private BigDecimal quantidadeAnterior;
 

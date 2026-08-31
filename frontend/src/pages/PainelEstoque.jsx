@@ -283,6 +283,8 @@ export default function PainelEstoque() {
   const [showHistoricoImportacoesModal, setShowHistoricoImportacoesModal] = useState(false);
   const [showSimulacaoModal, setShowSimulacaoModal] = useState(false);
   const [importacaoDetalhe, setImportacaoDetalhe] = useState(null);
+  const [retiradaHistoricaEdicao, setRetiradaHistoricaEdicao] = useState(null);
+  const [retiradaHistoricaSalvando, setRetiradaHistoricaSalvando] = useState(false);
   const [reconciliacaoPreview, setReconciliacaoPreview] = useState(null);
   const [reconciliacaoProcessando, setReconciliacaoProcessando] = useState(false);
   const [notaFiscalDetalhe, setNotaFiscalDetalhe] = useState(null);
@@ -462,6 +464,8 @@ export default function PainelEstoque() {
     setShowHistoricoImportacoesModal(false);
     setShowSimulacaoModal(false);
     setImportacaoDetalhe(null);
+    setRetiradaHistoricaEdicao(null);
+    setRetiradaHistoricaSalvando(false);
     setReconciliacaoPreview(null);
     setNotaFiscalDetalhe(null);
     setImportacaoPreview(null);
@@ -1858,6 +1862,45 @@ export default function PainelEstoque() {
     return caboLegadoEmBobinas(material)
       ? quantidadePlanilhaParaEstoque(material.nome, reservado)
       : reservado;
+  };
+
+  const abrirEdicaoRetiradaHistorica = (retirada) => {
+    setRetiradaHistoricaEdicao({
+      ...retirada,
+      importacaoId: importacaoDetalhe?.importacaoId,
+      quantidadeRetirada: String(retirada.quantidadeRetirada ?? ""),
+      dataRetirada: retirada.dataRetirada || "",
+      motivo: "",
+    });
+  };
+
+  const salvarEdicaoRetiradaHistorica = async (event) => {
+    event.preventDefault();
+    const retirada = retiradaHistoricaEdicao;
+    if (!retirada?.retiradaImportadaId) return;
+    try {
+      setRetiradaHistoricaSalvando(true);
+      setError(null);
+      await api.patch(
+        `/estoque/importacoes/planilha/retiradas/${retirada.retiradaImportadaId}`,
+        {
+          quantidadeRetirada: Number(retirada.quantidadeRetirada),
+          dataRetirada: retirada.dataRetirada || null,
+          motivo: retirada.motivo,
+        },
+      );
+      const importacaoId = retirada.importacaoId;
+      setRetiradaHistoricaEdicao(null);
+      setSuccessMessage(
+        "Retirada histórica corrigida. A OR e o consolidado da obra foram atualizados sem movimentar o estoque atual.",
+      );
+      await fetchData();
+      if (importacaoId) await abrirDetalheImportacao(importacaoId);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível corrigir a retirada histórica."));
+    } finally {
+      setRetiradaHistoricaSalvando(false);
+    }
   };
 
   const selecionarPlanilhaSaldos = async (event) => {
@@ -4834,6 +4877,10 @@ export default function PainelEstoque() {
                             {evento.aba}
                           </span>
                           <strong>{evento.material}</strong>
+                          <span className="mt-0.5 block text-[11px] text-orange-800">
+                            {evento.origem === "EDICAO_MANUAL" ? "Edição manual" : "Planilha"}
+                            {evento.motivo ? ` · ${evento.motivo}` : ""}
+                          </span>
                         </td>
                         <td className="px-3 py-2 text-right">{formatarNumero(evento.quantidadeAnterior)}</td>
                         <td className="px-3 py-2 text-right font-bold">{formatarNumero(evento.quantidadeNova)}</td>
@@ -4965,6 +5012,7 @@ export default function PainelEstoque() {
                       <th className="px-3 py-2 text-right">Retirado</th>
                       <th className="px-3 py-2 text-right">Faltante</th>
                       <th className="px-3 py-2">Resultado</th>
+                      <th className="px-3 py-2 text-center">Ações</th>
                     </tr>
                     )}
                   </thead>
@@ -4993,6 +5041,7 @@ export default function PainelEstoque() {
                         <td className="px-3 py-2 text-right">—</td>
                         <td className="px-3 py-2 text-right">—</td>
                         <td className="px-3 py-2">{item.acao.replaceAll("_", " ")}</td>
+                        <td className="px-3 py-2 text-center">—</td>
                       </tr>
                     ))}
                     {(importacaoDetalhe.retiradas || []).map((item, index) => (
@@ -5014,6 +5063,19 @@ export default function PainelEstoque() {
                         <td className="px-3 py-2">
                           {item.quantidadeFaltante > 0 ? "EM FALTA" : "REGISTRADO"}
                         </td>
+                        <td className="px-3 py-2 text-center">
+                          {podeGerenciarEstoque && item.retiradaImportadaId ? (
+                            <button
+                              type="button"
+                              onClick={() => abrirEdicaoRetiradaHistorica(item)}
+                              className="rounded-md border border-slate-200 bg-white p-2 text-slate-600 hover:border-blue-300 hover:text-blue-700"
+                              title="Corrigir retirada histórica"
+                              aria-label={`Corrigir retirada histórica de ${item.material}`}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          ) : "—"}
+                        </td>
                       </tr>
                     ))}
                     </>)}
@@ -5025,6 +5087,131 @@ export default function PainelEstoque() {
             </>
           )}
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(retiradaHistoricaEdicao)}
+        onClose={() => {
+          if (!retiradaHistoricaSalvando) setRetiradaHistoricaEdicao(null);
+        }}
+        title="Corrigir retirada histórica"
+      >
+        {retiradaHistoricaEdicao && (
+          <form className="space-y-5" onSubmit={salvarEdicaoRetiradaHistorica}>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <span className="block text-xs font-bold uppercase text-amber-700">
+                {retiradaHistoricaEdicao.aba} · {retiradaHistoricaEdicao.comarca}
+              </span>
+              <strong className="mt-1 block text-slate-900">
+                {retiradaHistoricaEdicao.material}
+              </strong>
+              <span className="mt-1 block text-xs text-slate-500">
+                {retiradaHistoricaEdicao.numeroOr || "OR histórica"}
+                {retiradaHistoricaEdicao.numeroOs
+                  ? ` · ${retiradaHistoricaEdicao.numeroOs}`
+                  : ""}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Quantidade retirada
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="0.001"
+                  value={retiradaHistoricaEdicao.quantidadeRetirada}
+                  onChange={(event) => setRetiradaHistoricaEdicao((atual) => ({
+                    ...atual,
+                    quantidadeRetirada: event.target.value,
+                  }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
+                />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Data da retirada
+                <input
+                  type="date"
+                  value={retiradaHistoricaEdicao.dataRetirada}
+                  onChange={(event) => setRetiradaHistoricaEdicao((atual) => ({
+                    ...atual,
+                    dataRetirada: event.target.value,
+                  }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs">
+              <div>
+                <span className="block uppercase text-blue-600">Saldo inicial</span>
+                <strong className="text-sm text-blue-950">
+                  {formatarNumero(retiradaHistoricaEdicao.saldoInicial)}
+                </strong>
+              </div>
+              <div>
+                <span className="block uppercase text-blue-600">Saldo final</span>
+                <strong className="text-sm text-blue-950">
+                  {formatarNumero(
+                    Number(retiradaHistoricaEdicao.saldoInicial || 0)
+                    - Number(retiradaHistoricaEdicao.quantidadeRetirada || 0),
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span className="block uppercase text-blue-600">Em falta</span>
+                <strong className="text-sm text-rose-700">
+                  {formatarNumero(Math.max(
+                    0,
+                    Number(retiradaHistoricaEdicao.quantidadeRetirada || 0)
+                    - Number(retiradaHistoricaEdicao.saldoInicial || 0),
+                  ))}
+                </strong>
+              </div>
+            </div>
+
+            <label className="space-y-1 text-sm font-semibold text-slate-700">
+              Motivo da correção
+              <textarea
+                required
+                minLength="5"
+                maxLength="500"
+                rows="3"
+                value={retiradaHistoricaEdicao.motivo}
+                onChange={(event) => setRetiradaHistoricaEdicao((atual) => ({
+                  ...atual,
+                  motivo: event.target.value,
+                }))}
+                className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 font-normal"
+                placeholder="Ex.: quantidade conferida na OR física da obra."
+              />
+            </label>
+
+            <Alert
+              type="warning"
+              message="Esta correção atualiza o histórico, a OR e o consolidado da obra. O saldo atual do estoque não será movimentado, e a alteração ficará registrada na auditoria."
+            />
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRetiradaHistoricaEdicao(null)}
+                disabled={retiradaHistoricaSalvando}
+                className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={retiradaHistoricaSalvando}
+                className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-60"
+              >
+                {retiradaHistoricaSalvando ? "Salvando..." : "Salvar correção"}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       <Modal

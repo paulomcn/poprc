@@ -35,6 +35,8 @@ public final class ReconciliacaoRetiradasPlanilhaDTO {
             String aba,
             String material,
             String nomeArquivo,
+            String origem,
+            String motivo,
             BigDecimal quantidadeAnterior,
             BigDecimal quantidadeNova,
             String reconciliadoPor,

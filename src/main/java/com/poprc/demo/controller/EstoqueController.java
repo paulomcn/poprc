@@ -8,6 +8,7 @@ import com.poprc.demo.dto.NotaFiscalEstoqueDTO;
 import com.poprc.demo.dto.SincronizacaoSaldosPlanilhaRequest;
 import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaDTO;
 import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaRequest;
+import com.poprc.demo.dto.EdicaoRetiradaHistoricaRequest;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.repository.MaterialRepository;
@@ -231,6 +232,19 @@ public class EstoqueController {
     public ResponseEntity<List<ReconciliacaoRetiradasPlanilhaDTO.Evento>>
             listarReconciliacoesRetiradas() {
         return ResponseEntity.ok(reconciliacaoRetiradaPlanilhaService.listarHistorico());
+    }
+
+    @PatchMapping("/importacoes/planilha/retiradas/{id}")
+    public ResponseEntity<ReconciliacaoRetiradasPlanilhaDTO.Evento> editarRetiradaHistorica(
+            @PathVariable Long id,
+            @RequestBody EdicaoRetiradaHistoricaRequest request,
+            Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        if (authentication != null && authentication.getPrincipal() instanceof UsuarioAutenticado autenticado) {
+            usuario = autenticado.getNome();
+        }
+        return ResponseEntity.ok(
+                reconciliacaoRetiradaPlanilhaService.editarHistorico(id, request, usuario));
     }
 
     @PostMapping("/importacoes/notas-fiscais/analisar")
