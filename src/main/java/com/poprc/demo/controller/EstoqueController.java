@@ -6,6 +6,8 @@ import com.poprc.demo.dto.ImportacaoEstoquePlanilhaDetalheDTO;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
 import com.poprc.demo.dto.NotaFiscalEstoqueDTO;
 import com.poprc.demo.dto.SincronizacaoSaldosPlanilhaRequest;
+import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaDTO;
+import com.poprc.demo.dto.ReconciliacaoRetiradasPlanilhaRequest;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.repository.MaterialRepository;
@@ -18,6 +20,7 @@ import com.poprc.demo.model.SaldoMaterialLocal;
 import com.poprc.demo.service.SaldoLocalService;
 import com.poprc.demo.service.ImportacaoEstoquePlanilhaService;
 import com.poprc.demo.service.ImportacaoNotaFiscalEstoqueService;
+import com.poprc.demo.service.ReconciliacaoRetiradaPlanilhaService;
 import com.poprc.demo.security.UsuarioAutenticado;
 import lombok.RequiredArgsConstructor;
 import lombok.Data;
@@ -46,6 +49,7 @@ public class EstoqueController {
     private final SaldoLocalService saldoLocalService;
     private final ImportacaoEstoquePlanilhaService importacaoPlanilhaService;
     private final ImportacaoNotaFiscalEstoqueService importacaoNotaFiscalService;
+    private final ReconciliacaoRetiradaPlanilhaService reconciliacaoRetiradaPlanilhaService;
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> tratarRequisicaoInvalida(IllegalArgumentException exception) {
@@ -210,6 +214,23 @@ public class EstoqueController {
     public ResponseEntity<List<ImportacaoEstoquePlanilhaDetalheDTO.Retirada>>
             listarRetiradasImportadas() {
         return ResponseEntity.ok(importacaoPlanilhaService.listarRetiradasImportadas());
+    }
+
+    @PostMapping("/importacoes/planilha/retiradas/reconciliar")
+    public ResponseEntity<ReconciliacaoRetiradasPlanilhaDTO.Resultado> reconciliarRetiradas(
+            @RequestBody ReconciliacaoRetiradasPlanilhaRequest request,
+            Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        if (authentication != null && authentication.getPrincipal() instanceof UsuarioAutenticado autenticado) {
+            usuario = autenticado.getNome();
+        }
+        return ResponseEntity.ok(reconciliacaoRetiradaPlanilhaService.reconciliar(request, usuario));
+    }
+
+    @GetMapping("/importacoes/planilha/retiradas/reconciliacoes")
+    public ResponseEntity<List<ReconciliacaoRetiradasPlanilhaDTO.Evento>>
+            listarReconciliacoesRetiradas() {
+        return ResponseEntity.ok(reconciliacaoRetiradaPlanilhaService.listarHistorico());
     }
 
     @PostMapping("/importacoes/notas-fiscais/analisar")

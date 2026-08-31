@@ -1088,6 +1088,7 @@ public class ImportacaoEstoquePlanilhaService {
     private ImportacaoEstoquePlanilhaDetalheDTO.Retirada mapearRetirada(
             ImportacaoRetiradaPlanilha retirada) {
         return new ImportacaoEstoquePlanilhaDetalheDTO.Retirada(
+                retirada.getId(),
                 retirada.getAbaOrigem(),
                 retirada.getOrdemRetirada() != null ? retirada.getOrdemRetirada().getId() : null,
                 retirada.getOrdemRetirada() != null ? retirada.getOrdemRetirada().getNumeroOr() : null,

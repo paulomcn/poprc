@@ -248,6 +248,7 @@ export default function PainelEstoque() {
   const [importacoesPlanilha, setImportacoesPlanilha] = useState([]);
   const [importacoesNotaFiscal, setImportacoesNotaFiscal] = useState([]);
   const [retiradasImportadas, setRetiradasImportadas] = useState([]);
+  const [reconciliacoesRetiradas, setReconciliacoesRetiradas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -282,6 +283,8 @@ export default function PainelEstoque() {
   const [showHistoricoImportacoesModal, setShowHistoricoImportacoesModal] = useState(false);
   const [showSimulacaoModal, setShowSimulacaoModal] = useState(false);
   const [importacaoDetalhe, setImportacaoDetalhe] = useState(null);
+  const [reconciliacaoPreview, setReconciliacaoPreview] = useState(null);
+  const [reconciliacaoProcessando, setReconciliacaoProcessando] = useState(false);
   const [notaFiscalDetalhe, setNotaFiscalDetalhe] = useState(null);
   const [abaHistoricoImportacoes, setAbaHistoricoImportacoes] = useState("notas-fiscais");
   const [fotoExpandida, setFotoExpandida] = useState(null);
@@ -421,14 +424,21 @@ export default function PainelEstoque() {
       setLocaisEstoque(locaisResponse.data || []);
       setSaldosLocais(saldosResponse.data || []);
 
-      const [importacoesResponse, retiradasImportadasResponse, notasFiscaisResponse] = await Promise.all([
+      const [
+        importacoesResponse,
+        retiradasImportadasResponse,
+        notasFiscaisResponse,
+        reconciliacoesResponse,
+      ] = await Promise.all([
         api.get("/estoque/importacoes/planilha"),
         api.get("/estoque/importacoes/planilha/retiradas"),
         api.get("/estoque/importacoes/notas-fiscais"),
+        api.get("/estoque/importacoes/planilha/retiradas/reconciliacoes"),
       ]);
       setImportacoesPlanilha(importacoesResponse.data || []);
       setRetiradasImportadas(retiradasImportadasResponse.data || []);
       setImportacoesNotaFiscal(notasFiscaisResponse.data || []);
+      setReconciliacoesRetiradas(reconciliacoesResponse.data || []);
 
       setError(null);
     } catch (err) {
@@ -452,6 +462,7 @@ export default function PainelEstoque() {
     setShowHistoricoImportacoesModal(false);
     setShowSimulacaoModal(false);
     setImportacaoDetalhe(null);
+    setReconciliacaoPreview(null);
     setNotaFiscalDetalhe(null);
     setImportacaoPreview(null);
     setImportacaoLocalId("");
@@ -521,6 +532,7 @@ export default function PainelEstoque() {
     try {
       setImportacaoProcessando(true);
       setError(null);
+      setReconciliacaoPreview(null);
       const buffer = await arquivo.arrayBuffer();
       const ExcelJS = (await import("exceljs")).default;
       const workbook = new ExcelJS.Workbook();
@@ -1273,6 +1285,73 @@ export default function PainelEstoque() {
     }
   };
 
+  const reconciliarHistoricoRetiradas = async (confirmar = false) => {
+    if (!importacaoPreview?.abasRetiradas?.length) return;
+    const historicoPorOrigem = new Map();
+    retiradasImportadas.forEach((retirada) => {
+      const chave = `${normalizarTextoPlanilha(retirada.aba)}|${normalizarTextoPlanilha(retirada.material)}`;
+      if (!historicoPorOrigem.has(chave)) historicoPorOrigem.set(chave, retirada);
+    });
+
+    const itens = [];
+    const ausentes = [];
+    importacaoPreview.abasRetiradas.forEach((aba) => {
+      aba.itens.forEach((item) => {
+        const chave = `${normalizarTextoPlanilha(aba.nome)}|${normalizarTextoPlanilha(item.nomeMaterial)}`;
+        const atual = historicoPorOrigem.get(chave);
+        if (!atual?.retiradaImportadaId) {
+          ausentes.push(`${aba.nome}: ${item.nomeMaterial}`);
+          return;
+        }
+        itens.push({
+          retiradaImportadaId: atual.retiradaImportadaId,
+          saldoInicial: item.saldoInicial,
+          quantidadeRetirada: item.quantidadeRetirada,
+          saldoFinal: item.saldoFinal,
+          dataRetirada: item.dataRetirada,
+        });
+      });
+    });
+
+    if (ausentes.length > 0) {
+      setError(
+        `${ausentes.length} itens não possuem retirada histórica vinculada. `
+        + `Importe as ORs ausentes antes de reconciliar: ${ausentes.slice(0, 3).join("; ")}.`,
+      );
+      return;
+    }
+
+    try {
+      setReconciliacaoProcessando(true);
+      setError(null);
+      const response = await api.post("/estoque/importacoes/planilha/retiradas/reconciliar", {
+        nomeArquivo: importacaoPreview.nomeArquivo,
+        hashSha256: importacaoPreview.hashSha256,
+        confirmar,
+        itens,
+      });
+      const resultado = response.data;
+      if (confirmar) {
+        setSuccessMessage(
+          `${resultado.divergencias} correção(ões) aplicada(s) ao histórico de OR. `
+          + "O saldo atual do estoque não foi movimentado.",
+        );
+        setImportacaoPreview(null);
+        setReconciliacaoPreview(null);
+        await fetchData();
+      } else {
+        setReconciliacaoPreview(resultado);
+        if (resultado.divergencias === 0) {
+          setSuccessMessage("As retiradas da planilha já correspondem ao histórico das ORs.");
+        }
+      }
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Não foi possível reconciliar o histórico das ORs."));
+    } finally {
+      setReconciliacaoProcessando(false);
+    }
+  };
+
   const selecionarNotaFiscal = async (event) => {
     const arquivo = event.target.files?.[0];
     event.target.value = "";
@@ -1797,6 +1876,7 @@ export default function PainelEstoque() {
     try {
       setImportacaoProcessando(true);
       setError(null);
+      setReconciliacaoPreview(null);
       const buffer = await arquivo.arrayBuffer();
       const ExcelJS = (await import("exceljs")).default;
       const workbook = new ExcelJS.Workbook();
@@ -4727,6 +4807,45 @@ export default function PainelEstoque() {
 
           {abaHistoricoImportacoes === "planilhas" && (
             <>
+          {reconciliacoesRetiradas.length > 0 && (
+            <section className="mb-4 space-y-2 rounded-lg border border-orange-200 bg-orange-50 p-3">
+              <div>
+                <h3 className="text-sm font-bold text-orange-950">Correções auditadas de OR</h3>
+                <p className="text-xs text-orange-800">
+                  Histórico imutável das alterações confirmadas em retiradas importadas.
+                </p>
+              </div>
+              <div className="max-h-40 overflow-auto rounded border border-orange-200 bg-white">
+                <table className="w-full min-w-[720px] text-left text-xs">
+                  <thead className="sticky top-0 bg-orange-100 uppercase text-orange-900">
+                    <tr>
+                      <th className="px-3 py-2">Origem / Material</th>
+                      <th className="px-3 py-2 text-right">Anterior</th>
+                      <th className="px-3 py-2 text-right">Novo</th>
+                      <th className="px-3 py-2">Responsável</th>
+                      <th className="px-3 py-2">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-orange-100">
+                    {reconciliacoesRetiradas.map((evento) => (
+                      <tr key={evento.id}>
+                        <td className="px-3 py-2">
+                          <span className="block text-[10px] font-bold uppercase text-orange-700">
+                            {evento.aba}
+                          </span>
+                          <strong>{evento.material}</strong>
+                        </td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(evento.quantidadeAnterior)}</td>
+                        <td className="px-3 py-2 text-right font-bold">{formatarNumero(evento.quantidadeNova)}</td>
+                        <td className="px-3 py-2">{evento.reconciliadoPor}</td>
+                        <td className="px-3 py-2">{new Date(evento.reconciliadoEm).toLocaleString("pt-BR")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[620px] text-left text-xs">
               <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
@@ -5135,6 +5254,55 @@ export default function PainelEstoque() {
                 </div>
               </section>
             )}
+            {reconciliacaoPreview && (
+              <section className={`space-y-3 rounded-lg border p-4 ${
+                reconciliacaoPreview.divergencias > 0
+                  ? "border-orange-300 bg-orange-50"
+                  : "border-emerald-200 bg-emerald-50"
+              }`}>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Comparação com o histórico das ORs
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {reconciliacaoPreview.divergencias > 0
+                      ? `${reconciliacaoPreview.divergencias} alteração(ões) aguardando confirmação. O estoque atual não será movimentado.`
+                      : "Nenhuma diferença foi encontrada nas retiradas históricas."}
+                  </p>
+                </div>
+                {reconciliacaoPreview.itens?.length > 0 && (
+                  <div className="max-h-52 overflow-auto rounded border border-orange-200 bg-white">
+                    <table className="w-full min-w-[760px] text-left text-xs">
+                      <thead className="sticky top-0 bg-orange-100 uppercase text-orange-900">
+                        <tr>
+                          <th className="px-3 py-2">Origem / Material</th>
+                          <th className="px-3 py-2 text-right">Retirada anterior</th>
+                          <th className="px-3 py-2 text-right">Nova retirada</th>
+                          <th className="px-3 py-2 text-right">Saldo anterior</th>
+                          <th className="px-3 py-2 text-right">Novo saldo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-orange-100">
+                        {reconciliacaoPreview.itens.map((item) => (
+                          <tr key={item.retiradaImportadaId}>
+                            <td className="px-3 py-2">
+                              <span className="block text-[10px] font-bold uppercase text-orange-700">
+                                {item.aba}
+                              </span>
+                              <strong>{item.material}</strong>
+                            </td>
+                            <td className="px-3 py-2 text-right">{formatarNumero(item.quantidadeAnterior)}</td>
+                            <td className="px-3 py-2 text-right font-bold">{formatarNumero(item.quantidadeNova)}</td>
+                            <td className="px-3 py-2 text-right">{formatarNumero(item.saldoFinalAnterior)}</td>
+                            <td className="px-3 py-2 text-right font-bold">{formatarNumero(item.saldoFinalNovo)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
             {importacaoPreview.simulacao.length > 0 && (
               <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div>
@@ -5373,7 +5541,30 @@ export default function PainelEstoque() {
               O hash impede reaplicar o mesmo arquivo.
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {!['OR_AVULSA', 'CUSTOS', 'SALDOS'].includes(importacaoPreview.modo) && importacaoPreview.abasRetiradas.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => reconciliarHistoricoRetiradas(
+                      Boolean(reconciliacaoPreview?.divergencias),
+                    )}
+                    disabled={reconciliacaoProcessando || importacaoPreview.avisos.length > 0}
+                    className={`rounded-lg px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:bg-slate-300 ${
+                      reconciliacaoPreview?.divergencias
+                        ? "bg-orange-600 text-white hover:bg-orange-700"
+                        : "border border-orange-300 text-orange-800 hover:bg-orange-50"
+                    }`}
+                  >
+                    {reconciliacaoProcessando
+                      ? "Comparando..."
+                      : reconciliacaoPreview?.divergencias
+                        ? `Aplicar ${reconciliacaoPreview.divergencias} correção(ões)`
+                        : "Comparar histórico das ORs"}
+                  </button>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -5409,6 +5600,7 @@ export default function PainelEstoque() {
                     ? "Confirmar sincronização"
                     : "Confirmar importação"}
               </button>
+              </div>
             </div>
           </div>
         )}

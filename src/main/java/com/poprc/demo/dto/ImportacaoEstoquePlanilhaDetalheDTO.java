@@ -39,6 +39,7 @@ public record ImportacaoEstoquePlanilhaDetalheDTO(
     }
 
     public record Retirada(
+            Long retiradaImportadaId,
             String aba,
             Long ordemRetiradaId,
             String numeroOr,
