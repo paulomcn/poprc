@@ -9,6 +9,7 @@ application-local.properties
 rc_uploads/
 tmp/
 .runtime/
+outputs/
 scripts/ngrok.yml
 ~$*.docx
 .mvn/wrapper/maven-wrapper.jar
