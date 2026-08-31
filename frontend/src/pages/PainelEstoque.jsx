@@ -289,6 +289,8 @@ export default function PainelEstoque() {
   const [reconciliacaoProcessando, setReconciliacaoProcessando] = useState(false);
   const [notaFiscalDetalhe, setNotaFiscalDetalhe] = useState(null);
   const [abaHistoricoImportacoes, setAbaHistoricoImportacoes] = useState("notas-fiscais");
+  const [retiradaHistoricaBusca, setRetiradaHistoricaBusca] = useState("");
+  const [retiradaHistoricaSituacao, setRetiradaHistoricaSituacao] = useState("");
   const [fotoExpandida, setFotoExpandida] = useState(null);
   const [materialEmEdicao, setMaterialEmEdicao] = useState(null);
   const [ordemRetiradaAtual, setOrdemRetiradaAtual] = useState(null);
@@ -2275,6 +2277,29 @@ export default function PainelEstoque() {
   );
   const getFaltaRegistrada = (material) =>
     faltasRegistradasPorMaterial.get(String(material?.id)) || 0;
+  const retiradasHistoricasFiltradas = useMemo(() => {
+    const termo = normalizarTextoPlanilha(retiradaHistoricaBusca);
+    return retiradasImportadas
+      .filter((retirada) => {
+        const texto = normalizarTextoPlanilha([
+          retirada.numeroOr,
+          retirada.numeroOs,
+          retirada.comarca,
+          retirada.aba,
+          retirada.material,
+        ].filter(Boolean).join(" "));
+        const falta = Number(retirada.quantidadeFaltante || 0);
+        if (termo && !texto.includes(termo)) return false;
+        if (retiradaHistoricaSituacao === "COM_FALTA" && falta <= 0) return false;
+        if (retiradaHistoricaSituacao === "SEM_FALTA" && falta > 0) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const dataA = a.dataRetirada ? new Date(`${a.dataRetirada}T00:00:00`).getTime() : 0;
+        const dataB = b.dataRetirada ? new Date(`${b.dataRetirada}T00:00:00`).getTime() : 0;
+        return dataB - dataA || String(a.numeroOr || a.aba).localeCompare(String(b.numeroOr || b.aba), "pt-BR");
+      });
+  }, [retiradasImportadas, retiradaHistoricaBusca, retiradaHistoricaSituacao]);
   const numeroFiltro = (valor) => {
     if (valor === "") return null;
     const numero = Number(valor);
@@ -4674,7 +4699,7 @@ export default function PainelEstoque() {
       <Modal
         isOpen={showHistoricoImportacoesModal}
         onClose={handleCloseModal}
-        title="Histórico de importações do estoque"
+        title="Histórico do estoque"
       >
         <div className="space-y-4">
           <div className="flex w-fit rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -4706,7 +4731,131 @@ export default function PainelEstoque() {
             >
               Planilhas
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAbaHistoricoImportacoes("retiradas");
+                setImportacaoDetalhe(null);
+                setNotaFiscalDetalhe(null);
+              }}
+              className={`rounded-md px-4 py-2 text-xs font-bold ${
+                abaHistoricoImportacoes === "retiradas"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Retiradas/ORs
+            </button>
           </div>
+
+          {abaHistoricoImportacoes === "retiradas" && (
+            <section className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <span className="block text-[10px] font-bold uppercase text-slate-500">Registros</span>
+                  <strong className="text-lg text-slate-900">{retiradasImportadas.length}</strong>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <span className="block text-[10px] font-bold uppercase text-slate-500">ORs históricas</span>
+                  <strong className="text-lg text-slate-900">{ordensHistoricasImportadas}</strong>
+                </div>
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                  <span className="block text-[10px] font-bold uppercase text-rose-600">Itens com falta</span>
+                  <strong className="text-lg text-rose-800">
+                    {retiradasImportadas.filter((item) => Number(item.quantidadeFaltante || 0) > 0).length}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_190px]">
+                <label className="relative">
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    value={retiradaHistoricaBusca}
+                    onChange={(event) => setRetiradaHistoricaBusca(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"
+                    placeholder="Buscar por OR, OS, obra ou material"
+                  />
+                </label>
+                <select
+                  value={retiradaHistoricaSituacao}
+                  onChange={(event) => setRetiradaHistoricaSituacao(event.target.value)}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Todas as situações</option>
+                  <option value="COM_FALTA">Somente com falta</option>
+                  <option value="SEM_FALTA">Somente sem falta</option>
+                </select>
+              </div>
+
+              <div className="max-h-[28rem] overflow-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[980px] text-left text-xs">
+                  <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">OR / Obra</th>
+                      <th className="px-3 py-2">Material</th>
+                      <th className="px-3 py-2 text-right">Saldo inicial</th>
+                      <th className="px-3 py-2 text-right">Retirado</th>
+                      <th className="px-3 py-2 text-right">Saldo final</th>
+                      <th className="px-3 py-2 text-right">Em falta</th>
+                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {retiradasHistoricasFiltradas.map((item) => (
+                      <tr key={item.retiradaImportadaId} className="hover:bg-slate-50">
+                        <td className="px-3 py-2">
+                          <strong className="block text-slate-800">{item.numeroOr || item.aba}</strong>
+                          <span className="block text-slate-500">{item.numeroOs || "OS histórica"}</span>
+                          <span className="text-[11px] text-slate-400">{item.comarca}</span>
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-slate-800">{item.material}</td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.saldoInicial)}</td>
+                        <td className="px-3 py-2 text-right font-bold">{formatarNumero(item.quantidadeRetirada)}</td>
+                        <td className="px-3 py-2 text-right">{formatarNumero(item.saldoFinal)}</td>
+                        <td className={`px-3 py-2 text-right font-bold ${
+                          Number(item.quantidadeFaltante || 0) > 0 ? "text-rose-700" : "text-slate-400"
+                        }`}>
+                          {Number(item.quantidadeFaltante || 0) > 0
+                            ? formatarNumero(item.quantidadeFaltante)
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {item.dataRetirada
+                            ? new Date(`${item.dataRetirada}T00:00:00`).toLocaleDateString("pt-BR")
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {podeGerenciarEstoque ? (
+                            <button
+                              type="button"
+                              onClick={() => abrirEdicaoRetiradaHistorica(item)}
+                              className="rounded-md border border-slate-200 bg-white p-2 text-slate-600 hover:border-blue-300 hover:text-blue-700"
+                              title="Corrigir retirada histórica"
+                              aria-label={`Corrigir retirada histórica de ${item.material}`}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {retiradasHistoricasFiltradas.length === 0 && (
+                      <tr>
+                        <td colSpan="8" className="px-3 py-10 text-center text-slate-400">
+                          Nenhuma retirada encontrada para os filtros informados.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           {abaHistoricoImportacoes === "notas-fiscais" && (
             <>
