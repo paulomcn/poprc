@@ -3,6 +3,8 @@ package com.poprc.demo.service;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaDetalheDTO;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
+import com.poprc.demo.dto.AtualizacaoCustosPlanilhaRequest;
+import com.poprc.demo.dto.SincronizacaoSaldosPlanilhaRequest;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.Contrato;
 import com.poprc.demo.model.Funcionario;
@@ -51,6 +53,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Comparator;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -59,6 +63,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class ImportacaoEstoquePlanilhaService {
+
+    private static final BigDecimal METROS_POR_BOBINA_CABO = new BigDecimal("305");
 
     private final ImportacaoEstoquePlanilhaRepository importacaoRepository;
     private final ImportacaoEstoqueItemPlanilhaRepository itemImportacaoRepository;
@@ -172,13 +178,15 @@ public class ImportacaoEstoquePlanilhaService {
                                     + " não foi encontrado para complementar a importação.");
                 }
                 material = novoMaterial(item, local, sequenciaisPartNumber);
-                material.setEstoqueMinimo(valorNaoNegativo(request.estoqueMinimoPadrao()));
+                material.setEstoqueMinimo(estoqueMinimoImportado(
+                        material, request.estoqueMinimoPadrao()));
                 material = estoqueService.cadastrarMaterial(material);
                 materiaisPorNome.put(nomeNormalizado, List.of(material));
                 criados++;
                 acao = "CRIADO";
             } else {
                 material = correspondencias.getFirst();
+                normalizarCaboEmBobina(material);
                 if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
                         || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
                     throw new IllegalArgumentException(
@@ -190,12 +198,14 @@ public class ImportacaoEstoquePlanilhaService {
                 }
                 acao = complementacao ? "REGISTRO_COMPLEMENTAR" : "ATUALIZADO";
                 if (!complementacao && request.estoqueMinimoPadrao() != null) {
-                    material.setEstoqueMinimo(valorNaoNegativo(request.estoqueMinimoPadrao()));
+                    material.setEstoqueMinimo(estoqueMinimoImportado(
+                            material, request.estoqueMinimoPadrao()));
                     materialRepository.save(material);
                 }
             }
 
             BigDecimal saldoAnterior = saldoMaterial(material);
+            BigDecimal custoAnterior = valorNaoNegativo(material.getCustoMedio());
             BigDecimal saldoDesejado = item.saldoEfetivo();
             if (!complementacao) {
                 reconciliarSaldoImportado(
@@ -214,7 +224,8 @@ public class ImportacaoEstoquePlanilhaService {
                 }
             }
             if (registrarItensHistorico) {
-                registrarItemImportado(importacao, material, item, saldoAnterior, saldoDesejado, acao);
+                registrarItemImportado(
+                        importacao, material, item, saldoAnterior, saldoDesejado, custoAnterior, acao);
             }
             valorTotal = valorTotal.add(
                     item.custoUnitario().multiply(saldoDesejado));
@@ -281,6 +292,248 @@ public class ImportacaoEstoquePlanilhaService {
                 complementacao ? "COMPLEMENTADA" : "IMPORTADA");
     }
 
+    @Transactional
+    public ImportacaoEstoquePlanilhaResultadoDTO atualizarCustos(
+            AtualizacaoCustosPlanilhaRequest request, String usuario) {
+        validarAtualizacaoCustos(request);
+        String hash = request.hashSha256().trim().toLowerCase(Locale.ROOT);
+        if (importacaoRepository.existsByHashSha256(hash)) {
+            throw new IllegalArgumentException(
+                    "Esta planilha já foi importada. Nenhum custo foi alterado.");
+        }
+
+        String responsavel = usuario != null && !usuario.isBlank()
+                ? usuario
+                : "Usuário autenticado";
+        ImportacaoEstoquePlanilha importacao = new ImportacaoEstoquePlanilha();
+        importacao.setNomeArquivo(limitar(request.nomeArquivo().trim(), 255));
+        importacao.setHashSha256(hash);
+        importacao.setDataImportacao(LocalDateTime.now());
+        importacao.setImportadoPor(limitar(responsavel, 255));
+        importacao.setTipoImportacao("ATUALIZACAO_CUSTOS");
+        importacao.setSaldoConsolidado(false);
+        importacao = importacaoRepository.saveAndFlush(importacao);
+
+        Set<Long> materiaisRecebidos = new HashSet<>();
+        int atualizados = 0;
+        for (AtualizacaoCustosPlanilhaRequest.ItemCusto item : request.itens()) {
+            if (item == null || item.materialId() == null) {
+                throw new IllegalArgumentException("Todo custo precisa estar vinculado a um material.");
+            }
+            if (!materiaisRecebidos.add(item.materialId())) {
+                throw new IllegalArgumentException(
+                        "O mesmo material aparece mais de uma vez na atualização de custos.");
+            }
+            if (item.nomePlanilha() == null || item.nomePlanilha().isBlank()) {
+                throw new IllegalArgumentException("O nome do material na planilha é obrigatório.");
+            }
+            if (item.custoUnitario() == null || item.custoUnitario().signum() < 0) {
+                throw new IllegalArgumentException(
+                        "O custo de " + item.nomePlanilha().trim() + " é inválido.");
+            }
+
+            Material material = materialRepository.findByIdForUpdate(item.materialId())
+                    .filter(registro -> !Boolean.FALSE.equals(registro.getAtivo()))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Material não encontrado ou removido: " + item.nomePlanilha().trim() + "."));
+            BigDecimal custoAnterior = valorNaoNegativo(material.getCustoMedio())
+                    .setScale(4, RoundingMode.HALF_UP);
+            BigDecimal custoNovo = item.custoUnitario().setScale(4, RoundingMode.HALF_UP);
+            BigDecimal saldoPreservado = saldoMaterial(material);
+            String acao = custoAnterior.compareTo(custoNovo) == 0
+                    ? "CUSTO_MANTIDO"
+                    : "CUSTO_ATUALIZADO";
+
+            material.setCustoMedio(custoNovo);
+            materialRepository.save(material);
+
+            ImportacaoEstoqueItemPlanilha registro = new ImportacaoEstoqueItemPlanilha();
+            registro.setImportacao(importacao);
+            registro.setMaterial(material);
+            registro.setNomePlanilha(limitar(item.nomePlanilha().trim(), 255));
+            registro.setSaldoAnterior(saldoPreservado);
+            registro.setSaldoImportado(saldoPreservado);
+            registro.setCustoAnterior(custoAnterior);
+            registro.setCustoUnitario(custoNovo);
+            registro.setLinhaOrigem(item.linhaOrigem());
+            registro.setAcao(acao);
+            itemImportacaoRepository.save(registro);
+            if ("CUSTO_ATUALIZADO".equals(acao)) {
+                atualizados++;
+            }
+        }
+
+        BigDecimal valorTotalEstoque = materialRepository.findByAtivoTrueOrderByNomeAsc().stream()
+                .map(Material::getValorTotalEstoque)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        importacao.setItensProcessados(request.itens().size());
+        importacao.setMateriaisAtualizados(atualizados);
+        importacao.setValorTotalImportado(valorTotalEstoque);
+        importacaoRepository.save(importacao);
+
+        return new ImportacaoEstoquePlanilhaResultadoDTO(
+                importacao.getId(),
+                importacao.getNomeArquivo(),
+                importacao.getDataImportacao(),
+                importacao.getImportadoPor(),
+                "Custos, sem alteração de saldo",
+                importacao.getItensProcessados(),
+                0,
+                importacao.getMateriaisAtualizados(),
+                0,
+                0,
+                importacao.getValorTotalImportado(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "CUSTOS_ATUALIZADOS");
+    }
+
+    @Transactional
+    public ImportacaoEstoquePlanilhaResultadoDTO sincronizarSaldos(
+            SincronizacaoSaldosPlanilhaRequest request, String usuario) {
+        validarSincronizacaoSaldos(request);
+        String hash = hashModo("SALDOS", request.hashSha256());
+        if (importacaoRepository.existsByHashSha256(hash)) {
+            throw new IllegalArgumentException(
+                    "Os saldos desta planilha já foram sincronizados. Nenhuma quantidade foi alterada.");
+        }
+
+        LocalEstoque local = localEstoqueRepository.findById(request.localEstoqueId())
+                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Depósito de destino não encontrado ou inativo."));
+        String responsavel = usuario != null && !usuario.isBlank()
+                ? usuario
+                : "Usuário autenticado";
+
+        List<Material> materiaisAtivos = materialRepository.findByAtivoTrueOrderByNomeAsc();
+        Set<Long> idsEsperados = materiaisAtivos.stream()
+                .filter(material -> !TipoControleEstoque.BOBINA.equals(material.getTipoControle())
+                        && !TipoControleEstoque.ROLO.equals(material.getTipoControle()))
+                .map(Material::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<Long> idsRecebidos = request.itens().stream()
+                .map(SincronizacaoSaldosPlanilhaRequest.ItemSaldo::materialId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!idsRecebidos.equals(idsEsperados)) {
+            throw new IllegalArgumentException(
+                    "A aba ESTOQUE ATUAL deve conter todos os materiais ativos controlados por saldo.");
+        }
+
+        ImportacaoEstoquePlanilha importacao = new ImportacaoEstoquePlanilha();
+        importacao.setNomeArquivo(limitar(request.nomeArquivo().trim(), 255));
+        importacao.setHashSha256(hash);
+        importacao.setDataImportacao(LocalDateTime.now());
+        importacao.setImportadoPor(limitar(responsavel, 255));
+        importacao.setLocalEstoque(local);
+        importacao.setTipoImportacao("SINCRONIZACAO_SALDOS");
+        importacao.setSaldoConsolidado(true);
+        importacao = importacaoRepository.saveAndFlush(importacao);
+
+        int atualizados = 0;
+        int positivos = 0;
+        int negativos = 0;
+        Set<Long> materiaisRecebidos = new HashSet<>();
+        for (SincronizacaoSaldosPlanilhaRequest.ItemSaldo item : request.itens()) {
+            validarItemSincronizacao(item, materiaisRecebidos);
+            Material material = materialRepository.findByIdForUpdate(item.materialId())
+                    .filter(registro -> !Boolean.FALSE.equals(registro.getAtivo()))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Material não encontrado ou removido: " + item.nomePlanilha().trim() + "."));
+            if (!normalizar(material.getNome()).equals(normalizar(item.nomePlanilha()))) {
+                throw new IllegalArgumentException(
+                        "O material da linha " + item.linhaOrigem()
+                                + " não corresponde mais ao cadastro do estoque.");
+            }
+            if (TipoControleEstoque.BOBINA.equals(material.getTipoControle())
+                    || TipoControleEstoque.ROLO.equals(material.getTipoControle())) {
+                throw new IllegalArgumentException(
+                        "Bobinas e rolos rastreáveis devem ser reconciliados por unidade física.");
+            }
+            BigDecimal saldoDesejado = item.saldo().setScale(3, RoundingMode.HALF_UP)
+                    .stripTrailingZeros();
+            if (!controlaMetragem(material) && !numeroInteiro(saldoDesejado)) {
+                throw new IllegalArgumentException(
+                        "O saldo de " + material.getNome() + " precisa ser inteiro.");
+            }
+            BigDecimal reservado = saldoReservado(material);
+            if (saldoDesejado.compareTo(reservado) < 0) {
+                throw new IllegalArgumentException(
+                        "O saldo de " + material.getNome() + " não pode ficar abaixo das "
+                                + reservado.stripTrailingZeros().toPlainString() + " unidades reservadas.");
+            }
+
+            BigDecimal saldoAnterior = saldoMaterial(material);
+            BigDecimal custoPreservado = valorNaoNegativo(material.getCustoMedio())
+                    .setScale(4, RoundingMode.HALF_UP);
+            int comparacao = saldoDesejado.compareTo(saldoAnterior);
+            String acao = comparacao > 0
+                    ? "SALDO_AUMENTADO"
+                    : comparacao < 0 ? "SALDO_REDUZIDO" : "SALDO_MANTIDO";
+            if (comparacao != 0) {
+                reconciliarSaldoImportado(
+                        material,
+                        local,
+                        saldoDesejado,
+                        custoPreservado,
+                        "Sincronização da aba ESTOQUE ATUAL de " + importacao.getNomeArquivo(),
+                        responsavel);
+                atualizados++;
+                if (comparacao > 0) {
+                    positivos++;
+                } else {
+                    negativos++;
+                }
+            }
+
+            ImportacaoEstoqueItemPlanilha registro = new ImportacaoEstoqueItemPlanilha();
+            registro.setImportacao(importacao);
+            registro.setMaterial(material);
+            registro.setNomePlanilha(limitar(item.nomePlanilha().trim(), 255));
+            registro.setSaldoAnterior(saldoAnterior);
+            registro.setSaldoImportado(saldoDesejado);
+            registro.setCustoAnterior(custoPreservado);
+            registro.setCustoUnitario(custoPreservado);
+            registro.setLinhaOrigem(item.linhaOrigem());
+            registro.setAcao(acao);
+            itemImportacaoRepository.save(registro);
+        }
+
+        BigDecimal valorTotalEstoque = materialRepository.findByAtivoTrueOrderByNomeAsc().stream()
+                .map(Material::getValorTotalEstoque)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        importacao.setItensProcessados(request.itens().size());
+        importacao.setMateriaisAtualizados(atualizados);
+        importacao.setAjustesPositivos(positivos);
+        importacao.setAjustesNegativos(negativos);
+        importacao.setValorTotalImportado(valorTotalEstoque);
+        importacaoRepository.save(importacao);
+
+        return new ImportacaoEstoquePlanilhaResultadoDTO(
+                importacao.getId(),
+                importacao.getNomeArquivo(),
+                importacao.getDataImportacao(),
+                importacao.getImportadoPor(),
+                local.getNome(),
+                importacao.getItensProcessados(),
+                0,
+                importacao.getMateriaisAtualizados(),
+                importacao.getAjustesPositivos(),
+                importacao.getAjustesNegativos(),
+                importacao.getValorTotalImportado(),
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                "SALDOS_SINCRONIZADOS");
+    }
+
     @Transactional(readOnly = true)
     public List<ImportacaoEstoquePlanilhaDetalheDTO> listarHistorico() {
         return importacaoRepository.findAllByOrderByDataImportacaoDesc().stream()
@@ -314,6 +567,7 @@ public class ImportacaoEstoquePlanilhaService {
         importacao.setDataImportacao(LocalDateTime.now());
         importacao.setImportadoPor(limitar(responsavel, 255));
         importacao.setLocalEstoque(local);
+        importacao.setTipoImportacao("INVENTARIO_COMPLETO");
         return importacaoRepository.saveAndFlush(importacao);
     }
 
@@ -323,6 +577,7 @@ public class ImportacaoEstoquePlanilhaService {
             ImportacaoEstoquePlanilhaRequest.ItemImportacao item,
             BigDecimal saldoAnterior,
             BigDecimal saldoDesejado,
+            BigDecimal custoAnterior,
             String acao) {
         ImportacaoEstoqueItemPlanilha registro = new ImportacaoEstoqueItemPlanilha();
         registro.setImportacao(importacao);
@@ -330,7 +585,9 @@ public class ImportacaoEstoquePlanilhaService {
         registro.setNomePlanilha(limitar(item.nome().trim(), 255));
         registro.setSaldoAnterior(saldoAnterior);
         registro.setSaldoImportado(saldoDesejado);
+        registro.setCustoAnterior(custoAnterior);
         registro.setCustoUnitario(item.custoUnitario());
+        registro.setLinhaOrigem(item.linhaOrigem());
         registro.setAcao(acao);
         itemImportacaoRepository.save(registro);
     }
@@ -442,7 +699,6 @@ public class ImportacaoEstoquePlanilhaService {
         int faltas = 0;
         Set<String> abasProcessadas = new HashSet<>();
         for (ImportacaoEstoquePlanilhaRequest.RetiradaImportacao retirada : listaRetiradas) {
-            validarRetirada(retirada, autoCriarOperacoes, saldoConsolidado);
             String aba = retirada.aba().trim();
             OrdemRetirada ordemRetirada = orPorAba.get(normalizar(aba));
             Comarca comarca = ordemRetirada != null
@@ -454,6 +710,7 @@ public class ImportacaoEstoquePlanilhaService {
                 continue;
             }
             Material material = materialUnico(materiaisPorNome, retirada.nomeMaterial(), aba);
+            validarRetirada(retirada, autoCriarOperacoes, saldoConsolidado, material);
             BigDecimal faltante = retirada.saldoFinal().signum() < 0
                     ? retirada.saldoFinal().abs()
                     : BigDecimal.ZERO;
@@ -556,8 +813,11 @@ public class ImportacaoEstoquePlanilhaService {
         comarcaRepository.save(comarca);
 
         Map<String, BigDecimal> totaisPorMaterial = new LinkedHashMap<>();
+        Map<String, BigDecimal> totaisEfetivosPorMaterial = new LinkedHashMap<>();
         retiradasCidade.forEach(retirada -> totaisPorMaterial.merge(
                 normalizar(retirada.nomeMaterial()), retirada.quantidadeRetirada(), BigDecimal::add));
+        retiradasCidade.forEach(retirada -> totaisEfetivosPorMaterial.merge(
+                normalizar(retirada.nomeMaterial()), quantidadeEfetivamenteRetirada(retirada), BigDecimal::add));
         for (Map.Entry<String, BigDecimal> total : totaisPorMaterial.entrySet()) {
             Material material = materiaisPorNome.get(total.getKey()).getFirst();
             MaterialItem item = new MaterialItem();
@@ -565,7 +825,7 @@ public class ImportacaoEstoquePlanilhaService {
             item.setMaterial(material);
             item.setNomeMaterial(material.getNome());
             item.setQuantidadePrevista(total.getValue());
-            item.setQuantidadeAuditada(total.getValue());
+            item.setQuantidadeAuditada(totaisEfetivosPorMaterial.get(total.getKey()));
             item.setEstoqueReservado(false);
             item.setEstoqueBaixado(true);
             item.setDataHoraRetirada(primeiraData.atStartOfDay());
@@ -616,11 +876,17 @@ public class ImportacaoEstoquePlanilhaService {
             item.setNomeMaterial(material.getNome());
             item.setCategoria(material.getCategoria());
             item.setQuantidadeSolicitada(retirada.quantidadeRetirada());
-            item.setQuantidadeRetirada(retirada.quantidadeRetirada());
+            item.setQuantidadeRetirada(quantidadeEfetivamenteRetirada(retirada));
             item.setQuantidadeDevolvida(BigDecimal.ZERO);
             ordemRetiradaItemRepository.save(item);
         }
         return ordemRetirada;
+    }
+
+    private BigDecimal quantidadeEfetivamenteRetirada(
+            ImportacaoEstoquePlanilhaRequest.RetiradaImportacao retirada) {
+        BigDecimal saldoDisponivel = retirada.saldoInicial().max(BigDecimal.ZERO);
+        return retirada.quantidadeRetirada().min(saldoDisponivel);
     }
 
     private void reconciliarSaldosLegados(
@@ -781,7 +1047,9 @@ public class ImportacaoEstoquePlanilhaService {
                                 item.getMaterial().getNome(),
                                 item.getSaldoAnterior(),
                                 item.getSaldoImportado(),
+                                item.getCustoAnterior(),
                                 item.getCustoUnitario(),
+                                item.getLinhaOrigem(),
                                 item.getAcao()))
                         .toList()
                 : List.of();
@@ -799,7 +1067,10 @@ public class ImportacaoEstoquePlanilhaService {
                 importacao.getDataComplementacao(),
                 importacao.getImportadoPor(),
                 importacao.getComplementadoPor(),
-                importacao.getLocalEstoque().getNome(),
+                importacao.getLocalEstoque() != null
+                        ? importacao.getLocalEstoque().getNome()
+                        : "Custos, sem alteração de saldo",
+                importacao.getTipoImportacao(),
                 importacao.getItensProcessados(),
                 importacao.getMateriaisCriados(),
                 importacao.getMateriaisAtualizados(),
@@ -838,7 +1109,8 @@ public class ImportacaoEstoquePlanilhaService {
     private void validarRetirada(
             ImportacaoEstoquePlanilhaRequest.RetiradaImportacao retirada,
             boolean autoCriarOperacoes,
-            boolean saldoConsolidado) {
+            boolean saldoConsolidado,
+            Material material) {
         if (retirada == null || retirada.aba() == null || retirada.aba().isBlank()) {
             throw new IllegalArgumentException("Toda retirada importada precisa informar a aba de origem.");
         }
@@ -863,7 +1135,8 @@ public class ImportacaoEstoquePlanilhaService {
                             + " na aba " + retirada.aba()
                             + referenciaLinha(retirada.linhaOrigem()) + ".");
         }
-        if (!saldoConsolidado && (!numeroInteiro(retirada.saldoInicial())
+        if (!saldoConsolidado && material != null && !controlaMetragem(material)
+                && (!numeroInteiro(retirada.saldoInicial())
                 || !numeroInteiro(retirada.quantidadeRetirada())
                 || !numeroInteiro(retirada.saldoFinal()))) {
             throw new IllegalArgumentException(
@@ -883,11 +1156,16 @@ public class ImportacaoEstoquePlanilhaService {
         material.setPartNumber(gerarPartNumber(item.nome(), sequenciais));
         material.setCategoria("MATERIAL_CONSUMO");
         material.setDescricao("Material importado da planilha de estoque.");
+        boolean caboEmBobina = ehCaboEmBobina(item.nome());
         boolean fracionado = item.saldoEfetivo().stripTrailingZeros().scale() > 0;
-        material.setTipoControle(fracionado
-                ? TipoControleEstoque.FRACIONADO
-                : TipoControleEstoque.UNIDADE);
-        material.setUnidadeMedida(UnidadeMedida.UNIDADE);
+        material.setTipoControle(caboEmBobina
+                ? TipoControleEstoque.METRAGEM
+                : fracionado ? TipoControleEstoque.FRACIONADO : TipoControleEstoque.UNIDADE);
+        material.setUnidadeMedida(caboEmBobina ? UnidadeMedida.METRO : UnidadeMedida.UNIDADE);
+        if (caboEmBobina) {
+            material.setDimensao("Bobina de 305 m");
+            material.setComprimentoPorPeca(METROS_POR_BOBINA_CABO);
+        }
         material.setQuantidadeDisponivel(0);
         material.setQuantidadeReservada(0);
         material.setMetragemDisponivel(BigDecimal.ZERO);
@@ -896,6 +1174,41 @@ public class ImportacaoEstoquePlanilhaService {
         material.setCustoMedio(item.custoUnitario());
         material.setLocalizacao(local.getNome());
         return material;
+    }
+
+    private void normalizarCaboEmBobina(Material material) {
+        if (!ehCaboEmBobina(material.getNome())
+                || !TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())) {
+            return;
+        }
+        material.setTipoControle(TipoControleEstoque.METRAGEM);
+        material.setUnidadeMedida(UnidadeMedida.METRO);
+        material.setDimensao("Bobina de 305 m");
+        material.setComprimentoPorPeca(METROS_POR_BOBINA_CABO);
+        material.setEstoqueMinimo(
+                valorNaoNegativo(material.getEstoqueMinimo()).multiply(METROS_POR_BOBINA_CABO));
+        materialRepository.save(material);
+    }
+
+    private boolean ehCaboEmBobina(String nome) {
+        String normalizado = normalizar(nome);
+        return (normalizado.contains("caixa") && normalizado.contains("cabo")
+                && normalizado.contains("cat6"))
+                || (normalizado.contains("bobina") && normalizado.contains("cabo"));
+    }
+
+    private boolean controlaMetragem(Material material) {
+        return material != null && (TipoControleEstoque.FRACIONADO.equals(material.getTipoControle())
+                || TipoControleEstoque.METRAGEM.equals(material.getTipoControle())
+                || TipoControleEstoque.BOBINA.equals(material.getTipoControle())
+                || TipoControleEstoque.ROLO.equals(material.getTipoControle()));
+    }
+
+    private BigDecimal estoqueMinimoImportado(Material material, BigDecimal estoqueMinimo) {
+        BigDecimal minimo = valorNaoNegativo(estoqueMinimo);
+        return ehCaboEmBobina(material.getNome())
+                ? minimo.multiply(METROS_POR_BOBINA_CABO)
+                : minimo;
     }
 
     private String gerarPartNumber(String nome, Map<String, Integer> sequenciais) {
@@ -975,7 +1288,8 @@ public class ImportacaoEstoquePlanilhaService {
             validarRetirada(
                     retirada,
                     Boolean.TRUE.equals(request.autoCriarOperacoes()),
-                    Boolean.TRUE.equals(request.saldoConsolidado()));
+                    Boolean.TRUE.equals(request.saldoConsolidado()),
+                    null);
             String chaveMaterial = normalizar(retirada.nomeMaterial());
             ImportacaoEstoquePlanilhaRequest.ItemImportacao itemBase = itensPorNome.get(chaveMaterial);
             if (itemBase == null) {
@@ -1113,6 +1427,87 @@ public class ImportacaoEstoquePlanilhaService {
         }
         return BigDecimal.valueOf(
                 material.getQuantidadeDisponivel() != null ? material.getQuantidadeDisponivel() : 0);
+    }
+
+    private void validarAtualizacaoCustos(AtualizacaoCustosPlanilhaRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Informe a planilha de atualização de custos.");
+        }
+        if (request.nomeArquivo() == null || request.nomeArquivo().isBlank()) {
+            throw new IllegalArgumentException("O nome do arquivo é obrigatório.");
+        }
+        if (request.hashSha256() == null
+                || !request.hashSha256().trim().matches("(?i)^[a-f0-9]{64}$")) {
+            throw new IllegalArgumentException("O identificador da planilha é inválido.");
+        }
+        if (request.itens() == null || request.itens().isEmpty()) {
+            throw new IllegalArgumentException("A planilha não possui custos vinculados a materiais.");
+        }
+    }
+
+    private void validarSincronizacaoSaldos(SincronizacaoSaldosPlanilhaRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Informe a planilha de sincronização de saldos.");
+        }
+        if (request.nomeArquivo() == null || request.nomeArquivo().isBlank()) {
+            throw new IllegalArgumentException("O nome do arquivo é obrigatório.");
+        }
+        if (request.hashSha256() == null
+                || !request.hashSha256().trim().matches("(?i)^[a-f0-9]{64}$")) {
+            throw new IllegalArgumentException("O identificador da planilha é inválido.");
+        }
+        if (request.localEstoqueId() == null) {
+            throw new IllegalArgumentException("Selecione o depósito que receberá os ajustes.");
+        }
+        if (request.itens() == null || request.itens().isEmpty()) {
+            throw new IllegalArgumentException("A aba ESTOQUE ATUAL não possui saldos válidos.");
+        }
+        if (request.itens().size() > 1000) {
+            throw new IllegalArgumentException("A sincronização aceita no máximo 1.000 materiais.");
+        }
+        for (SincronizacaoSaldosPlanilhaRequest.ItemSaldo item : request.itens()) {
+            if (item == null || item.materialId() == null
+                    || item.nomePlanilha() == null || item.nomePlanilha().isBlank()
+                    || item.saldo() == null || item.saldo().signum() < 0) {
+                throw new IllegalArgumentException(
+                        "A sincronização contém uma linha sem material ou com saldo inválido.");
+            }
+        }
+    }
+
+    private void validarItemSincronizacao(
+            SincronizacaoSaldosPlanilhaRequest.ItemSaldo item,
+            Set<Long> materiaisRecebidos) {
+        if (!materiaisRecebidos.add(item.materialId())) {
+            throw new IllegalArgumentException(
+                    "O mesmo material aparece mais de uma vez na sincronização de saldos.");
+        }
+    }
+
+    private BigDecimal saldoReservado(Material material) {
+        if (controlaMetragem(material)) {
+            return valorNaoNegativo(material.getMetragemReservada());
+        }
+        return BigDecimal.valueOf(
+                Math.max(0, material.getQuantidadeReservada() != null
+                        ? material.getQuantidadeReservada()
+                        : 0));
+    }
+
+    private String hashModo(String modo, String hashOriginal) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(
+                    (modo + ":" + hashOriginal.trim().toLowerCase(Locale.ROOT))
+                            .getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexadecimal = new StringBuilder(bytes.length * 2);
+            for (byte valor : bytes) {
+                hexadecimal.append(String.format("%02x", valor & 0xff));
+            }
+            return hexadecimal.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 não está disponível no servidor.", exception);
+        }
     }
 
     private BigDecimal valorNaoNegativo(BigDecimal valor) {

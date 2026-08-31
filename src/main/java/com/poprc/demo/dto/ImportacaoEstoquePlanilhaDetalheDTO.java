@@ -13,6 +13,7 @@ public record ImportacaoEstoquePlanilhaDetalheDTO(
         String importadoPor,
         String complementadoPor,
         String deposito,
+        String tipoImportacao,
         Integer itensProcessados,
         Integer materiaisCriados,
         Integer materiaisAtualizados,
@@ -31,7 +32,9 @@ public record ImportacaoEstoquePlanilhaDetalheDTO(
             String material,
             BigDecimal saldoAnterior,
             BigDecimal saldoImportado,
+            BigDecimal custoAnterior,
             BigDecimal custoUnitario,
+            Integer linhaOrigem,
             String acao) {
     }
 

@@ -29,9 +29,16 @@ import Alert from "../components/Alert";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  arredondarQuantidadeEstoque,
   celulaPossuiFormulaSemResultado,
+  custoPlanilhaParaEstoque,
+  ehCaboEmBobina305,
+  extrairAtualizacaoCustos,
+  extrairSincronizacaoSaldos,
+  extrairOrdensRetiradaAvulsas,
   localizarCabecalhoEstoque,
   normalizarTextoPlanilha,
+  quantidadePlanilhaParaEstoque,
   valorDaCelula,
 } from "../utils/planilhaEstoque";
 import {
@@ -252,6 +259,15 @@ export default function PainelEstoque() {
   const [historicoDataInicio, setHistoricoDataInicio] = useState("");
   const [historicoDataFim, setHistoricoDataFim] = useState("");
   const [historicoPessoaFiltro, setHistoricoPessoaFiltro] = useState("");
+  const [estoqueBusca, setEstoqueBusca] = useState("");
+  const [estoqueCategoriaFiltro, setEstoqueCategoriaFiltro] = useState("");
+  const [estoqueSituacaoFiltro, setEstoqueSituacaoFiltro] = useState("");
+  const [estoqueDisponivelMinimo, setEstoqueDisponivelMinimo] = useState("");
+  const [estoqueDisponivelMaximo, setEstoqueDisponivelMaximo] = useState("");
+  const [estoqueValorMinimo, setEstoqueValorMinimo] = useState("");
+  const [estoqueValorMaximo, setEstoqueValorMaximo] = useState("");
+  const [estoqueFaltaMinima, setEstoqueFaltaMinima] = useState("");
+  const [estoqueOrdenacao, setEstoqueOrdenacao] = useState("NOME_ASC");
 
   // Modais de controle
   const [showEntradaModal, setShowEntradaModal] = useState(false);
@@ -357,6 +373,7 @@ export default function PainelEstoque() {
   const [importacaoResponsavelId, setImportacaoResponsavelId] = useState("");
   const [importacaoProcessando, setImportacaoProcessando] = useState(false);
   const importacaoInputRef = useRef(null);
+  const sincronizacaoSaldosInputRef = useRef(null);
   const [notaFiscalPreview, setNotaFiscalPreview] = useState(null);
   const [notaFiscalLocalId, setNotaFiscalLocalId] = useState("");
   const [notaFiscalProcessando, setNotaFiscalProcessando] = useState(false);
@@ -514,9 +531,96 @@ export default function PainelEstoque() {
       );
       const cabecalho = origem ? localizarCabecalhoEstoque(origem) : null;
       if (!origem || !cabecalho) {
-        throw new Error(
-          "Não foi encontrada a tabela consolidada da aba ESTOQUE ATUAL.",
+        const atualizacaoCustos = extrairAtualizacaoCustos(workbook, materiais);
+        if (atualizacaoCustos?.itens.length > 0) {
+          const digest = await crypto.subtle.digest("SHA-256", buffer);
+          const hashSha256 = Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+          const custosPorMaterial = new Map(
+            atualizacaoCustos.itens
+              .filter((item) => item.materialId && item.erros.length === 0)
+              .map((item) => [item.materialId, item.custoUnitario]),
+          );
+          const valorTotalAnterior = materiais.reduce(
+            (total, material) => total + valorTotalMaterial(material),
+            0,
+          );
+          const valorTotal = materiais.reduce((total, material) => {
+            const custoNovo = custosPorMaterial.get(material.id);
+            return total + (custoNovo == null
+              ? valorTotalMaterial(material)
+              : getSaldoEmEstoque(material) * custoNovo);
+          }, 0);
+          setImportacaoPreview({
+            modo: "CUSTOS",
+            nomeArquivo: arquivo.name,
+            hashSha256,
+            abaOrigem: atualizacaoCustos.abaOrigem,
+            abaCatalogo: atualizacaoCustos.abaOrigem,
+            abasRetiradas: [],
+            retornos: [],
+            simulacao: [],
+            entradas: [],
+            estoqueMinimoPadrao: null,
+            itens: atualizacaoCustos.itens,
+            avisos: atualizacaoCustos.avisos,
+            valorTotal,
+            valorTotalAnterior,
+          });
+          return;
+        }
+        const ordemAvulsa = extrairOrdensRetiradaAvulsas(workbook, materiais);
+        if (ordemAvulsa.abasRetiradas.length === 0 && ordemAvulsa.avisos.length === 0) {
+          throw new Error(
+            "Não foi encontrada uma aba válida de ESTOQUE ATUAL ou ORDEM DE RETIRADA.",
+          );
+        }
+        const digest = await crypto.subtle.digest("SHA-256", buffer);
+        const hashSha256 = Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+        const depositoPadrao = locaisEstoque.find(
+          (local) => normalizarTextoPlanilha(local.nome) === "estoque principal",
+        ) || locaisEstoque.find((local) => local.ativo !== false);
+        const contratoPadrao = contratos.find(
+          (contrato) => String(contrato.contrato || "").trim() === "0001",
+        ) || contratos.find((contrato) => !contrato.arquivado);
+        const responsavelPadrao = funcionarios.find(
+          (funcionario) => funcionario.nome === usuario?.nome && funcionario.ativo !== false,
+        ) || funcionarios.find((funcionario) => funcionario.ativo !== false);
+        setImportacaoLocalId(depositoPadrao?.id ? String(depositoPadrao.id) : "");
+        setImportacaoContratoId(contratoPadrao?.id ? String(contratoPadrao.id) : "");
+        setImportacaoResponsavelId(
+          responsavelPadrao?.id ? String(responsavelPadrao.id) : "",
         );
+        setImportacaoPreview({
+          modo: "OR_AVULSA",
+          nomeArquivo: arquivo.name,
+          hashSha256,
+          abaOrigem: null,
+          abaCatalogo: null,
+          abasRetiradas: ordemAvulsa.abasRetiradas,
+          retornos: [],
+          simulacao: [],
+          estoqueMinimoPadrao: null,
+          itens: ordemAvulsa.itens,
+          entradas: [],
+          avisos: ordemAvulsa.avisos,
+          valorTotal: materiais.reduce(
+            (total, material) => total + valorTotalMaterial(material),
+            0,
+          ) - ordemAvulsa.abasRetiradas.flatMap((aba) => aba.itens).reduce(
+            (total, item) => total
+              + Math.min(item.saldoInicial, item.quantidadeRetirada) * item.custoUnitario,
+            0,
+          ),
+          valorTotalAnterior: materiais.reduce(
+            (total, material) => total + valorTotalMaterial(material),
+            0,
+          ),
+        });
+        return;
       }
 
       const configuracoes = workbook.worksheets.find(
@@ -540,8 +644,14 @@ export default function PainelEstoque() {
         }
         const celulaSaldo = origem.getCell(linha, cabecalho.quantidade);
         const celulaCusto = origem.getCell(linha, cabecalho.custo);
-        const saldo = Number(valorDaCelula(celulaSaldo));
-        const custoUnitario = Number(valorDaCelula(celulaCusto));
+        const saldo = quantidadePlanilhaParaEstoque(
+          nome,
+          valorDaCelula(celulaSaldo),
+        );
+        const custoUnitario = custoPlanilhaParaEstoque(
+          nome,
+          valorDaCelula(celulaCusto),
+        );
         if (!Number.isFinite(saldo) || saldo < 0) {
           if (!celulaPossuiFormulaSemResultado(celulaSaldo)) {
             avisos.push(`Linha ${linha}: saldo inválido para ${nome}.`);
@@ -625,17 +735,20 @@ export default function PainelEstoque() {
             const chaveMaterial = normalizarTextoPlanilha(nome);
             if (!chaveMaterial || chaveMaterial.startsWith("total")
               || chaveMaterial.startsWith("valor total")) continue;
-            const estoqueInicial = Number(
+            const estoqueInicial = quantidadePlanilhaParaEstoque(
+              nome,
               valorDaCelula(cadastroProdutos.getCell(linha, cabecalhoCadastro.inicial)),
             );
             const celulaEstoqueAposAdicoes = cadastroProdutos.getCell(
               linha,
               cabecalhoCadastro.aposAdicoes,
             );
-            const estoqueAposAdicoesInformado = Number(
+            const estoqueAposAdicoesInformado = quantidadePlanilhaParaEstoque(
+              nome,
               valorDaCelula(celulaEstoqueAposAdicoes),
             );
-            const custoUnitario = Number(
+            const custoUnitario = custoPlanilhaParaEstoque(
+              nome,
               valorDaCelula(cadastroProdutos.getCell(linha, cabecalhoCadastro.custo)),
             );
             if (!Number.isFinite(estoqueInicial) || estoqueInicial < 0
@@ -646,7 +759,10 @@ export default function PainelEstoque() {
 
             const adicoesMaterial = colunasAdicoes.map((origem) => ({
               ...origem,
-              quantidade: Number(valorDaCelula(cadastroProdutos.getCell(linha, origem.coluna))),
+              quantidade: quantidadePlanilhaParaEstoque(
+                nome,
+                valorDaCelula(cadastroProdutos.getCell(linha, origem.coluna)),
+              ),
             })).filter((entrada) => Number.isFinite(entrada.quantidade) && entrada.quantidade > 0);
             const totalCalculado = adicoesMaterial.reduce(
               (total, entrada) => total + entrada.quantidade,
@@ -750,16 +866,19 @@ export default function PainelEstoque() {
             if (chaveMaterial.startsWith("total") || chaveMaterial.startsWith("valor total")) {
               continue;
             }
-            const saldoInicialInformado = Number(
+            const saldoInicialInformado = quantidadePlanilhaParaEstoque(
+              nome,
               valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.quantidade)),
             );
-            const retiradaInformada = Number(
+            const retiradaInformada = quantidadePlanilhaParaEstoque(
+              nome,
               valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.retirada)),
             );
             const quantidadeRetirada = Number.isFinite(retiradaInformada)
               ? retiradaInformada
               : 0;
-            const custoInformado = Number(
+            const custoInformado = custoPlanilhaParaEstoque(
+              nome,
               valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.custo)),
             );
             const custoUnitario = Number.isFinite(custoInformado)
@@ -781,10 +900,13 @@ export default function PainelEstoque() {
               avisos.push(`Aba ${sheet.name}, linha ${linha}: retirada inválida para ${nome}.`);
               continue;
             }
-            const saldoFinalInformado = Number(
+            const saldoFinalInformado = quantidadePlanilhaParaEstoque(
+              nome,
               valorDaCelula(sheet.getCell(linha, cabecalhoRetirada.saldoFinal)),
             );
-            const saldoFinal = saldoInicial - quantidadeRetirada;
+            const saldoFinal = arredondarQuantidadeEstoque(
+              saldoInicial - quantidadeRetirada,
+            );
             if (quantidadeRetirada === 0) continue;
             if (Number.isFinite(saldoInicialInformado)
               && Math.abs(saldoInicialInformado - saldoInicial) > 0.001) {
@@ -807,7 +929,9 @@ export default function PainelEstoque() {
               saldoInicial,
               quantidadeRetirada,
               saldoFinal,
-              quantidadeFaltante: saldoFinal < 0 ? Math.abs(saldoFinal) : 0,
+              quantidadeFaltante: arredondarQuantidadeEstoque(
+                saldoFinal < 0 ? Math.abs(saldoFinal) : 0,
+              ),
               custoUnitario,
               dataRetirada: cabecalhoRetirada.dataRetirada
                 ? dataPlanilhaParaIso(
@@ -854,7 +978,8 @@ export default function PainelEstoque() {
               const nome = String(
                 valorDaCelula(abaRetornos.getCell(linha, 1)) || "",
               ).trim();
-              const quantidadeRetornada = Number(
+              const quantidadeRetornada = quantidadePlanilhaParaEstoque(
+                nome,
                 valorDaCelula(abaRetornos.getCell(linha, coluna)),
               );
               if (!nome || !Number.isFinite(quantidadeRetornada) || quantidadeRetornada <= 0) {
@@ -900,11 +1025,15 @@ export default function PainelEstoque() {
         if (existente && ["BOBINA", "ROLO"].includes(existente.tipoControle)) {
           erros.push("Bobina/rolo rastreável exige cadastro físico individual");
         }
-        const saldoAtual = existente
+        const saldoAtualBruto = existente
           ? controlaMetragem(existente)
             ? Number(existente.metragemDisponivel || 0)
             : Number(existente.quantidadeDisponivel || 0)
           : 0;
+        const saldoAtual = existente && ehCaboEmBobina305(existente.nome)
+          && existente.tipoControle === "FRACIONADO"
+          ? quantidadePlanilhaParaEstoque(existente.nome, saldoAtualBruto)
+          : saldoAtualBruto;
         const saldoCalculado = Math.max(0, saldoHistoricoPorMaterial.get(chave) ?? item.saldoBase);
         const consolidadoInformado = estoqueAtualPorMaterial.get(chave)?.saldo;
         if (Number.isFinite(consolidadoInformado)
@@ -918,7 +1047,9 @@ export default function PainelEstoque() {
           linhaOrigem: item.linhaOrigem,
           materialId: existente?.id,
           saldoAtual,
-          tipoControle: Number.isInteger(saldoCalculado) ? "UNIDADE" : "FRACIONADO",
+          tipoControle: ehCaboEmBobina305(item.nome)
+            ? "METRAGEM"
+            : Number.isInteger(saldoCalculado) ? "UNIDADE" : "FRACIONADO",
           acao: existente ? "ATUALIZAR" : "CRIAR",
           erros,
         };
@@ -943,7 +1074,8 @@ export default function PainelEstoque() {
             const nome = String(
               valorDaCelula(abaSimulacao.getCell(linha, 1)) || "",
             ).trim();
-            const quantidadeSimulada = Number(
+            const quantidadeSimulada = quantidadePlanilhaParaEstoque(
+              nome,
               valorDaCelula(abaSimulacao.getCell(linha, 3)),
             );
             const itemBase = dadosBasePorMaterial.get(normalizarTextoPlanilha(nome));
@@ -951,13 +1083,15 @@ export default function PainelEstoque() {
               || quantidadeSimulada <= 0) {
               continue;
             }
-            const saldoFinal = itemBase.saldo - quantidadeSimulada;
+            const saldoFinal = arredondarQuantidadeEstoque(
+              itemBase.saldo - quantidadeSimulada,
+            );
             simulacao.push({
               nomeMaterial: nome,
               estoqueAtual: itemBase.saldo,
               quantidadeSimulada,
               saldoFinal,
-              quantidadeFaltante: Math.max(0, -saldoFinal),
+              quantidadeFaltante: arredondarQuantidadeEstoque(Math.max(0, -saldoFinal)),
               linhaOrigem: linha,
             });
           }
@@ -1012,8 +1146,7 @@ export default function PainelEstoque() {
   };
 
   const confirmarImportacaoPlanilha = async () => {
-    if (!importacaoPreview || !importacaoLocalId
-      || !importacaoContratoId || !importacaoResponsavelId) return;
+    if (!importacaoPreview) return;
     if (importacaoPreview.itens.some((item) => item.erros.length > 0)) {
       setError("Corrija os itens bloqueados antes de importar.");
       return;
@@ -1024,11 +1157,71 @@ export default function PainelEstoque() {
     }
     try {
       setImportacaoProcessando(true);
+      if (importacaoPreview.modo === "CUSTOS") {
+        const itensVinculados = importacaoPreview.itens.filter(
+          (item) => item.materialId && item.erros.length === 0,
+        );
+        if (itensVinculados.length === 0) {
+          setError("Nenhum material da planilha foi encontrado no estoque.");
+          return;
+        }
+        const response = await api.post("/estoque/importacoes/custos", {
+          nomeArquivo: importacaoPreview.nomeArquivo,
+          hashSha256: importacaoPreview.hashSha256,
+          itens: itensVinculados.map((item) => ({
+            materialId: item.materialId,
+            nomePlanilha: item.nome,
+            custoUnitario: item.custoUnitario,
+            linhaOrigem: item.linhaOrigem,
+          })),
+        });
+        const resultado = response.data;
+        setSuccessMessage(
+          `Custos processados: ${resultado.materiaisAtualizados} alterados e `
+          + `${resultado.itensProcessados - resultado.materiaisAtualizados} mantidos. `
+          + "As quantidades do estoque não foram modificadas.",
+        );
+        setImportacaoPreview(null);
+        await fetchData();
+        return;
+      }
+      if (importacaoPreview.modo === "SALDOS") {
+        if (!importacaoLocalId) {
+          setError("Selecione o depósito de referência antes de sincronizar.");
+          return;
+        }
+        const response = await api.post("/estoque/importacoes/saldos", {
+          nomeArquivo: importacaoPreview.nomeArquivo,
+          hashSha256: importacaoPreview.hashSha256,
+          localEstoqueId: Number(importacaoLocalId),
+          itens: importacaoPreview.itens.map((item) => ({
+            materialId: item.materialId,
+            nomePlanilha: item.nome,
+            saldo: item.saldo,
+            linhaOrigem: item.linhaOrigem,
+          })),
+        });
+        const resultado = response.data;
+        setSuccessMessage(
+          `Saldos sincronizados: ${resultado.ajustesPositivos} aumentos, `
+          + `${resultado.ajustesNegativos} reduções e `
+          + `${resultado.itensProcessados - resultado.materiaisAtualizados} mantidos. `
+          + "Custos, reservas, OS e OR não foram alterados.",
+        );
+        setImportacaoPreview(null);
+        setImportacaoLocalId("");
+        await fetchData();
+        return;
+      }
+      if (!importacaoLocalId || !importacaoContratoId || !importacaoResponsavelId) {
+        setError("Selecione depósito, contrato e responsável antes de importar.");
+        return;
+      }
       const response = await api.post("/estoque/importacoes/planilha", {
         nomeArquivo: importacaoPreview.nomeArquivo,
         hashSha256: importacaoPreview.hashSha256,
         localEstoqueId: Number(importacaoLocalId),
-        saldoConsolidado: true,
+        saldoConsolidado: importacaoPreview.modo !== "OR_AVULSA",
         autoCriarOperacoes: true,
         contratoId: Number(importacaoContratoId),
         responsavelId: Number(importacaoResponsavelId),
@@ -1057,8 +1250,11 @@ export default function PainelEstoque() {
         simulacao: importacaoPreview.simulacao,
       });
       const resultado = response.data;
-      setSuccessMessage(
-        `Planilha importada: ${resultado.materiaisCriados} materiais criados, `
+      setSuccessMessage(importacaoPreview.modo === "OR_AVULSA"
+        ? `Ordem de retirada importada: ${resultado.retiradasImportadas} itens registrados, `
+          + `${resultado.ordensServicoCriadas} OS e ${resultado.ordensRetiradaCriadas} OR criadas. `
+          + `${resultado.faltasIdentificadas} faltas identificadas; estoque baixado até o saldo disponível.`
+        : `Planilha importada: ${resultado.materiaisCriados} materiais criados, `
           + `${resultado.materiaisAtualizados} atualizados e `
           + `${resultado.entradasImportadas} entradas históricas preservadas. `
           + `${resultado.retiradasImportadas} retiradas históricas registradas. `
@@ -1572,16 +1768,103 @@ export default function PainelEstoque() {
     }
   };
 
-  const getReservado = (material) =>
-    ["FRACIONADO", "METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle)
+  const caboLegadoEmBobinas = (material) =>
+    ehCaboEmBobina305(material?.nome)
+    && material?.tipoControle === "FRACIONADO";
+  const getReservado = (material) => {
+    const reservado = ["FRACIONADO", "METRAGEM", "BOBINA", "ROLO"]
+      .includes(material?.tipoControle)
       ? Number(material.metragemReservada ?? 0)
       : Number(material.quantidadeReservada ?? 0);
+    return caboLegadoEmBobinas(material)
+      ? quantidadePlanilhaParaEstoque(material.nome, reservado)
+      : reservado;
+  };
+
+  const selecionarPlanilhaSaldos = async (event) => {
+    const arquivo = event.target.files?.[0];
+    event.target.value = "";
+    if (!arquivo) return;
+    if (!arquivo.name.toLowerCase().endsWith(".xlsx")) {
+      setError("Selecione uma planilha no formato .xlsx.");
+      return;
+    }
+    if (arquivo.size > 10 * 1024 * 1024) {
+      setError("A planilha excede o limite de 10 MB.");
+      return;
+    }
+
+    try {
+      setImportacaoProcessando(true);
+      setError(null);
+      const buffer = await arquivo.arrayBuffer();
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+      const sincronizacao = extrairSincronizacaoSaldos(workbook, materiais);
+      if (!sincronizacao) {
+        throw new Error("Não foi encontrada a tabela consolidada da aba ESTOQUE ATUAL.");
+      }
+      const digest = await crypto.subtle.digest("SHA-256", buffer);
+      const hashSha256 = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      const depositoPadrao = locaisEstoque.find(
+        (local) => normalizarTextoPlanilha(local.nome) === "estoque principal",
+      ) || locaisEstoque.find((local) => local.ativo !== false);
+      const idsSincronizados = new Set(
+        sincronizacao.itens.filter((item) => item.materialId).map((item) => item.materialId),
+      );
+      const valorTotalAnterior = materiais.reduce(
+        (total, material) => total + valorTotalMaterial(material),
+        0,
+      );
+      const valorTotal = sincronizacao.itens.reduce(
+        (total, item) => total + item.valorTotal,
+        0,
+      ) + materiais
+        .filter((material) => !idsSincronizados.has(material.id))
+        .reduce((total, material) => total + valorTotalMaterial(material), 0);
+
+      setImportacaoLocalId(depositoPadrao?.id ? String(depositoPadrao.id) : "");
+      setImportacaoContratoId("");
+      setImportacaoResponsavelId("");
+      setImportacaoPreview({
+        modo: "SALDOS",
+        nomeArquivo: arquivo.name,
+        hashSha256,
+        abaOrigem: sincronizacao.abaOrigem,
+        abaCatalogo: null,
+        abasRetiradas: [],
+        retornos: [],
+        simulacao: [],
+        entradas: [],
+        estoqueMinimoPadrao: null,
+        itens: sincronizacao.itens,
+        avisos: sincronizacao.avisos,
+        valorTotal,
+        valorTotalAnterior,
+      });
+    } catch (err) {
+      setError(err.message || "Não foi possível ler os saldos da planilha.");
+    } finally {
+      setImportacaoProcessando(false);
+    }
+  };
   const controlaMetragem = (material) =>
     ["FRACIONADO", "METRAGEM", "BOBINA", "ROLO"].includes(material?.tipoControle);
-  const getLivre = (material) =>
-    controlaMetragem(material)
-      ? Math.max(0, Number(material.metragemDisponivel ?? 0) - getReservado(material))
-      : Math.max(0, (material.quantidadeDisponivel ?? 0) - getReservado(material));
+  const getSaldoEmEstoque = (material) => {
+    const saldo = controlaMetragem(material)
+      ? Number(material.metragemDisponivel ?? 0)
+      : Number(material.quantidadeDisponivel ?? 0);
+    return caboLegadoEmBobinas(material)
+      ? quantidadePlanilhaParaEstoque(material.nome, saldo)
+      : saldo;
+  };
+  const getLivre = (material) => Math.max(
+    0,
+    getSaldoEmEstoque(material) - getReservado(material),
+  );
   const isCriticalStock = (material) =>
     getLivre(material) <= Number(material.estoqueMinimo ?? 0);
   const formatarNumero = (valor) =>
@@ -1600,11 +1883,19 @@ export default function PainelEstoque() {
         : Number(material?.quantidadeDisponivel || 0)) * Number(material?.custoMedio || 0),
     );
   const unidadeMaterial = (material) =>
-    material?.tipoControle === "FRACIONADO"
+    ehCaboEmBobina305(material?.nome)
+      ? "m"
+      : material?.tipoControle === "FRACIONADO"
       ? UNIDADES_MEDIDA.find((item) => item.value === material.unidadeMedida)?.label || "un"
       : controlaMetragem(material)
       ? "m"
       : UNIDADES_MEDIDA.find((item) => item.value === material.unidadeMedida)?.label || "un";
+  const getCustoUnitarioExibido = (material) => caboLegadoEmBobinas(material)
+    ? custoPlanilhaParaEstoque(material.nome, material.custoMedio)
+    : Number(material?.custoMedio || 0);
+  const getSaldoLocalExibido = (material, saldo) => caboLegadoEmBobinas(material)
+    ? quantidadePlanilhaParaEstoque(material.nome, saldoLocalValor(saldo))
+    : saldoLocalValor(saldo);
   const rastreavel = (material) => ["BOBINA", "ROLO"].includes(material?.tipoControle);
   const materiaisRastreaveis = materiais.filter((material) => rastreavel(material));
   const unidadesDisponiveis = (materialId) =>
@@ -1847,12 +2138,114 @@ export default function PainelEstoque() {
   const getCategoriaMaterialLabel = (categoria) =>
     CATEGORIAS_MATERIAL.find((item) => item.value === categoria)?.label ||
     "Materiais de Consumo";
+  const faltasRegistradasPorMaterial = useMemo(
+    () => retiradasImportadas.reduce((mapa, retirada) => {
+      const chave = String(retirada.materialId || "");
+      if (!chave) return mapa;
+      mapa.set(
+        chave,
+        (mapa.get(chave) || 0) + Number(retirada.quantidadeFaltante || 0),
+      );
+      return mapa;
+    }, new Map()),
+    [retiradasImportadas],
+  );
+  const getFaltaRegistrada = (material) =>
+    faltasRegistradasPorMaterial.get(String(material?.id)) || 0;
+  const numeroFiltro = (valor) => {
+    if (valor === "") return null;
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : null;
+  };
+  const materiaisFiltrados = useMemo(() => {
+    const termo = normalizarTextoPlanilha(estoqueBusca);
+    const disponivelMinimo = numeroFiltro(estoqueDisponivelMinimo);
+    const disponivelMaximo = numeroFiltro(estoqueDisponivelMaximo);
+    const valorMinimo = numeroFiltro(estoqueValorMinimo);
+    const valorMaximo = numeroFiltro(estoqueValorMaximo);
+    const faltaMinima = numeroFiltro(estoqueFaltaMinima);
+    const resultado = materiais.filter((material) => {
+      const textoMaterial = normalizarTextoPlanilha([
+        material.nome,
+        material.partNumber,
+        material.fabricante,
+        material.descricao,
+      ].filter(Boolean).join(" "));
+      const disponivel = getLivre(material);
+      const valorTotal = valorTotalMaterial(material);
+      const falta = getFaltaRegistrada(material);
+      const categoria = material.categoria || "MATERIAL_CONSUMO";
+      if (termo && !textoMaterial.includes(termo)) return false;
+      if (estoqueCategoriaFiltro && categoria !== estoqueCategoriaFiltro) return false;
+      if (estoqueSituacaoFiltro === "COM_ESTOQUE" && disponivel <= 0) return false;
+      if (estoqueSituacaoFiltro === "SEM_ESTOQUE" && disponivel > 0) return false;
+      if (estoqueSituacaoFiltro === "ABAIXO_MINIMO" && !isCriticalStock(material)) return false;
+      if (estoqueSituacaoFiltro === "EM_FALTA" && falta <= 0) return false;
+      if (estoqueSituacaoFiltro === "SEM_FALTA" && falta > 0) return false;
+      if (disponivelMinimo != null && disponivel < disponivelMinimo) return false;
+      if (disponivelMaximo != null && disponivel > disponivelMaximo) return false;
+      if (valorMinimo != null && valorTotal < valorMinimo) return false;
+      if (valorMaximo != null && valorTotal > valorMaximo) return false;
+      if (faltaMinima != null && falta < faltaMinima) return false;
+      return true;
+    });
+    return resultado.sort((materialA, materialB) => {
+      if (estoqueOrdenacao === "NOME_DESC") {
+        return materialB.nome.localeCompare(materialA.nome, "pt-BR");
+      }
+      if (estoqueOrdenacao === "DISPONIVEL_ASC") {
+        return getLivre(materialA) - getLivre(materialB);
+      }
+      if (estoqueOrdenacao === "DISPONIVEL_DESC") {
+        return getLivre(materialB) - getLivre(materialA);
+      }
+      if (estoqueOrdenacao === "VALOR_ASC") {
+        return valorTotalMaterial(materialA) - valorTotalMaterial(materialB);
+      }
+      if (estoqueOrdenacao === "VALOR_DESC") {
+        return valorTotalMaterial(materialB) - valorTotalMaterial(materialA);
+      }
+      if (estoqueOrdenacao === "FALTA_DESC") {
+        return getFaltaRegistrada(materialB) - getFaltaRegistrada(materialA);
+      }
+      return materialA.nome.localeCompare(materialB.nome, "pt-BR");
+    });
+  }, [
+    materiais,
+    faltasRegistradasPorMaterial,
+    estoqueBusca,
+    estoqueCategoriaFiltro,
+    estoqueSituacaoFiltro,
+    estoqueDisponivelMinimo,
+    estoqueDisponivelMaximo,
+    estoqueValorMinimo,
+    estoqueValorMaximo,
+    estoqueFaltaMinima,
+    estoqueOrdenacao,
+  ]);
   const materiaisPorCategoria = CATEGORIAS_MATERIAL.map((categoria) => ({
     ...categoria,
-    materiais: materiais.filter(
+    materiais: materiaisFiltrados.filter(
       (material) => (material.categoria || "MATERIAL_CONSUMO") === categoria.value,
     ),
   }));
+  const filtrosEstoqueAtivos = Boolean(
+    estoqueBusca || estoqueCategoriaFiltro || estoqueSituacaoFiltro
+    || estoqueDisponivelMinimo || estoqueDisponivelMaximo
+    || estoqueValorMinimo || estoqueValorMaximo || estoqueFaltaMinima
+    || estoqueOrdenacao !== "NOME_ASC",
+  );
+  const limparFiltrosEstoque = () => {
+    setEstoqueBusca("");
+    setEstoqueCategoriaFiltro("");
+    setEstoqueSituacaoFiltro("");
+    setEstoqueDisponivelMinimo("");
+    setEstoqueDisponivelMaximo("");
+    setEstoqueValorMinimo("");
+    setEstoqueValorMaximo("");
+    setEstoqueFaltaMinima("");
+    setEstoqueOrdenacao("NOME_ASC");
+  };
   const valorMovimentacao = (mov) =>
     mov.metragem != null ? `${formatarNumero(mov.metragem)} m` : `${mov.quantidade ?? 0} un`;
   const historicoFiltrado = historico.filter((mov) => {
@@ -2237,7 +2630,6 @@ export default function PainelEstoque() {
     }),
     [comarcas, materiais, ordensRetirada, retiradasImportadas],
   );
-
   const estoqueComarcaSelecionada = estoquePorComarca.find(
     (item) => String(item.comarca?.id) === String(abaEstoque),
   );
@@ -2271,12 +2663,16 @@ export default function PainelEstoque() {
       label: "Metragem disponível",
       valor: `${formatarNumero(
         materiais.filter(controlaMetragem).reduce(
-          (total, material) => total + Number(material.metragemDisponivel || 0),
+          (total, material) => total + getSaldoEmEstoque(material),
           0,
         ),
       )} m`,
     },
     { label: "Abaixo do mínimo", valor: materiais.filter(isCriticalStock).length },
+    {
+      label: "Materiais em falta",
+      valor: materiais.filter((material) => getFaltaRegistrada(material) > 0).length,
+    },
     {
       label: "Bobinas/rolos lacrados",
       valor: unidadesRastreaveis.filter((unidade) => unidade.status === "LACRADA").length,
@@ -2340,6 +2736,13 @@ export default function PainelEstoque() {
               className="hidden"
             />
             <input
+              ref={sincronizacaoSaldosInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={selecionarPlanilhaSaldos}
+              className="hidden"
+            />
+            <input
               ref={notaFiscalInputRef}
               type="file"
               accept=".xml,.pdf,application/xml,text/xml,application/pdf"
@@ -2355,6 +2758,16 @@ export default function PainelEstoque() {
             >
               <Upload size={18} />
               {importacaoProcessando ? "Lendo..." : "Importar .xlsx"}
+            </button>
+            <button
+              type="button"
+              onClick={() => sincronizacaoSaldosInputRef.current?.click()}
+              disabled={importacaoProcessando}
+              className="flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 font-semibold text-cyan-800 transition-colors hover:bg-cyan-100 disabled:opacity-50"
+              title="Conferir e sincronizar somente os saldos da aba ESTOQUE ATUAL"
+            >
+              <ArrowRightLeft size={18} />
+              {importacaoProcessando ? "Lendo..." : "Sincronizar saldos"}
             </button>
             <button
               type="button"
@@ -2505,6 +2918,146 @@ export default function PainelEstoque() {
       {/* Tabela de Saldo Atual */}
       {abaEstoque === "geral" ? (
       <>
+      <section className="border-y border-slate-200 bg-white px-4 py-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Localizar materiais</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {materiaisFiltrados.length} de {materiais.length} itens visíveis
+            </p>
+          </div>
+          {filtrosEstoqueAtivos && (
+            <button
+              type="button"
+              onClick={limparFiltrosEstoque}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <label className="sm:col-span-2 xl:col-span-2">
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Nome ou identificação</span>
+            <span className="relative block">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={estoqueBusca}
+                onChange={(event) => setEstoqueBusca(event.target.value)}
+                placeholder="Nome, part number, fabricante..."
+                className="w-full rounded-md border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </span>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Categoria</span>
+            <select
+              value={estoqueCategoriaFiltro}
+              onChange={(event) => setEstoqueCategoriaFiltro(event.target.value)}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800"
+            >
+              <option value="">Todas</option>
+              {CATEGORIAS_MATERIAL.map((categoria) => (
+                <option key={categoria.value} value={categoria.value}>{categoria.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Situação</span>
+            <select
+              value={estoqueSituacaoFiltro}
+              onChange={(event) => setEstoqueSituacaoFiltro(event.target.value)}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800"
+            >
+              <option value="">Todas</option>
+              <option value="COM_ESTOQUE">Com disponibilidade</option>
+              <option value="SEM_ESTOQUE">Sem disponibilidade</option>
+              <option value="ABAIXO_MINIMO">Abaixo do mínimo</option>
+              <option value="EM_FALTA">Com falta nas ORs</option>
+              <option value="SEM_FALTA">Sem falta nas ORs</option>
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Ordenar por</span>
+            <select
+              value={estoqueOrdenacao}
+              onChange={(event) => setEstoqueOrdenacao(event.target.value)}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800"
+            >
+              <option value="NOME_ASC">Nome: A a Z</option>
+              <option value="NOME_DESC">Nome: Z a A</option>
+              <option value="DISPONIVEL_DESC">Disponível: maior primeiro</option>
+              <option value="DISPONIVEL_ASC">Disponível: menor primeiro</option>
+              <option value="VALOR_DESC">Valor total: maior primeiro</option>
+              <option value="VALOR_ASC">Valor total: menor primeiro</option>
+              <option value="FALTA_DESC">Falta: maior primeiro</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Disponível mínimo</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={estoqueDisponivelMinimo}
+              onChange={(event) => setEstoqueDisponivelMinimo(event.target.value)}
+              placeholder="0"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Disponível máximo</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={estoqueDisponivelMaximo}
+              onChange={(event) => setEstoqueDisponivelMaximo(event.target.value)}
+              placeholder="Sem limite"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Valor mínimo (R$)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={estoqueValorMinimo}
+              onChange={(event) => setEstoqueValorMinimo(event.target.value)}
+              placeholder="0,00"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Valor máximo (R$)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={estoqueValorMaximo}
+              onChange={(event) => setEstoqueValorMaximo(event.target.value)}
+              placeholder="Sem limite"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+            />
+          </label>
+          <label className="col-span-2 sm:col-span-1">
+            <span className="mb-1 block text-xs font-semibold text-slate-600">Falta mínima</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={estoqueFaltaMinima}
+              onChange={(event) => setEstoqueFaltaMinima(event.target.value)}
+              placeholder="0"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+            />
+          </label>
+        </div>
+      </section>
       <div className="space-y-5 md:hidden">
         {materiaisPorCategoria.map((grupo) => grupo.materiais.length > 0 && (
           <section key={grupo.value} aria-labelledby={`categoria-${grupo.value}`}>
@@ -2552,13 +3105,11 @@ export default function PainelEstoque() {
                     </div>
                   </div>
 
-                  <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <dl className="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                     <div className="rounded-md bg-slate-100 p-2">
                       <dt className="text-[10px] font-bold uppercase text-slate-500">Em estoque</dt>
                       <dd className="mt-1 text-xs font-bold text-slate-800">
-                        {controlaMetragem(material)
-                          ? `${formatarNumero(material.metragemDisponivel)} m`
-                          : `${material.quantidadeDisponivel ?? 0} ${unidadeMaterial(material)}`}
+                        {formatarNumero(getSaldoEmEstoque(material))} {unidadeMaterial(material)}
                       </dd>
                     </div>
                     <div className="rounded-md bg-amber-50 p-2">
@@ -2573,12 +3124,20 @@ export default function PainelEstoque() {
                         {formatarNumero(getLivre(material))} {unidadeMaterial(material)}
                       </dd>
                     </div>
+                    <div className={`rounded-md p-2 ${getFaltaRegistrada(material) > 0 ? "bg-rose-100" : "bg-slate-50"}`}>
+                      <dt className={`text-[10px] font-bold uppercase ${getFaltaRegistrada(material) > 0 ? "text-rose-700" : "text-slate-500"}`}>
+                        Em falta nas ORs
+                      </dt>
+                      <dd className={`mt-1 text-xs font-bold ${getFaltaRegistrada(material) > 0 ? "text-rose-800" : "text-slate-600"}`}>
+                        {formatarNumero(getFaltaRegistrada(material))} {unidadeMaterial(material)}
+                      </dd>
+                    </div>
                   </dl>
 
                   <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-xs">
                     <div>
                       <span className="block text-slate-400">Custo médio</span>
-                      <strong className="text-slate-800">{formatarMoeda(material.custoMedio)}</strong>
+                      <strong className="text-slate-800">{formatarMoeda(getCustoUnitarioExibido(material))}</strong>
                     </div>
                     <div className="text-right">
                       <span className="block text-slate-400">Valor em estoque</span>
@@ -2604,9 +3163,11 @@ export default function PainelEstoque() {
             </div>
           </section>
         ))}
-        {materiais.length === 0 && (
+        {materiaisFiltrados.length === 0 && (
           <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
-            Nenhum produto cadastrado no estoque.
+            {materiais.length === 0
+              ? "Nenhum produto cadastrado no estoque."
+              : "Nenhum material encontrado com os filtros aplicados."}
           </div>
         )}
       </div>
@@ -2656,7 +3217,7 @@ export default function PainelEstoque() {
       )}
       <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-md md:block">
         <table className="w-full min-w-[1400px]">
-          <thead className="bg-slate-50 border-b border-slate-200">
+          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 shadow-sm">
             <tr>
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
                 Produto
@@ -2685,6 +3246,9 @@ export default function PainelEstoque() {
               <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
                 Disponível
               </th>
+              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">
+                Em falta nas ORs
+              </th>
               <th className="px-6 py-4 text-right text-sm font-semibold text-slate-700">
                 Custo médio
               </th>
@@ -2701,7 +3265,7 @@ export default function PainelEstoque() {
               <Fragment key={grupo.value}>
                 <tr className="bg-slate-100/70">
                   <td
-                    colSpan="12"
+                    colSpan="13"
                     className="px-6 py-2 text-xs font-black uppercase tracking-wide text-slate-600"
                   >
                     {grupo.label} ({grupo.materiais.length})
@@ -2757,7 +3321,7 @@ export default function PainelEstoque() {
                       <div className="flex max-w-[220px] flex-wrap gap-1">
                         {saldosDoMaterial(material.id).map((saldo) => (
                           <span key={saldo.id} className="rounded bg-slate-100 px-2 py-1 text-[11px]">
-                            {saldo.localEstoque?.nome}: {formatarNumero(saldoLocalValor(saldo))} {unidadeMaterial(material)}
+                            {saldo.localEstoque?.nome}: {formatarNumero(getSaldoLocalExibido(material, saldo))} {unidadeMaterial(material)}
                           </span>
                         ))}
                         {saldosDoMaterial(material.id).length === 0 && "Não informado"}
@@ -2778,9 +3342,7 @@ export default function PainelEstoque() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className="inline-flex min-w-[3rem] items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-800">
-                        {controlaMetragem(material)
-                          ? `${formatarNumero(material.metragemDisponivel)} m`
-                          : `${material.quantidadeDisponivel ?? 0} ${unidadeMaterial(material)}`}
+                        {formatarNumero(getSaldoEmEstoque(material))} {unidadeMaterial(material)}
                       </span>
                       {!controlaMetragem(material) && Number(material.metragemDisponivel) > 0 && (
                         <span className="mt-1 block text-[11px] text-slate-500">
@@ -2803,9 +3365,17 @@ export default function PainelEstoque() {
                         {formatarNumero(getLivre(material))} {unidadeMaterial(material)}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex min-w-[3rem] items-center justify-center rounded-full px-3 py-1 text-sm font-semibold ${getFaltaRegistrada(material) > 0 ? "bg-rose-100 text-rose-800" : "bg-slate-100 text-slate-500"}`}>
+                        {getFaltaRegistrada(material) > 0 && (
+                          <AlertCircle size={14} className="mr-1" />
+                        )}
+                        {formatarNumero(getFaltaRegistrada(material))} {unidadeMaterial(material)}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <strong className="block text-sm text-slate-800">
-                        {formatarMoeda(material.custoMedio)}
+                        {formatarMoeda(getCustoUnitarioExibido(material))}
                       </strong>
                       <span className="text-[11px] text-slate-500">
                         por {controlaMetragem(material) ? "metro" : unidadeMaterial(material)}
@@ -2858,10 +3428,12 @@ export default function PainelEstoque() {
                 ))}
               </Fragment>
             ))}
-            {materiais.length === 0 && (
+            {materiaisFiltrados.length === 0 && (
               <tr>
-                <td colSpan="12" className="px-6 py-8 text-center text-slate-400">
-                  Nenhum produto cadastrado no estoque.
+                <td colSpan="13" className="px-6 py-8 text-center text-slate-400">
+                  {materiais.length === 0
+                    ? "Nenhum produto cadastrado no estoque."
+                    : "Nenhum material encontrado com os filtros aplicados."}
                 </td>
               </tr>
             )}
@@ -3040,7 +3612,7 @@ export default function PainelEstoque() {
                     </td>
                     <td className="px-5 py-3 text-right font-bold text-slate-900">
                       {formatarMoeda(
-                        item.saldoLiquido * Number(item.material?.custoMedio || 0),
+                        item.saldoLiquido * getCustoUnitarioExibido(item.material),
                       )}
                     </td>
                   </tr>
@@ -4172,6 +4744,16 @@ export default function PainelEstoque() {
                     <td className="px-3 py-2">
                       <strong className="block text-slate-800">{importacao.nomeArquivo}</strong>
                       <span className="text-slate-500">{importacao.deposito}</span>
+                      {importacao.tipoImportacao === "ATUALIZACAO_CUSTOS" && (
+                        <span className="mt-1 block w-fit rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                          Atualização de custos
+                        </span>
+                      )}
+                      {importacao.tipoImportacao === "SINCRONIZACAO_SALDOS" && (
+                        <span className="mt-1 block w-fit rounded bg-cyan-100 px-2 py-0.5 text-[10px] font-bold uppercase text-cyan-800">
+                          Sincronização de saldos
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
                       <span className="block">{importacao.importadoPor}</span>
@@ -4186,7 +4768,9 @@ export default function PainelEstoque() {
                     </td>
                     <td className="px-3 py-2 text-slate-600">
                       <span className="block">{importacao.itensProcessados} materiais</span>
-                      <span className="block">{importacao.retiradasImportadas} retiradas</span>
+                      {!['ATUALIZACAO_CUSTOS', 'SINCRONIZACAO_SALDOS'].includes(importacao.tipoImportacao) && (
+                        <span className="block">{importacao.retiradasImportadas} retiradas</span>
+                      )}
                       {importacao.faltasIdentificadas > 0 && (
                         <strong className="block text-rose-700">
                           {importacao.faltasIdentificadas} faltas
@@ -4223,8 +4807,11 @@ export default function PainelEstoque() {
                 <div>
                   <h3 className="font-bold text-slate-900">{importacaoDetalhe.nomeArquivo}</h3>
                   <p className="text-xs text-slate-500">
-                    {formatarMoeda(importacaoDetalhe.valorTotalImportado)} importados
-                    {" · "}{importacaoDetalhe.abasRetiradaProcessadas} abas de obra
+                    {importacaoDetalhe.tipoImportacao === "ATUALIZACAO_CUSTOS"
+                      ? `${formatarMoeda(importacaoDetalhe.valorTotalImportado)} em estoque após a atualização · saldos preservados`
+                      : importacaoDetalhe.tipoImportacao === "SINCRONIZACAO_SALDOS"
+                        ? `${formatarMoeda(importacaoDetalhe.valorTotalImportado)} em estoque após a sincronização · custos preservados`
+                      : `${formatarMoeda(importacaoDetalhe.valorTotalImportado)} importados · ${importacaoDetalhe.abasRetiradaProcessadas} abas de obra`}
                   </p>
                 </div>
                 <button
@@ -4239,16 +4826,41 @@ export default function PainelEstoque() {
               <div className="max-h-72 overflow-auto rounded border border-slate-200">
                 <table className="w-full min-w-[700px] text-left text-xs">
                   <thead className="sticky top-0 bg-slate-50 uppercase text-slate-500">
+                    {importacaoDetalhe.tipoImportacao === "ATUALIZACAO_CUSTOS" ? (
+                    <tr>
+                      <th className="px-3 py-2">Material</th>
+                      <th className="px-3 py-2 text-right">Custo anterior</th>
+                      <th className="px-3 py-2 text-right">Custo novo</th>
+                      <th className="px-3 py-2 text-right">Linha</th>
+                      <th className="px-3 py-2">Resultado</th>
+                    </tr>
+                    ) : (
                     <tr>
                       <th className="px-3 py-2">Origem / Material</th>
                       <th className="px-3 py-2 text-right">Anterior</th>
-                      <th className="px-3 py-2 text-right">Importado</th>
+                      <th className="px-3 py-2 text-right">
+                        {importacaoDetalhe.tipoImportacao === "SINCRONIZACAO_SALDOS"
+                          ? "Sincronizado"
+                          : "Importado"}
+                      </th>
                       <th className="px-3 py-2 text-right">Retirado</th>
                       <th className="px-3 py-2 text-right">Faltante</th>
                       <th className="px-3 py-2">Resultado</th>
                     </tr>
+                    )}
                   </thead>
                   <tbody className="divide-y divide-slate-100">
+                    {importacaoDetalhe.tipoImportacao === "ATUALIZACAO_CUSTOS" ? (
+                      (importacaoDetalhe.itens || []).map((item) => (
+                        <tr key={`custo-${item.materialId}`}>
+                          <td className="px-3 py-2 font-semibold text-slate-800">{item.material}</td>
+                          <td className="px-3 py-2 text-right">{formatarMoeda(item.custoAnterior)}</td>
+                          <td className="px-3 py-2 text-right font-bold">{formatarMoeda(item.custoUnitario)}</td>
+                          <td className="px-3 py-2 text-right">{item.linhaOrigem || "—"}</td>
+                          <td className="px-3 py-2">{item.acao.replaceAll("_", " ")}</td>
+                        </tr>
+                      ))
+                    ) : (<>
                     {(importacaoDetalhe.itens || []).map((item) => (
                       <tr key={`estoque-${item.materialId}`}>
                         <td className="px-3 py-2">
@@ -4281,10 +4893,11 @@ export default function PainelEstoque() {
                             : "—"}
                         </td>
                         <td className="px-3 py-2">
-                          {item.quantidadeFaltante > 0 ? "FALTA" : "REGISTRADO"}
+                          {item.quantidadeFaltante > 0 ? "EM FALTA" : "REGISTRADO"}
                         </td>
                       </tr>
                     ))}
+                    </>)}
                   </tbody>
                 </table>
               </div>
@@ -4305,7 +4918,13 @@ export default function PainelEstoque() {
             setImportacaoResponsavelId("");
           }
         }}
-        title="Revisar importação do estoque"
+        title={importacaoPreview?.modo === "OR_AVULSA"
+          ? "Revisar ordem de retirada"
+          : importacaoPreview?.modo === "CUSTOS"
+            ? "Revisar atualização de custos"
+            : importacaoPreview?.modo === "SALDOS"
+              ? "Revisar sincronização de saldos"
+            : "Revisar importação do estoque"}
       >
         {importacaoPreview && (
           <div className="space-y-5">
@@ -4314,22 +4933,47 @@ export default function PainelEstoque() {
                 {importacaoPreview.nomeArquivo}
               </strong>
               <span className="text-xs text-blue-700">
-                Catálogo: {importacaoPreview.abaCatalogo} · saldos conferidos com {importacaoPreview.abaOrigem}
-                {" · "}{importacaoPreview.itens.length} materiais
+                {importacaoPreview.modo === "OR_AVULSA"
+                  ? `Saída calculada sobre o estoque atual · ${importacaoPreview.itens.length} materiais`
+                  : importacaoPreview.modo === "CUSTOS"
+                    ? `Aba: ${importacaoPreview.abaOrigem} · somente custos · ${importacaoPreview.itens.length} linhas lidas`
+                    : importacaoPreview.modo === "SALDOS"
+                      ? `Aba: ${importacaoPreview.abaOrigem} · somente saldos · ${importacaoPreview.itens.length} materiais conferidos`
+                    : `Catálogo: ${importacaoPreview.abaCatalogo} · saldos conferidos com ${importacaoPreview.abaOrigem} · ${importacaoPreview.itens.length} materiais`}
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <div className="rounded border border-slate-200 p-3">
-                <span className="block text-xs text-slate-500">Novos</span>
+                <span className="block text-xs text-slate-500">
+                  {importacaoPreview.modo === "CUSTOS"
+                    ? "Não encontrados"
+                    : importacaoPreview.modo === "SALDOS" ? "Aumentos" : "Novos"}
+                </span>
                 <strong className="text-lg text-slate-900">
-                  {importacaoPreview.itens.filter((item) => item.acao === "CRIAR").length}
+                  {importacaoPreview.itens.filter((item) => item.acao === (
+                    importacaoPreview.modo === "CUSTOS"
+                      ? "IGNORAR"
+                      : importacaoPreview.modo === "SALDOS" ? "AUMENTAR" : "CRIAR"
+                  )).length}
                 </strong>
               </div>
               <div className="rounded border border-slate-200 p-3">
-                <span className="block text-xs text-slate-500">Atualizados</span>
+                <span className="block text-xs text-slate-500">
+                  {importacaoPreview.modo === "OR_AVULSA"
+                    ? "Com retirada"
+                    : importacaoPreview.modo === "SALDOS" ? "Reduções" : "Atualizados"}
+                </span>
                 <strong className="text-lg text-slate-900">
-                  {importacaoPreview.itens.filter((item) => item.acao === "ATUALIZAR").length}
+                  {importacaoPreview.itens.filter((item) => item.acao === (
+                    importacaoPreview.modo === "OR_AVULSA"
+                      ? "RETIRAR"
+                      : importacaoPreview.modo === "CUSTOS"
+                        ? "ATUALIZAR_CUSTO"
+                        : importacaoPreview.modo === "SALDOS"
+                          ? "REDUZIR"
+                        : "ATUALIZAR"
+                  )).length}
                 </strong>
               </div>
               <div className="rounded border border-slate-200 p-3">
@@ -4339,20 +4983,24 @@ export default function PainelEstoque() {
                 </strong>
               </div>
               <div className="rounded border border-slate-200 p-3">
-                <span className="block text-xs text-slate-500">Depois da importação</span>
+                <span className="block text-xs text-slate-500">
+                  {importacaoPreview.modo === "SALDOS" ? "Total após sincronizar" : "Depois da importação"}
+                </span>
                 <strong className="text-base text-slate-900">
                   {formatarMoeda(importacaoPreview.valorTotal)}
                 </strong>
               </div>
               <div className="rounded border border-slate-200 p-3">
-                <span className="block text-xs text-slate-500">Antes da importação</span>
+                <span className="block text-xs text-slate-500">
+                  {importacaoPreview.modo === "SALDOS" ? "Total atual" : "Antes da importação"}
+                </span>
                 <strong className="text-base text-slate-900">
                   {formatarMoeda(importacaoPreview.valorTotalAnterior)}
                 </strong>
               </div>
             </div>
 
-            <label className="block">
+            {importacaoPreview.modo !== "CUSTOS" && <label className="block">
               <span className="mb-1 block text-sm font-semibold text-slate-700">
                 Depósito de referência
               </span>
@@ -4372,12 +5020,15 @@ export default function PainelEstoque() {
                   ))}
               </select>
               <span className="mt-1 block text-xs text-slate-500">
-                Saldos maiores serão creditados aqui. Reduções serão distribuídas pelos depósitos
-                que possuem saldo, sempre com registro de ajuste.
+                {importacaoPreview.modo === "OR_AVULSA"
+                  ? "A retirada será baixada deste depósito até o limite disponível; faltas ficarão registradas na OR."
+                  : importacaoPreview.modo === "SALDOS"
+                    ? "Aumentos serão creditados aqui. Reduções usarão os depósitos com saldo e ficarão registradas como ajustes."
+                  : "Saldos maiores serão creditados aqui. Reduções serão distribuídas pelos depósitos que possuem saldo, sempre com registro de ajuste."}
               </span>
-            </label>
+            </label>}
 
-            <div className="grid gap-3 md:grid-cols-2">
+            {!['CUSTOS', 'SALDOS'].includes(importacaoPreview.modo) && <div className="grid gap-3 md:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-slate-700">
                   Contrato das operações históricas
@@ -4414,7 +5065,7 @@ export default function PainelEstoque() {
                   ))}
                 </select>
               </label>
-            </div>
+            </div>}
 
             {importacaoPreview.entradas.length > 0 && (
               <section className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
@@ -4458,9 +5109,9 @@ export default function PainelEstoque() {
                     Retiradas históricas por obra
                   </h3>
                   <p className="mt-1 text-xs text-amber-800">
-                    Cada cidade gerará uma obra e uma OS concluída; cada aba gerará sua própria OR.
-                    As retiradas serão preservadas como histórico e não reduzirão novamente o saldo
-                    consolidado da aba ESTOQUE ATUAL.
+                    {importacaoPreview.modo === "OR_AVULSA"
+                      ? "Cada cidade gerará uma obra e uma OS concluída; cada aba gerará sua própria OR e reduzirá o estoque atual. Quantidades indisponíveis serão registradas como falta."
+                      : "Cada cidade gerará uma obra e uma OS concluída; cada aba gerará sua própria OR. As retiradas serão preservadas como histórico e não reduzirão novamente o saldo consolidado da aba ESTOQUE ATUAL."}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -4540,12 +5191,124 @@ export default function PainelEstoque() {
             )}
 
             <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[580px] text-left text-xs">
+              {importacaoPreview.modo === "CUSTOS" ? (
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Material na planilha</th>
+                    <th className="px-3 py-2">Material no estoque</th>
+                    <th className="px-3 py-2 text-right">Custo atual</th>
+                    <th className="px-3 py-2 text-right">Valor informado</th>
+                    <th className="px-3 py-2 text-right">Novo custo</th>
+                    <th className="px-3 py-2">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {importacaoPreview.itens.map((item) => (
+                    <tr key={`${normalizarTextoPlanilha(item.nome)}-${item.linhaOrigem}`}>
+                      <td className="px-3 py-2">
+                        <strong className="block text-slate-800">{item.nome}</strong>
+                        <span className="text-[11px] text-slate-400">Linha {item.linhaOrigem}</span>
+                        {item.erros.map((erro) => (
+                          <span key={erro} className="block text-[11px] text-red-600">{erro}</span>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">{item.materialNome || "Não encontrado"}</td>
+                      <td className="px-3 py-2 text-right">{item.materialId ? formatarMoeda(item.custoAnterior) : "—"}</td>
+                      <td className="px-3 py-2 text-right">
+                        {formatarMoeda(item.custoInformado)}
+                        {item.conversaoBobina && (
+                          <span className="block text-[11px] text-slate-400">por bobina de 305 m</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold">
+                        {item.materialId ? formatarMoeda(item.custoUnitario) : "—"}
+                        {item.conversaoBobina && item.materialId && (
+                          <span className="block text-[11px] text-blue-600">custo por metro</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`rounded px-2 py-1 font-bold ${
+                          item.erros.length
+                            ? "bg-red-100 text-red-700"
+                            : item.acao === "IGNORAR"
+                              ? "bg-slate-100 text-slate-600"
+                              : item.acao === "SEM_ALTERACAO"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-amber-100 text-amber-700"
+                        }`}>
+                          {item.erros.length ? "BLOQUEADO" : item.acao.replaceAll("_", " ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              ) : importacaoPreview.modo === "SALDOS" ? (
+              <table className="w-full min-w-[900px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Material</th>
                     <th className="px-3 py-2 text-right">Atual</th>
                     <th className="px-3 py-2 text-right">Planilha</th>
+                    <th className="px-3 py-2 text-right">Diferença</th>
+                    <th className="px-3 py-2 text-right">Valor atual</th>
+                    <th className="px-3 py-2 text-right">Valor após</th>
+                    <th className="px-3 py-2">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {importacaoPreview.itens.map((item) => (
+                    <tr key={`${normalizarTextoPlanilha(item.nome)}-${item.linhaOrigem}`}>
+                      <td className="px-3 py-2">
+                        <strong className="block text-slate-800">{item.nome}</strong>
+                        <span className="text-[11px] text-slate-400">Linha {item.linhaOrigem}</span>
+                        {item.quantidadeFaltante > 0 && (
+                          <span className="block text-[11px] font-semibold text-red-700">
+                            Planilha informa falta de {formatarNumero(item.quantidadeFaltante)}; saldo será zero
+                          </span>
+                        )}
+                        {item.erros.map((erro) => (
+                          <span key={erro} className="block text-[11px] text-red-600">{erro}</span>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatarNumero(item.saldoAtual)}</td>
+                      <td className="px-3 py-2 text-right font-bold">{formatarNumero(item.saldo)}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${
+                        item.diferenca > 0
+                          ? "text-emerald-700"
+                          : item.diferenca < 0 ? "text-red-700" : "text-slate-500"
+                      }`}>
+                        {item.diferenca > 0 ? "+" : ""}{formatarNumero(item.diferenca)}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatarMoeda(item.valorAnterior)}</td>
+                      <td className="px-3 py-2 text-right font-bold">{formatarMoeda(item.valorTotal)}</td>
+                      <td className="px-3 py-2">
+                        <span className={`rounded px-2 py-1 font-bold ${
+                          item.erros.length
+                            ? "bg-red-100 text-red-700"
+                            : item.acao === "AUMENTAR"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : item.acao === "REDUZIR"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {item.erros.length ? "BLOQUEADO" : item.acao.replaceAll("_", " ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              ) : (
+              <table className="w-full min-w-[580px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Material</th>
+                    <th className="px-3 py-2 text-right">Atual</th>
+                    <th className="px-3 py-2 text-right">
+                      {importacaoPreview.modo === "OR_AVULSA" ? "Solicitado" : "Planilha"}
+                    </th>
                     <th className="px-3 py-2 text-right">Custo</th>
                     <th className="px-3 py-2">Ação</th>
                   </tr>
@@ -4562,31 +5325,51 @@ export default function PainelEstoque() {
                         ))}
                       </td>
                       <td className="px-3 py-2 text-right">{formatarNumero(item.saldoAtual)}</td>
-                      <td className="px-3 py-2 text-right font-bold">{formatarNumero(item.saldo)}</td>
+                      <td className="px-3 py-2 text-right font-bold">
+                        {formatarNumero(importacaoPreview.modo === "OR_AVULSA"
+                          ? item.quantidadeSolicitada
+                          : item.saldo)}
+                        {importacaoPreview.modo === "OR_AVULSA" && item.quantidadeFaltante > 0 && (
+                          <span className="block text-[11px] text-red-700">
+                            Falta {formatarNumero(item.quantidadeFaltante)}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right">{formatarMoeda(item.custoUnitario)}</td>
                       <td className="px-3 py-2">
                         <span
                           className={`rounded px-2 py-1 font-bold ${
                             item.erros.length
                               ? "bg-red-100 text-red-700"
+                              : item.quantidadeFaltante > 0
+                                ? "bg-red-100 text-red-700"
                               : item.acao === "CRIAR"
                                 ? "bg-blue-100 text-blue-700"
                                 : "bg-amber-100 text-amber-700"
                           }`}
                         >
-                          {item.erros.length ? "BLOQUEADO" : item.acao}
+                          {item.erros.length
+                            ? "BLOQUEADO"
+                            : item.quantidadeFaltante > 0
+                              ? "EM FALTA"
+                              : item.acao}
                         </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
 
             <div className="rounded bg-slate-50 p-3 text-xs text-slate-600">
-              A aba ESTOQUE ATUAL é o snapshot final e será a única fonte de saldo. Foram encontrados
-              {` ${importacaoPreview.entradas.length} entradas, ${importacaoPreview.retornos.length} retornos históricos e `}
-              {`${importacaoPreview.simulacao.filter((item) => item.quantidadeFaltante > 0).length} faltas na simulação.`}
+              {importacaoPreview.modo === "OR_AVULSA"
+                ? "Esta é uma ordem de retirada avulsa. O saldo atual do sistema é a fonte de verdade; a confirmação criará a OS/OR e aplicará somente a saída possível. "
+                : importacaoPreview.modo === "CUSTOS"
+                  ? "Esta operação atualiza somente o custo médio dos materiais encontrados. Quantidades, reservas, faltas e movimentações não serão alteradas. Linhas não encontradas serão ignoradas. "
+                  : importacaoPreview.modo === "SALDOS"
+                    ? "Esta operação sincroniza somente os saldos da aba ESTOQUE ATUAL. Custos, reservas, cadastro, projetos, OS, OR, retiradas e retornos não serão criados nem alterados. Cada diferença ficará registrada como ajuste de inventário. "
+                  : `A aba ESTOQUE ATUAL é o snapshot final e será a única fonte de saldo. Foram encontrados ${importacaoPreview.entradas.length} entradas, ${importacaoPreview.retornos.length} retornos históricos e ${importacaoPreview.simulacao.filter((item) => item.quantidadeFaltante > 0).length} faltas na simulação. `}
               O hash impede reaplicar o mesmo arquivo.
             </div>
 
@@ -4609,15 +5392,22 @@ export default function PainelEstoque() {
                 onClick={confirmarImportacaoPlanilha}
                 disabled={
                   importacaoProcessando
-                  || !importacaoLocalId
-                  || !importacaoContratoId
-                  || !importacaoResponsavelId
+                  || (!["CUSTOS", "SALDOS"].includes(importacaoPreview.modo) && (
+                    !importacaoLocalId || !importacaoContratoId || !importacaoResponsavelId
+                  ))
+                  || (importacaoPreview.modo === "SALDOS" && !importacaoLocalId)
+                  || (importacaoPreview.modo === "CUSTOS"
+                    && !importacaoPreview.itens.some((item) => item.materialId && item.erros.length === 0))
                   || importacaoPreview.avisos.length > 0
                   || importacaoPreview.itens.some((item) => item.erros.length > 0)
                 }
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {importacaoProcessando ? "Importando..." : "Confirmar importação"}
+                {importacaoProcessando
+                  ? "Processando..."
+                  : importacaoPreview.modo === "SALDOS"
+                    ? "Confirmar sincronização"
+                    : "Confirmar importação"}
               </button>
             </div>
           </div>

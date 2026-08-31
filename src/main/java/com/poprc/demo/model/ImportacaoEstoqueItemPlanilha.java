@@ -41,6 +41,12 @@ public class ImportacaoEstoqueItemPlanilha {
     @Column(name = "custo_unitario", precision = 19, scale = 4, nullable = false)
     private BigDecimal custoUnitario = BigDecimal.ZERO;
 
+    @Column(name = "custo_anterior", precision = 19, scale = 4, nullable = false)
+    private BigDecimal custoAnterior = BigDecimal.ZERO;
+
+    @Column(name = "linha_origem")
+    private Integer linhaOrigem;
+
     @Column(nullable = false, length = 30)
     private String acao;
 }

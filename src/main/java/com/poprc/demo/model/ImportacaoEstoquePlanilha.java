@@ -38,8 +38,11 @@ public class ImportacaoEstoquePlanilha {
     private String importadoPor;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "local_estoque_id", nullable = false)
+    @JoinColumn(name = "local_estoque_id")
     private LocalEstoque localEstoque;
+
+    @Column(name = "tipo_importacao", nullable = false, length = 40)
+    private String tipoImportacao = "INVENTARIO_COMPLETO";
 
     @Column(name = "itens_processados", nullable = false)
     private Integer itensProcessados = 0;

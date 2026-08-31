@@ -3,9 +3,133 @@ import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
 import {
   celulaPossuiFormulaSemResultado,
+  custoPlanilhaParaEstoque,
+  extrairAtualizacaoCustos,
+  extrairSincronizacaoSaldos,
+  extrairOrdensRetiradaAvulsas,
+  quantidadePlanilhaParaEstoque,
   localizarCabecalhoEstoque,
   valorDaCelula,
 } from "./planilhaEstoque.js";
+
+test("prepara sincronização exclusiva de saldos e preserva os custos do sistema", () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("ESTOQUE ATUAL");
+  sheet.getCell("A4").value = "Produto";
+  sheet.getCell("B4").value = "Estoque após retiradas";
+  sheet.getCell("C4").value = "Valor unitário";
+  sheet.getCell("A5").value = "PATCH CORD";
+  sheet.getCell("B5").value = 12;
+  sheet.getCell("C5").value = 999;
+  sheet.getCell("A6").value = "CAIXA DE CABO CAT6A";
+  sheet.getCell("B6").value = 0.41;
+  sheet.getCell("C6").value = 999;
+  sheet.getCell("A7").value = "TERMINAL";
+  sheet.getCell("B7").value = -3;
+  sheet.getCell("C7").value = 999;
+
+  const resultado = extrairSincronizacaoSaldos(workbook, [
+    {
+      id: 1,
+      nome: "Patch Cord",
+      ativo: true,
+      tipoControle: "UNIDADE",
+      quantidadeDisponivel: 10,
+      quantidadeReservada: 2,
+      custoMedio: 5,
+    },
+    {
+      id: 2,
+      nome: "Caixa de Cabo CAT6A",
+      ativo: true,
+      tipoControle: "METRAGEM",
+      metragemDisponivel: 0,
+      metragemReservada: 0,
+      custoMedio: 6.8433,
+    },
+    {
+      id: 3,
+      nome: "Terminal",
+      ativo: true,
+      tipoControle: "UNIDADE",
+      quantidadeDisponivel: 5,
+      quantidadeReservada: 0,
+      custoMedio: 8.09,
+    },
+  ]);
+
+  assert.equal(resultado.avisos.length, 0);
+  assert.equal(resultado.itens[0].saldoAtual, 10);
+  assert.equal(resultado.itens[0].saldo, 12);
+  assert.equal(resultado.itens[0].custoUnitario, 5);
+  assert.equal(resultado.itens[0].acao, "AUMENTAR");
+  assert.equal(resultado.itens[1].saldo, 125.05);
+  assert.equal(resultado.itens[1].custoUnitario, 6.8433);
+  assert.equal(resultado.itens[2].saldo, 0);
+  assert.equal(resultado.itens[2].quantidadeFaltante, 3);
+  assert.equal(resultado.itens[2].acao, "REDUZIR");
+});
+
+test("bloqueia sincronização incompleta ou abaixo do saldo reservado", () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("ESTOQUE ATUAL");
+  sheet.addRow(["Produto", "Estoque atual", "Valor unitário"]);
+  sheet.addRow(["PATCH CORD", 1, 5]);
+
+  const resultado = extrairSincronizacaoSaldos(workbook, [
+    {
+      id: 1,
+      nome: "Patch Cord",
+      ativo: true,
+      tipoControle: "UNIDADE",
+      quantidadeDisponivel: 10,
+      quantidadeReservada: 2,
+      custoMedio: 5,
+    },
+    {
+      id: 2,
+      nome: "Terminal",
+      ativo: true,
+      tipoControle: "UNIDADE",
+      quantidadeDisponivel: 5,
+      quantidadeReservada: 0,
+      custoMedio: 8,
+    },
+  ]);
+
+  assert.ok(resultado.itens[0].erros.some((erro) => erro.includes("reservado")));
+  assert.ok(resultado.avisos.some((aviso) => aviso.includes("Terminal")));
+});
+
+test("extrai planilha exclusiva de custos sem criar saldo", () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("CADASTRO_PRODUTOS");
+  sheet.addRow(["PRODUTO", "VALOR UNITÁRIO"]);
+  sheet.addRow(["TAMPA", 24.76]);
+  sheet.addRow(["CAIXA DE CABO CAT6A", 2087.2]);
+  sheet.addRow(["ITEM NÃO CADASTRADO", 50]);
+  sheet.addRow(["VALOR TOTAL", 999]);
+
+  const resultado = extrairAtualizacaoCustos(workbook, [
+    { id: 1, nome: "Tampa", tipoControle: "UNIDADE", custoMedio: 20 },
+    {
+      id: 2,
+      nome: "Caixa de Cabo CAT6A",
+      tipoControle: "METRAGEM",
+      custoMedio: 6,
+    },
+  ]);
+
+  assert.equal(resultado.abaOrigem, "CADASTRO_PRODUTOS");
+  assert.equal(resultado.avisos.length, 0);
+  assert.equal(resultado.itens.length, 3);
+  assert.equal(resultado.itens[0].materialId, 1);
+  assert.equal(resultado.itens[0].custoUnitario, 24.76);
+  assert.equal(resultado.itens[1].materialId, 2);
+  assert.equal(resultado.itens[1].custoUnitario, 6.8433);
+  assert.equal(resultado.itens[1].conversaoBobina, true);
+  assert.equal(resultado.itens[2].acao, "IGNORAR");
+});
 
 test("localiza a primeira tabela quando existem quadros auxiliares na mesma linha", () => {
   const workbook = new ExcelJS.Workbook();
@@ -33,4 +157,97 @@ test("identifica fórmula compartilhada sem resultado armazenado", () => {
 
   assert.deepEqual(valorDaCelula(cell), cell.value);
   assert.equal(celulaPossuiFormulaSemResultado(cell), true);
+});
+
+test("lê resultado zero calculado pelo ExcelJS mesmo sem cache no objeto da célula", () => {
+  const celula = { value: { formula: "B1" }, result: 0 };
+
+  assert.equal(valorDaCelula(celula), 0);
+  assert.equal(celulaPossuiFormulaSemResultado(celula), false);
+});
+
+test("extrai OR avulsa usando o estoque atual e registra quantidade faltante", () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("ORDEM DE RETIRADA - CABEDELO");
+  sheet.getCell("A2").value = "CONTROLE DE RETIRADAS E ESTOQUE - CABEDELO";
+  sheet.addRow([]);
+  sheet.getCell("A7").value = "Produto";
+  sheet.getCell("B7").value = "Quantidade em estoque";
+  sheet.getCell("C7").value = "Valor unitário";
+  sheet.getCell("D7").value = "Quantidade da retirada";
+  sheet.getCell("F7").value = "Data de retirada";
+  sheet.getCell("G7").value = "Estoque após retirada";
+  sheet.getCell("A8").value = "PORCA GAIOLA";
+  sheet.getCell("B8").value = 17;
+  sheet.getCell("C8").value = 1.5;
+  sheet.getCell("D8").value = 32;
+  sheet.getCell("F8").value = "28/08/2026";
+  sheet.getCell("G8").value = -15;
+  sheet.getCell("A9").value = "TOTAL GERAL";
+  sheet.getCell("D9").value = 32;
+
+  const resultado = extrairOrdensRetiradaAvulsas(workbook, [{
+    id: 10,
+    nome: "Porca Gaiola",
+    tipoControle: "UNIDADE",
+    quantidadeDisponivel: 17,
+    quantidadeReservada: 0,
+    custoMedio: 2,
+  }]);
+
+  assert.equal(resultado.avisos.length, 0);
+  assert.equal(resultado.itens.length, 1);
+  assert.equal(resultado.itens[0].saldo, 17);
+  assert.equal(resultado.itens[0].quantidadeSolicitada, 32);
+  assert.equal(resultado.itens[0].quantidadeFaltante, 15);
+  assert.equal(resultado.abasRetiradas.length, 1);
+  assert.equal(resultado.abasRetiradas[0].cidade, "CABEDELO");
+  assert.equal(resultado.abasRetiradas[0].itens.length, 1);
+  assert.equal(resultado.abasRetiradas[0].itens[0].quantidadeRetirada, 32);
+  assert.equal(resultado.abasRetiradas[0].itens[0].saldoFinal, -15);
+  assert.equal(resultado.abasRetiradas[0].itens[0].quantidadeFaltante, 15);
+  assert.equal(resultado.abasRetiradas[0].itens[0].custoUnitario, 2);
+  assert.equal(resultado.abasRetiradas[0].itens[0].dataRetirada, "2026-08-28");
+});
+
+test("converte caixa de cabo em bobina de 305 metros sem alterar o valor financeiro", () => {
+  const metragem = quantidadePlanilhaParaEstoque("CAIXA DE CABO CAT6A", 2.94);
+  const custoPorMetro = custoPlanilhaParaEstoque("CAIXA DE CABO CAT6A", 2196);
+
+  assert.equal(metragem, 896.7);
+  assert.equal(custoPorMetro, 7.2);
+  assert.equal(Number((metragem * custoPorMetro).toFixed(2)), 6456.24);
+});
+
+test("converte a solicitação da OR de caixas de cabo para metragem e calcula a falta", () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("ORDEM DE RETIRADA - CABEDELO");
+  sheet.getCell("A2").value = "CONTROLE DE RETIRADAS E ESTOQUE - CABEDELO";
+  sheet.getCell("A7").value = "Produto";
+  sheet.getCell("B7").value = "Quantidade em estoque";
+  sheet.getCell("C7").value = "Valor unitário";
+  sheet.getCell("D7").value = "Quantidade da retirada";
+  sheet.getCell("G7").value = "Estoque após retirada";
+  sheet.getCell("A8").value = "CAIXA DE CABO CAT6A";
+  sheet.getCell("B8").value = 2.94;
+  sheet.getCell("C8").value = 2196;
+  sheet.getCell("D8").value = 3;
+  sheet.getCell("G8").value = -0.06;
+
+  const resultado = extrairOrdensRetiradaAvulsas(workbook, [{
+    id: 41,
+    nome: "CAIXA DE CABO CAT6A",
+    tipoControle: "FRACIONADO",
+    unidadeMedida: "UNIDADE",
+    metragemDisponivel: 2.94,
+    metragemReservada: 0,
+    custoMedio: 2196,
+  }]);
+  const item = resultado.abasRetiradas[0].itens[0];
+
+  assert.equal(item.saldoInicial, 896.7);
+  assert.equal(item.quantidadeRetirada, 915);
+  assert.ok(Math.abs(item.saldoFinal - -18.3) < 0.0001);
+  assert.ok(Math.abs(item.quantidadeFaltante - 18.3) < 0.0001);
+  assert.equal(item.custoUnitario, 7.2);
 });

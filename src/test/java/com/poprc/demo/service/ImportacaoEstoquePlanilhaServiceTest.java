@@ -1,7 +1,9 @@
 package com.poprc.demo.service;
 
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
+import com.poprc.demo.dto.AtualizacaoCustosPlanilhaRequest;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
+import com.poprc.demo.dto.SincronizacaoSaldosPlanilhaRequest;
 import com.poprc.demo.model.ImportacaoEstoquePlanilha;
 import com.poprc.demo.model.Comarca;
 import com.poprc.demo.model.ImportacaoEstoqueItemPlanilha;
@@ -30,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -149,6 +152,123 @@ class ImportacaoEstoquePlanilhaServiceTest {
                 new BigDecimal("12.50"),
                 "Inventário importado de estoque.xlsx",
                 "gestor");
+    }
+
+    @Test
+    void deveAtualizarSomenteOCustoEPreservarQuantidade() {
+        String hash = "9".repeat(64);
+        Material material = new Material();
+        material.setId(7L);
+        material.setNome("Patch Cord");
+        material.setAtivo(true);
+        material.setTipoControle(TipoControleEstoque.UNIDADE);
+        material.setQuantidadeDisponivel(10);
+        material.setQuantidadeReservada(2);
+        material.setCustoMedio(new BigDecimal("5.0000"));
+
+        when(importacaoRepository.existsByHashSha256(hash)).thenReturn(false);
+        when(importacaoRepository.saveAndFlush(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> {
+                    ImportacaoEstoquePlanilha importacao = invocacao.getArgument(0);
+                    importacao.setId(31L);
+                    return importacao;
+                });
+        when(importacaoRepository.save(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+        when(materialRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(material));
+        when(materialRepository.save(any(Material.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+        when(materialRepository.findByAtivoTrueOrderByNomeAsc()).thenReturn(List.of(material));
+
+        AtualizacaoCustosPlanilhaRequest request = new AtualizacaoCustosPlanilhaRequest(
+                "custos.xlsx",
+                hash,
+                List.of(new AtualizacaoCustosPlanilhaRequest.ItemCusto(
+                        7L, "PATCH CORD", new BigDecimal("7.5000"), 2)));
+
+        ImportacaoEstoquePlanilhaResultadoDTO resultado = service.atualizarCustos(request, "gestor");
+
+        assertEquals(10, material.getQuantidadeDisponivel());
+        assertEquals(2, material.getQuantidadeReservada());
+        assertEquals(new BigDecimal("7.5000"), material.getCustoMedio());
+        assertEquals(1, resultado.materiaisAtualizados());
+        assertEquals(0, resultado.ajustesPositivos());
+        assertEquals(0, resultado.ajustesNegativos());
+        assertEquals(new BigDecimal("75.00"), resultado.valorTotalImportado());
+
+        ArgumentCaptor<ImportacaoEstoqueItemPlanilha> itemCaptor =
+                ArgumentCaptor.forClass(ImportacaoEstoqueItemPlanilha.class);
+        verify(itemImportacaoRepository).save(itemCaptor.capture());
+        assertEquals(new BigDecimal("5.0000"), itemCaptor.getValue().getCustoAnterior());
+        assertEquals(new BigDecimal("7.5000"), itemCaptor.getValue().getCustoUnitario());
+        assertEquals(itemCaptor.getValue().getSaldoAnterior(), itemCaptor.getValue().getSaldoImportado());
+        assertEquals("CUSTO_ATUALIZADO", itemCaptor.getValue().getAcao());
+    }
+
+    @Test
+    void deveSincronizarSomenteSaldoEPreservarCustoEReserva() {
+        String hashOriginal = "8".repeat(64);
+        LocalEstoque local = new LocalEstoque();
+        local.setId(3L);
+        local.setNome("Estoque Principal");
+        local.setAtivo(true);
+        Material material = new Material();
+        material.setId(7L);
+        material.setNome("Patch Cord");
+        material.setAtivo(true);
+        material.setTipoControle(TipoControleEstoque.UNIDADE);
+        material.setQuantidadeDisponivel(10);
+        material.setQuantidadeReservada(2);
+        material.setCustoMedio(new BigDecimal("5.0000"));
+
+        when(localRepository.findById(3L)).thenReturn(Optional.of(local));
+        when(materialRepository.findByAtivoTrueOrderByNomeAsc()).thenReturn(List.of(material));
+        when(materialRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(material));
+        when(importacaoRepository.saveAndFlush(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> {
+                    ImportacaoEstoquePlanilha importacao = invocacao.getArgument(0);
+                    importacao.setId(32L);
+                    return importacao;
+                });
+        when(importacaoRepository.save(any(ImportacaoEstoquePlanilha.class)))
+                .thenAnswer(invocacao -> invocacao.getArgument(0));
+        when(estoqueService.reconciliarSaldoPlanilha(
+                7L,
+                3L,
+                12,
+                new BigDecimal("5.0000"),
+                "Sincronização da aba ESTOQUE ATUAL de saldos.xlsx",
+                "gestor"))
+                .thenAnswer(invocacao -> {
+                    material.setQuantidadeDisponivel(12);
+                    return null;
+                });
+
+        SincronizacaoSaldosPlanilhaRequest request = new SincronizacaoSaldosPlanilhaRequest(
+                "saldos.xlsx",
+                hashOriginal,
+                3L,
+                List.of(new SincronizacaoSaldosPlanilhaRequest.ItemSaldo(
+                        7L, "PATCH CORD", new BigDecimal("12"), 5)));
+
+        ImportacaoEstoquePlanilhaResultadoDTO resultado = service.sincronizarSaldos(request, "gestor");
+
+        assertEquals(12, material.getQuantidadeDisponivel());
+        assertEquals(2, material.getQuantidadeReservada());
+        assertEquals(new BigDecimal("5.0000"), material.getCustoMedio());
+        assertEquals(1, resultado.materiaisAtualizados());
+        assertEquals(1, resultado.ajustesPositivos());
+        assertEquals(0, resultado.ajustesNegativos());
+        assertEquals(new BigDecimal("60.00"), resultado.valorTotalImportado());
+        assertEquals("SALDOS_SINCRONIZADOS", resultado.resultado());
+
+        ArgumentCaptor<ImportacaoEstoqueItemPlanilha> itemCaptor =
+                ArgumentCaptor.forClass(ImportacaoEstoqueItemPlanilha.class);
+        verify(itemImportacaoRepository).save(itemCaptor.capture());
+        assertEquals(new BigDecimal("10"), itemCaptor.getValue().getSaldoAnterior());
+        assertEquals(new BigDecimal("12"), itemCaptor.getValue().getSaldoImportado());
+        assertEquals(itemCaptor.getValue().getCustoAnterior(), itemCaptor.getValue().getCustoUnitario());
+        assertEquals("SALDO_AUMENTADO", itemCaptor.getValue().getAcao());
     }
 
     @Test

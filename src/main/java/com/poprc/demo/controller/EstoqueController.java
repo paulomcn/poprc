@@ -1,9 +1,11 @@
 package com.poprc.demo.controller;
 
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaRequest;
+import com.poprc.demo.dto.AtualizacaoCustosPlanilhaRequest;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaDetalheDTO;
 import com.poprc.demo.dto.ImportacaoEstoquePlanilhaResultadoDTO;
 import com.poprc.demo.dto.NotaFiscalEstoqueDTO;
+import com.poprc.demo.dto.SincronizacaoSaldosPlanilhaRequest;
 import com.poprc.demo.model.Material;
 import com.poprc.demo.model.MovimentacaoEstoque;
 import com.poprc.demo.repository.MaterialRepository;
@@ -167,6 +169,30 @@ public class EstoqueController {
         String usuario = authentication != null ? authentication.getName() : null;
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(importacaoPlanilhaService.importar(request, usuario));
+    }
+
+    @PostMapping("/importacoes/custos")
+    public ResponseEntity<ImportacaoEstoquePlanilhaResultadoDTO> atualizarCustosPlanilha(
+            @RequestBody AtualizacaoCustosPlanilhaRequest request,
+            Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        if (authentication != null && authentication.getPrincipal() instanceof UsuarioAutenticado autenticado) {
+            usuario = autenticado.getNome();
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(importacaoPlanilhaService.atualizarCustos(request, usuario));
+    }
+
+    @PostMapping("/importacoes/saldos")
+    public ResponseEntity<ImportacaoEstoquePlanilhaResultadoDTO> sincronizarSaldosPlanilha(
+            @RequestBody SincronizacaoSaldosPlanilhaRequest request,
+            Authentication authentication) {
+        String usuario = authentication != null ? authentication.getName() : null;
+        if (authentication != null && authentication.getPrincipal() instanceof UsuarioAutenticado autenticado) {
+            usuario = autenticado.getNome();
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(importacaoPlanilhaService.sincronizarSaldos(request, usuario));
     }
 
     @GetMapping("/importacoes/planilha")

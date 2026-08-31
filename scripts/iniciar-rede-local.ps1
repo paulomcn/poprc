@@ -45,8 +45,13 @@ $backend = Start-Process -FilePath (Join-Path $projectRoot "mvnw.cmd") `
     -RedirectStandardError (Join-Path $runtimeRoot "backend.err.log") `
     -WindowStyle Hidden -PassThru
 
-$frontend = Start-Process -FilePath "npm.cmd" `
-    -ArgumentList @("run", "dev", "--", "--host", "0.0.0.0", "--port", $FrontendPort, "--strictPort") `
+$node = (Get-Command "node.exe" -ErrorAction Stop).Source
+$vite = Join-Path $frontendRoot "node_modules\vite\bin\vite.js"
+if (-not (Test-Path -LiteralPath $vite)) {
+    throw "As dependências do frontend não estão instaladas. Execute npm install antes de iniciar."
+}
+$frontend = Start-Process -FilePath $node `
+    -ArgumentList @($vite, "--host", "0.0.0.0", "--port", $FrontendPort, "--strictPort") `
     -WorkingDirectory $frontendRoot `
     -RedirectStandardOutput (Join-Path $runtimeRoot "frontend.log") `
     -RedirectStandardError (Join-Path $runtimeRoot "frontend.err.log") `
