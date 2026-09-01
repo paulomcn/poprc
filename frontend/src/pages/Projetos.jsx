@@ -35,6 +35,10 @@ export default function Projetos() {
     nomeComarcaVinculada: "", //  NOVO
   });
 
+  const atualizarCampo = (campo, valor) => {
+    setFormData((prev) => ({ ...prev, [campo]: valor }));
+  };
+
   useEffect(() => {
     carregarDados();
   }, [incluirArquivados]);
@@ -372,12 +376,7 @@ export default function Projetos() {
                 <select
                   disabled={selectedProjeto && !isEditing}
                   value={formData.contrato.id}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      contrato: { id: e.target.value },
-                    })
-                  }
+                  onChange={(e) => atualizarCampo("contrato", { id: e.target.value })}
                   className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
                   required
                 >
@@ -475,12 +474,7 @@ export default function Projetos() {
                   <input
                     type="text"
                     value={formData.nomeComarcaVinculada}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        nomeComarcaVinculada: e.target.value,
-                      })
-                    }
+                    onChange={(e) => atualizarCampo("nomeComarcaVinculada", e.target.value)}
                     className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
                     placeholder="Se vazio, usaremos o nome do cliente do contrato"
                   />
@@ -500,9 +494,7 @@ export default function Projetos() {
                     type="date"
                     disabled={selectedProjeto && !isEditing}
                     value={formData.dataInicio}
-                    onChange={(e) =>
-                      setFormData({ ...formData, dataInicio: e.target.value })
-                    }
+                    onChange={(e) => atualizarCampo("dataInicio", e.target.value)}
                     className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
                     required
                   />
@@ -515,9 +507,7 @@ export default function Projetos() {
                     type="date"
                     disabled={selectedProjeto && !isEditing}
                     value={formData.dataFim}
-                    onChange={(e) =>
-                      setFormData({ ...formData, dataFim: e.target.value })
-                    }
+                    onChange={(e) => atualizarCampo("dataFim", e.target.value)}
                     className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
                   />
                 </div>
@@ -531,9 +521,7 @@ export default function Projetos() {
                   <select
                     disabled={selectedProjeto && !isEditing}
                     value={formData.status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
+                    onChange={(e) => atualizarCampo("status", e.target.value)}
                     className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
                   >
                     <option value="EM_ANDAMENTO">Em Andamento</option>
@@ -548,12 +536,7 @@ export default function Projetos() {
                   <select
                     disabled={selectedProjeto && !isEditing}
                     value={formData.asBuiltStatus}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        asBuiltStatus: e.target.value,
-                      })
-                    }
+                    onChange={(e) => atualizarCampo("asBuiltStatus", e.target.value)}
                     className="w-full mt-1 p-2 border rounded-lg text-sm bg-slate-50"
                   >
                     <option value="PENDENTE">Pendente</option>

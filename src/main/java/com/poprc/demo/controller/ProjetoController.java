@@ -53,6 +53,14 @@ public class ProjetoController {
                 response.put("erro", "Contrato ID é obrigatório");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
+            if (projeto.getDataInicio() == null) {
+                response.put("erro", "Data de início é obrigatória");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+            if (projeto.getDataFim() != null && projeto.getDataFim().isBefore(projeto.getDataInicio())) {
+                response.put("erro", "Data de fim não pode ser anterior à data de início");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
 
             Optional<Contrato> contrato = contratoRepository.findById(projeto.getContrato().getId());
             if (!contrato.isPresent()) {
@@ -121,10 +129,21 @@ public class ProjetoController {
 
         return projetoRepository.findById(id)
                 .map(projeto -> {
-                    if (dadosAtualizados.getDataInicio() != null)
-                        projeto.setDataInicio(dadosAtualizados.getDataInicio());
-                    if (dadosAtualizados.getDataFim() != null)
-                        projeto.setDataFim(dadosAtualizados.getDataFim());
+                    var dataInicio = dadosAtualizados.getDataInicio() != null
+                            ? dadosAtualizados.getDataInicio()
+                            : projeto.getDataInicio();
+                    var dataFim = dadosAtualizados.getDataFim() != null
+                            ? dadosAtualizados.getDataFim()
+                            : projeto.getDataFim();
+                    if (dataInicio == null) {
+                        throw new IllegalArgumentException("Data de início é obrigatória");
+                    }
+                    if (dataFim != null && dataFim.isBefore(dataInicio)) {
+                        throw new IllegalArgumentException(
+                                "Data de fim não pode ser anterior à data de início");
+                    }
+                    projeto.setDataInicio(dataInicio);
+                    projeto.setDataFim(dataFim);
                     if (dadosAtualizados.getStatus() != null)
                         projeto.setStatus(dadosAtualizados.getStatus());
                     if (dadosAtualizados.getAsBuiltStatus() != null)

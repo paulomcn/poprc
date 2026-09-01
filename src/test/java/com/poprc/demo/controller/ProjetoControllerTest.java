@@ -14,6 +14,7 @@ import com.poprc.demo.repository.ProjetoRepository;
 import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.service.ComarcaService;
 import com.poprc.demo.service.ProjetoEquipeService;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,6 +60,7 @@ class ProjetoControllerTest {
         Contrato contratoInformado = new Contrato();
         contratoInformado.setId(1L);
         projeto.setContrato(contratoInformado);
+        projeto.setDataInicio(LocalDate.of(2026, 9, 1));
         projeto.setArquivado(null);
 
         ResponseEntity<Map<String, Object>> resposta = controller.salvarProjeto(projeto);
@@ -67,5 +69,18 @@ class ProjetoControllerTest {
         Projeto salvo = (Projeto) resposta.getBody().get("projeto");
         assertFalse(salvo.getArquivado());
         assertEquals("PENDENTE", salvo.getAsBuiltStatus());
+    }
+
+    @Test
+    void rejeitaProjetoSemDataDeInicio() {
+        Projeto projeto = new Projeto();
+        Contrato contratoInformado = new Contrato();
+        contratoInformado.setId(1L);
+        projeto.setContrato(contratoInformado);
+
+        ResponseEntity<Map<String, Object>> resposta = controller.salvarProjeto(projeto);
+
+        assertEquals(HttpStatus.BAD_REQUEST, resposta.getStatusCode());
+        assertEquals("Data de início é obrigatória", resposta.getBody().get("erro"));
     }
 }
