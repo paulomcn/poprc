@@ -9,8 +9,54 @@ import {
   extrairOrdensRetiradaAvulsas,
   quantidadePlanilhaParaEstoque,
   localizarCabecalhoEstoque,
+  resolverSaldoBaseCadastro,
+  resumirAvisosImportacao,
+  saldoCadastroIncluiRetornos,
   valorDaCelula,
 } from "./planilhaEstoque.js";
+
+test("separa os bloqueios da importação completa dos bloqueios das ORs", () => {
+  const apenasCadastro = resumirAvisosImportacao(
+    ["CADASTRO_PRODUTOS, linha 5: saldo inválido."],
+    [],
+  );
+  const comRetirada = resumirAvisosImportacao(
+    ["Linha 5: saldo inválido.", "Aba ORDEM DE RETIRADA, linha 8: item inválido."],
+    ["Aba ORDEM DE RETIRADA, linha 8: item inválido."],
+  );
+
+  assert.deepEqual(apenasCadastro, {
+    total: 1,
+    retiradas: 0,
+    gerais: 1,
+    bloqueiaImportacao: true,
+    bloqueiaReconciliacao: false,
+  });
+  assert.equal(comRetirada.total, 2);
+  assert.equal(comRetirada.gerais, 1);
+  assert.equal(comRetirada.retiradas, 1);
+  assert.equal(comRetirada.bloqueiaImportacao, true);
+  assert.equal(comRetirada.bloqueiaReconciliacao, true);
+});
+
+test("usa o saldo informado quando a fórmula do cadastro já inclui retornos", () => {
+  assert.equal(resolverSaldoBaseCadastro(239, 255, true), 255);
+  assert.equal(resolverSaldoBaseCadastro(239, 255, false), 239);
+  assert.equal(resolverSaldoBaseCadastro(239, Number.NaN, true), 239);
+});
+
+test("detecta quando o saldo-base do cadastro já soma SOBRAS - RETORNOS", () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("CADASTRO_PRODUTOS");
+  sheet.getCell("A4").value = "PRODUTO";
+  sheet.getCell("C4").value = "ESTOQUE APÓS ADIÇÕES";
+  sheet.getCell("C5").value = {
+    formula: "B5 + SUM(F5:L5) + 'SOBRAS - RETORNOS'!G5",
+    result: 255,
+  };
+
+  assert.equal(saldoCadastroIncluiRetornos(sheet, { linha: 4, aposAdicoes: 3 }), true);
+});
 
 test("prepara sincronização exclusiva de saldos e preserva os custos do sistema", () => {
   const workbook = new ExcelJS.Workbook();

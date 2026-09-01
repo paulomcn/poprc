@@ -39,6 +39,9 @@ import {
   localizarCabecalhoEstoque,
   normalizarTextoPlanilha,
   quantidadePlanilhaParaEstoque,
+  resolverSaldoBaseCadastro,
+  resumirAvisosImportacao,
+  saldoCadastroIncluiRetornos,
   valorDaCelula,
 } from "../utils/planilhaEstoque";
 import {
@@ -583,6 +586,7 @@ export default function PainelEstoque() {
             estoqueMinimoPadrao: null,
             itens: atualizacaoCustos.itens,
             avisos: atualizacaoCustos.avisos,
+            avisosRetiradas: [],
             valorTotal,
             valorTotalAnterior,
           });
@@ -625,6 +629,7 @@ export default function PainelEstoque() {
           itens: ordemAvulsa.itens,
           entradas: [],
           avisos: ordemAvulsa.avisos,
+          avisosRetiradas: ordemAvulsa.avisos,
           valorTotal: materiais.reduce(
             (total, material) => total + valorTotalMaterial(material),
             0,
@@ -653,6 +658,11 @@ export default function PainelEstoque() {
 
       const itens = [];
       const avisos = [];
+      const avisosRetiradas = [];
+      const adicionarAvisoRetirada = (mensagem) => {
+        avisos.push(mensagem);
+        avisosRetiradas.push(mensagem);
+      };
       for (let linha = cabecalho.linha + 1; linha <= origem.rowCount; linha += 1) {
         const nomeBruto = valorDaCelula(origem.getCell(linha, cabecalho.produto));
         const nome = typeof nomeBruto === "string" ? nomeBruto.trim() : "";
@@ -693,6 +703,7 @@ export default function PainelEstoque() {
       );
       const entradas = [];
       const catalogoItens = [];
+      let retornosIncluidosNoSaldoBase = false;
       if (cadastroProdutos) {
         let cabecalhoCadastro = null;
         for (let linha = 1; linha <= Math.min(cadastroProdutos.rowCount, 20); linha += 1) {
@@ -716,6 +727,10 @@ export default function PainelEstoque() {
         if (!cabecalhoCadastro) {
           avisos.push("A aba CADASTRO_PRODUTOS não possui os cabeçalhos esperados.");
         } else {
+          retornosIncluidosNoSaldoBase = saldoCadastroIncluiRetornos(
+            cadastroProdutos,
+            cabecalhoCadastro,
+          );
           const colunasAdicoes = [];
           for (
             let coluna = (cabecalhoCadastro.valorTotal || cabecalhoCadastro.custo) + 1;
@@ -786,23 +801,26 @@ export default function PainelEstoque() {
               (total, entrada) => total + entrada.quantidade,
               estoqueInicial,
             );
-            if (Number.isFinite(estoqueAposAdicoesInformado)
+            if (!retornosIncluidosNoSaldoBase
+              && Number.isFinite(estoqueAposAdicoesInformado)
               && Math.abs(totalCalculado - estoqueAposAdicoesInformado) > 0.001) {
               avisos.push(
                 `CADASTRO_PRODUTOS, linha ${linha}: estoque após adições não confere para ${nome}.`,
               );
-              continue;
             }
             if (!Number.isFinite(estoqueAposAdicoesInformado)
               && !celulaPossuiFormulaSemResultado(celulaEstoqueAposAdicoes)) {
               avisos.push(
                 `CADASTRO_PRODUTOS, linha ${linha}: estoque após adições inválido para ${nome}.`,
               );
-              continue;
             }
             catalogoItens.push({
               nome,
-              saldoBase: totalCalculado,
+              saldoBase: resolverSaldoBaseCadastro(
+                totalCalculado,
+                estoqueAposAdicoesInformado,
+                retornosIncluidosNoSaldoBase,
+              ),
               custoUnitario,
               linhaOrigem: linha,
             });
@@ -904,7 +922,7 @@ export default function PainelEstoque() {
               : catalogoPorMaterial.get(chaveMaterial)?.custoUnitario;
             const itemCatalogo = catalogoPorMaterial.get(chaveMaterial);
             if (!itemCatalogo) {
-              avisos.push(
+              adicionarAvisoRetirada(
                 `Aba ${sheet.name}, linha ${linha}: ${nome} não existe no CADASTRO_PRODUTOS.`,
               );
               continue;
@@ -915,7 +933,9 @@ export default function PainelEstoque() {
               || !Number.isFinite(custoUnitario)
               || custoUnitario < 0
             ) {
-              avisos.push(`Aba ${sheet.name}, linha ${linha}: retirada inválida para ${nome}.`);
+              adicionarAvisoRetirada(
+                `Aba ${sheet.name}, linha ${linha}: retirada inválida para ${nome}.`,
+              );
               continue;
             }
             const saldoFinalInformado = quantidadePlanilhaParaEstoque(
@@ -928,14 +948,14 @@ export default function PainelEstoque() {
             if (quantidadeRetirada === 0) continue;
             if (Number.isFinite(saldoInicialInformado)
               && Math.abs(saldoInicialInformado - saldoInicial) > 0.001) {
-              avisos.push(
+              adicionarAvisoRetirada(
                 `Aba ${sheet.name}, linha ${linha}: saldo inicial não confere para ${nome}.`,
               );
               continue;
             }
             if (Number.isFinite(saldoFinalInformado)
               && Math.abs(saldoFinalInformado - saldoFinal) > 0.001) {
-              avisos.push(
+              adicionarAvisoRetirada(
                 `Aba ${sheet.name}, linha ${linha}: saldo final não confere para ${nome}.`,
               );
               continue;
@@ -1017,10 +1037,12 @@ export default function PainelEstoque() {
                 quantidadeRetornada,
                 linhaOrigem: linha,
               });
-              saldoHistoricoPorMaterial.set(
-                chaveMaterial,
-                (saldoHistoricoPorMaterial.get(chaveMaterial) || 0) + quantidadeRetornada,
-              );
+              if (!retornosIncluidosNoSaldoBase) {
+                saldoHistoricoPorMaterial.set(
+                  chaveMaterial,
+                  (saldoHistoricoPorMaterial.get(chaveMaterial) || 0) + quantidadeRetornada,
+                );
+              }
             }
           }
         }
@@ -1147,6 +1169,7 @@ export default function PainelEstoque() {
         itens: itensPreview,
         entradas,
         avisos,
+        avisosRetiradas,
         valorTotal: itensPreview.reduce(
           (total, item) => total + item.saldo * item.custoUnitario,
           0,
@@ -1293,6 +1316,17 @@ export default function PainelEstoque() {
 
   const reconciliarHistoricoRetiradas = async (confirmar = false) => {
     if (!importacaoPreview?.abasRetiradas?.length) return;
+    const validacao = resumirAvisosImportacao(
+      importacaoPreview.avisos,
+      importacaoPreview.avisosRetiradas,
+    );
+    if (validacao.bloqueiaReconciliacao) {
+      setError(
+        `${validacao.retiradas} inconsistência(s) nas abas de retirada impedem a comparação. `
+        + "Corrija esses itens na planilha antes de reconciliar o histórico.",
+      );
+      return;
+    }
     const historicoPorOrigem = new Map();
     retiradasImportadas.forEach((retirada) => {
       const chave = `${normalizarTextoPlanilha(retirada.aba)}|${normalizarTextoPlanilha(retirada.material)}`;
@@ -5682,8 +5716,32 @@ export default function PainelEstoque() {
               <div className="space-y-2">
                 <Alert
                   type="error"
-                  message={`${importacaoPreview.avisos.length} linhas precisam ser corrigidas; nenhuma alteração será aplicada.`}
+                  message={`${importacaoPreview.avisos.length} pendência(s) encontrada(s); a importação completa permanece bloqueada.`}
                 />
+                {(() => {
+                  const validacao = resumirAvisosImportacao(
+                    importacaoPreview.avisos,
+                    importacaoPreview.avisosRetiradas,
+                  );
+                  return (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                        <strong className="block">Cadastro, saldos e retornos</strong>
+                        {validacao.gerais} pendência(s). Bloqueiam a importação completa.
+                      </div>
+                      <div className={`rounded border px-3 py-2 text-xs ${
+                        validacao.bloqueiaReconciliacao
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      }`}>
+                        <strong className="block">Histórico das ORs</strong>
+                        {validacao.bloqueiaReconciliacao
+                          ? `${validacao.retiradas} pendência(s) impedem a comparação.`
+                          : "Sem pendências próprias; a comparação está disponível."}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <ul className="max-h-32 overflow-auto rounded border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
                   {importacaoPreview.avisos.map((aviso, indice) => (
                     <li key={`${indice}-${aviso}`} className="py-0.5">
@@ -5885,7 +5943,13 @@ export default function PainelEstoque() {
                     onClick={() => reconciliarHistoricoRetiradas(
                       Boolean(reconciliacaoPreview?.divergencias),
                     )}
-                    disabled={reconciliacaoProcessando || importacaoPreview.avisos.length > 0}
+                    disabled={
+                      reconciliacaoProcessando
+                      || resumirAvisosImportacao(
+                        importacaoPreview.avisos,
+                        importacaoPreview.avisosRetiradas,
+                      ).bloqueiaReconciliacao
+                    }
                     className={`rounded-lg px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:bg-slate-300 ${
                       reconciliacaoPreview?.divergencias
                         ? "bg-orange-600 text-white hover:bg-orange-700"

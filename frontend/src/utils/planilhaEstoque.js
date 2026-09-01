@@ -12,6 +12,35 @@ export const METROS_POR_BOBINA_CABO = 305;
 export const arredondarQuantidadeEstoque = (valor) =>
   Number(Number(valor || 0).toFixed(3));
 
+export const resumirAvisosImportacao = (avisos = [], avisosRetiradas = []) => ({
+  total: avisos.length,
+  retiradas: avisosRetiradas.length,
+  gerais: Math.max(0, avisos.length - avisosRetiradas.length),
+  bloqueiaImportacao: avisos.length > 0,
+  bloqueiaReconciliacao: avisosRetiradas.length > 0,
+});
+
+export const resolverSaldoBaseCadastro = (
+  estoqueCalculado,
+  estoqueInformado,
+  incluiRetornos,
+) => (incluiRetornos && Number.isFinite(estoqueInformado)
+  ? estoqueInformado
+  : estoqueCalculado);
+
+export const saldoCadastroIncluiRetornos = (sheet, cabecalho) => {
+  if (!sheet || !cabecalho?.aposAdicoes) return false;
+  const quantidadeLinhas = Math.max(0, Math.min(10, sheet.rowCount - cabecalho.linha));
+  return Array.from(
+    { length: quantidadeLinhas },
+    (_, indice) => cabecalho.linha + indice + 1,
+  ).some((linha) => {
+    const valor = sheet.getCell(linha, cabecalho.aposAdicoes).value;
+    const formula = valor && typeof valor === "object" ? valor.formula : null;
+    return normalizarTextoPlanilha(formula).includes("sobras retornos");
+  });
+};
+
 export const ehCaboEmBobina305 = (nome) => {
   const normalizado = normalizarTextoPlanilha(nome);
   return (normalizado.includes("caixa") && normalizado.includes("cabo")
