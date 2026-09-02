@@ -10,10 +10,8 @@ import {
   ChevronDown,
   X,
   Briefcase,
-  FileText,
   Move,
   Eye,
-  ClipboardCheck,
   ThumbsUp,
   ThumbsDown,
   Archive,
@@ -24,6 +22,7 @@ import OrdensServicoCard from "../components/OrdensServicoCard";
 import StatusModal from "../components/StatusModal";
 import FilaPendenciasOperacionais from "../components/FilaPendenciasOperacionais";
 import PageHeader from "../components/PageHeader";
+import Modal from "../components/Modal";
 import { useAuth } from "../contexts/AuthContext";
 import { PERMISSOES, temPermissao } from "../security/permissions";
 
@@ -549,7 +548,7 @@ export default function GestaoOrdensServico() {
       />
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
               <input
@@ -709,29 +708,9 @@ export default function GestaoOrdensServico() {
 
       {/* MODAL CHECKLIST */}
       {checklistModalOpen && ordemChecklistFoco && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-lg overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div className="flex items-center gap-2">
-                <ClipboardCheck className="text-blue-600 w-5 h-5" />
-                <div>
-                  <h2 className="text-sm font-black text-gray-800 tracking-tight">
-                    Relatório Técnico de Campo
-                  </h2>
-                  <p className="text-[10px] text-gray-400 font-mono">
-                    Código OS: {ordemChecklistFoco.numeroOs}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setChecklistModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 max-h-[400px] overflow-y-auto">
+        <Modal isOpen={checklistModalOpen} onClose={() => setChecklistModalOpen(false)} title="Relatório Técnico de Campo">
+            <p className="mb-4 break-words text-xs text-gray-500">Código OS: {ordemChecklistFoco.numeroOs}</p>
+            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-xs bg-gray-50 p-3 rounded-lg border border-gray-100 font-medium text-gray-500">
                 <div>
                   <span className="block text-[10px] text-gray-400 uppercase font-bold">
@@ -809,27 +788,13 @@ export default function GestaoOrdensServico() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL CRIAÇÃO */}
       {createModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl border w-full max-w-2xl overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                <FileText size={18} className="text-blue-600" /> Abrir Nova
-                Ordem de Serviço
-              </h2>
-              <button
-                onClick={() => setCreateModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCriarOS} className="max-h-[78vh] space-y-4 overflow-y-auto p-6">
+        <Modal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Abrir Nova Ordem de Serviço">
+            <form onSubmit={handleCriarOS} className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                   Código / Número da OS
@@ -948,7 +913,7 @@ export default function GestaoOrdensServico() {
                   <button
                     type="button"
                     onClick={adicionarLinhaMaterialOs}
-                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm ring-1 ring-blue-100 hover:bg-blue-50"
+                    className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm ring-1 ring-blue-100 hover:bg-blue-50"
                   >
                     + Material
                   </button>
@@ -964,14 +929,15 @@ export default function GestaoOrdensServico() {
 
                     return (
                       <div key={index} className="space-y-1">
-                        <div className="grid grid-cols-[1fr_92px_32px] items-center gap-2">
+                        <div className="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_92px_32px]">
                           <select
+                            aria-label={`Material ${index + 1}`}
                             required
                             value={item.materialId}
                             onChange={(e) =>
                               atualizarMaterialOs(index, "materialId", e.target.value)
                             }
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            className="col-span-2 min-w-0 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-1"
                           >
                             <option value="">Selecione o material</option>
                             {materiaisEstoque.map((material) => {
@@ -992,6 +958,7 @@ export default function GestaoOrdensServico() {
                             })}
                           </select>
                           <input
+                            aria-label={`Quantidade do material ${index + 1}`}
                             type="number"
                             min={controlaMetragem(materialSelecionado) ? "0.001" : "1"}
                             max={materialSelecionado ? saldoLivreSelecionado : undefined}
@@ -1047,8 +1014,7 @@ export default function GestaoOrdensServico() {
                 Emitir Ordem de Serviço
               </button>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Modal de Status */}

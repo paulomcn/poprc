@@ -71,16 +71,16 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapsed 
     <>
       <aside
         aria-label="Navegação principal"
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-[width,transform] duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-white transition-[width,transform] duration-200 md:visible md:static md:translate-x-0 ${
           collapsed ? "md:w-20" : "md:w-64"
         } ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen ? "visible translate-x-0" : "invisible -translate-x-full"
         }`}
       >
-        <div className={`flex min-h-18 items-center gap-3 border-b border-slate-800 px-4 ${
+        <div className={`flex h-16 shrink-0 items-center gap-3 border-b border-slate-800 px-4 ${
           collapsed ? "md:justify-center md:gap-1 md:px-2" : ""
         }`}>
-          <img src={rcLogo} alt="RC Technology" className="h-10 w-10 rounded object-cover" />
+          <img src={rcLogo} alt="RC Technology" className={`shrink-0 rounded object-cover ${collapsed ? "h-10 w-10 md:h-8 md:w-8" : "h-10 w-10"}`} />
           <div className={`min-w-0 flex-1 ${collapsed ? "md:hidden" : ""}`}>
             <p className="truncate text-sm font-bold text-white">RC Operations Hub</p>
             <p className="text-xs text-slate-400">Central operacional</p>

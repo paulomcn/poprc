@@ -224,7 +224,7 @@ export default function ExecutarOrdemServico() {
     try {
       setSavingChecklist(true)
       const response = await api.put(`/ordens-servico/${id}/checklist`, { checklist })
-      setOs(response.data)
+      setOs((prev) => ({ ...prev, ...response.data }))
       mostrarFeedback('sucesso', 'Atividades realizadas registradas na OS.')
     } catch (err) {
       mostrarFeedback('erro', getApiErrorMessage(err, 'Falha ao salvar o checklist da OS.'))

@@ -26,14 +26,14 @@ export default function Header({ usuario, onMenuClick, theme, onThemeToggle }) {
   };
 
   return (
-    <header className="z-20 flex min-h-18 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+    <header data-app-header className="z-20 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={onMenuClick}
           aria-label="Abrir menu"
           title="Abrir menu"
-          className="rounded border border-slate-200 p-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 md:hidden"
+          className="shrink-0 rounded border border-slate-200 p-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 md:hidden"
         >
           <Menu size={20} />
         </button>
@@ -43,7 +43,7 @@ export default function Header({ usuario, onMenuClick, theme, onThemeToggle }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onThemeToggle}

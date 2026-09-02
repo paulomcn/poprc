@@ -62,38 +62,50 @@ code {
 }
 
 .dark [class~="bg-slate-50"],
+.dark [class~="bg-gray-50"],
 .dark [class~="bg-slate-50/50"] {
   background-color: #111827 !important;
 }
 
-.dark [class~="bg-slate-100"] {
+.dark [class~="bg-slate-100"],
+.dark [class~="bg-gray-100"],
+.dark [class~="bg-gray-100/50"] {
   background-color: #1e293b !important;
 }
 
-.dark [class~="bg-slate-200"] {
+.dark [class~="bg-slate-200"],
+.dark [class~="bg-gray-200"] {
   background-color: #334155 !important;
 }
 
 .dark [class~="text-slate-950"],
 .dark [class~="text-slate-900"],
+.dark [class~="text-gray-900"],
+.dark [class~="text-gray-800"],
 .dark [class~="text-slate-800"] {
   color: #f8fafc !important;
 }
 
-.dark [class~="text-slate-700"] {
+.dark [class~="text-slate-700"],
+.dark [class~="text-gray-700"] {
   color: #e2e8f0 !important;
 }
 
-.dark [class~="text-slate-600"] {
+.dark [class~="text-slate-600"],
+.dark [class~="text-gray-600"] {
   color: #cbd5e1 !important;
 }
 
-.dark [class~="text-slate-500"] {
+.dark [class~="text-slate-500"],
+.dark [class~="text-gray-500"] {
   color: #94a3b8 !important;
 }
 
 .dark [class~="border-slate-100"],
 .dark [class~="border-slate-200"],
+.dark [class~="border-gray-100"],
+.dark [class~="border-gray-200"],
+.dark [class~="border-gray-300"],
 .dark [class~="border-slate-300"] {
   border-color: #334155 !important;
 }
@@ -131,7 +143,8 @@ code {
   background-color: rgb(6 95 70 / 24%) !important;
 }
 
-.dark [class~="bg-amber-50"] {
+.dark [class~="bg-amber-50"],
+.dark [class~="bg-yellow-50"] {
   background-color: rgb(146 64 14 / 24%) !important;
 }
 
@@ -142,6 +155,15 @@ code {
 
 .dark [class~="bg-cyan-50"] {
   background-color: rgb(14 116 144 / 22%) !important;
+}
+
+.dark [class~="bg-purple-50"] {
+  background-color: rgb(107 33 168 / 22%) !important;
+}
+
+.dark [class~="text-cyan-800"],
+.dark [class~="text-cyan-700"] {
+  color: #67e8f9 !important;
 }
 
 .dark [class~="text-blue-950"],
@@ -171,8 +193,14 @@ code {
 }
 
 .dark [class~="hover:bg-slate-50"]:hover,
+.dark [class~="hover:bg-gray-50"]:hover,
+.dark [class~="hover:bg-gray-100"]:hover,
 .dark [class~="hover:bg-slate-100"]:hover {
   background-color: #1e293b !important;
+}
+
+.dark [class~="hover:bg-blue-50"]:hover {
+  background-color: #1e3a5f !important;
 }
 
 @media (min-width: 768px) and (max-width: 1535px) {

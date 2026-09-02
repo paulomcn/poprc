@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Eye, Edit, Save, X, Briefcase, Archive, RotateCcw, Trash2, Search, Users, CalendarDays } from "lucide-react";
+import { Plus, Eye, Edit, Save, Briefcase, Archive, RotateCcw, Trash2, Search, Users, CalendarDays } from "lucide-react";
 import api from "../services/api";
 import Alert from "../components/Alert";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
 import PageHeader from "../components/PageHeader";
+import Modal from "../components/Modal";
 import { useAuth } from "../contexts/AuthContext";
+import { vincularComarcasAosProjetos } from "../utils/projetos";
 
 export default function Projetos() {
   const { usuario } = useAuth();
@@ -46,12 +48,13 @@ export default function Projetos() {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const [resProjetos, resContratos, resFuncionarios] = await Promise.all([
+      const [resProjetos, resContratos, resFuncionarios, resComarcas] = await Promise.all([
         api.get("/projetos", { params: { incluirArquivados } }),
         api.get("/contratos"),
         api.get("/funcionarios"),
+        api.get("/comarcas", { params: { incluirArquivados } }),
       ]);
-      setProjetos(resProjetos.data);
+      setProjetos(vincularComarcasAosProjetos(resProjetos.data, resComarcas.data));
       setContratos(resContratos.data);
       setFuncionarios(resFuncionarios.data || []);
     } catch (err) {
@@ -248,7 +251,7 @@ export default function Projetos() {
         </>}
       />
 
-      {errorMessage && <Alert type="error" message={errorMessage} />}
+      {errorMessage && !modalOpen && <Alert type="error" message={errorMessage} />}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -350,25 +353,10 @@ export default function Projetos() {
 
       {/* MODAL UNIFICADO: DETALHES / NOVO / EDITAR */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden">
-            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
-              <h2 className="text-xl font-bold">
-                {isEditing
-                  ? " ️ Editar Projeto"
-                  : selectedProjeto
-                    ? "  Detalhes do Projeto"
-                    : "  Novo Projeto"}
-              </h2>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSave} className="p-6 space-y-4">
+        <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}
+          title={isEditing ? "Editar Projeto" : selectedProjeto ? "Detalhes do Projeto" : "Novo Projeto"}>
+            <form onSubmit={handleSave} className="space-y-4">
+              {errorMessage && <Alert type="error" message={errorMessage} />}
               <div>
                 <label className="text-xs font-bold text-slate-600 uppercase">
                   Contrato Vinculado *
@@ -408,7 +396,7 @@ export default function Projetos() {
                   )}
                 </div>
                 {equipeForm.map((membro, index) => (
-                  <div key={index} className="grid grid-cols-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 md:grid-cols-[1fr_150px_auto_auto]">
+                  <div key={index} className="grid min-w-0 grid-cols-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
                     <select
                       disabled={selectedProjeto && !isEditing}
                       value={membro.funcionarioId}
@@ -430,7 +418,7 @@ export default function Projetos() {
                       onChange={(e) => setEquipeForm((prev) => prev.map((item, itemIndex) =>
                         itemIndex === index ? { ...item, papel: e.target.value } : item,
                       ))}
-                      className="rounded-md border border-slate-300 bg-white p-2 text-xs font-semibold"
+                      className="min-w-0 rounded-md border border-slate-300 bg-white p-2 text-xs font-semibold"
                     >
                       <option value="LIDER_EQUIPE">Supervisor técnico / Líder da equipe</option>
                       <option value="TECNICO">Técnico</option>
@@ -479,13 +467,12 @@ export default function Projetos() {
                     placeholder="Se vazio, usaremos o nome do cliente do contrato"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    Esse projeto será automaticamente listado em Gestão de
-                    Comarcas.
+                    Esse projeto será automaticamente listado em Gestão de Obras.
                   </p>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-600 uppercase">
                     Data Início *
@@ -513,7 +500,7 @@ export default function Projetos() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-600 uppercase">
                     Status *
@@ -557,8 +544,7 @@ export default function Projetos() {
                 </div>
               )}
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

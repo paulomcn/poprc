@@ -86,3 +86,15 @@ O formulário permitia criar um projeto sem data inicial quando o estado do fron
 ## Conclusão
 
 O piloto operacional completo foi homologado localmente. Não foram encontradas divergências estruturais de estoque após o ciclo. A próxima frente recomendada é registrar testes automatizados de integração para este caminho feliz e para concorrência de retirada/devolução, seguida da homologação responsiva das telas operacionais.
+
+## Atualização posterior no mesmo dia
+
+A automação do piloto e os testes de concorrência foram concluídos. Os novos
+cenários detectaram e corrigiram uma divergência de reservas entre estoque geral
+e depósitos enquanto existem OSs abertas, situação não presente no saldo final
+deste piloto. A suíte passou com 256 testes de backend e 16 de frontend.
+Detalhes e limites em `RESULTADO_TESTES_PILOTO_CONCORRENCIA_2026-09-01.md`.
+A rodada seguinte de homologação responsiva foi concluída no navegador, com
+48 verificações de layout e 21 testes de frontend aprovados. O aceite da equipe
+em aparelhos reais continua pendente. Resultados e próximos passos em
+`RESULTADO_HOMOLOGACAO_RESPONSIVA_2026-09-01.md`.

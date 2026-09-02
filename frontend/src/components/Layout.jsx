@@ -30,7 +30,7 @@ export default function Layout({ children }) {
   }, [sidebarCollapsed]);
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex h-dvh bg-slate-50 dark:bg-slate-950">
       <Sidebar
         isOpen={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -44,7 +44,7 @@ export default function Layout({ children }) {
           theme={theme}
           onThemeToggle={toggleTheme}
         />
-        <main className="min-w-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-6 2xl:p-8">
+        <main data-layout-main className="min-w-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-6 2xl:p-8">
           {children}
         </main>
       </div>

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "test:planilha-estoque": "node --test src/utils/planilhaEstoque.test.js src/utils/estoqueOperacional.test.js",
-    "test:utils": "node --test src/utils/*.test.js",
+    "test:utils": "node --test src/utils/*.test.js tests/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
