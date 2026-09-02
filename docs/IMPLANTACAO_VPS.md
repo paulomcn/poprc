@@ -141,11 +141,49 @@ cd frontend && npm ci && npm run build && cd ..
 sudo bash deploy/scripts/install-vps.sh app.exemplo.com.br
 ```
 
+### Servidor legado com clone em `/opt/poprc/current`
+
+Algumas instalacoes anteriores usam `/opt/poprc/current` como o proprio clone
+Git, executam o backend pelo servico `poprc.service` e publicam o frontend em
+`/var/www/poprc`. Nesse formato, nao execute `install-vps.sh`: o instalador
+detecta o diretorio real e encerra sem altera-lo.
+
+Atualize essa instalacao com:
+
+```bash
+cd /opt/poprc/current
+git status --short --branch
+git pull --ff-only
+
+sudo chown -R "$(id -un)":"$(id -gn)" target 2>/dev/null || true
+./mvnw --batch-mode -DskipTests clean package
+
+cd frontend
+npm ci
+npm audit --audit-level=high
+npm run build
+cd ..
+
+sudo rsync -a --delete frontend/dist/ /var/www/poprc/
+sudo systemctl restart poprc.service
+sudo nginx -t
+sudo systemctl reload nginx
+
+sleep 15
+sudo systemctl status poprc.service --no-pager
+curl --fail http://127.0.0.1:8085/actuator/health
+```
+
+O comando Maven deve ser executado sem `sudo`. O `chown` corrige artefatos de
+compilacoes antigas que tenham sido criados por `root`. A migracao desse modelo
+para releases deve ser feita em uma janela de manutencao, com backup validado,
+pois envolve mover o clone e substituir `/opt/poprc/current` por um link.
+
 Para rollback, escolha uma release anterior e altere o link:
 
 ```bash
 ls -1 /opt/poprc/releases
-sudo ln -sfn /opt/poprc/releases/RELEASE_ANTERIOR /opt/poprc/current
+sudo ln -sfnT /opt/poprc/releases/RELEASE_ANTERIOR /opt/poprc/current
 sudo systemctl restart poprc-backend
 sudo systemctl reload nginx
 ```

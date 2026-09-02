@@ -15,6 +15,21 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 ENV_FILE="/etc/poprc/poprc.env"
+CURRENT_RELEASE_LINK="/opt/poprc/current"
+
+if [[ -e "$CURRENT_RELEASE_LINK" && ! -L "$CURRENT_RELEASE_LINK" ]]; then
+    cat >&2 <<EOF
+Instalacao direta detectada em $CURRENT_RELEASE_LINK.
+
+Este instalador reserva esse caminho para um link simbolico de release e nao
+substituira um diretorio real automaticamente. Isso evita sobrescrever o clone
+Git, o JAR e a instalacao que ja estao em operacao.
+
+Siga a secao "Servidor legado com clone em /opt/poprc/current" em
+docs/IMPLANTACAO_VPS.md ou planeje uma migracao controlada para releases.
+EOF
+    exit 3
+fi
 
 for command in java nginx curl pg_dump; do
     if ! command -v "$command" >/dev/null 2>&1; then
@@ -72,13 +87,13 @@ cp -a "$PROJECT_ROOT/frontend/dist"/. "$RELEASE_DIR/frontend/"
 find "$RELEASE_DIR/frontend" -type d -exec chmod 0755 {} +
 find "$RELEASE_DIR/frontend" -type f -exec chmod 0644 {} +
 
-PREVIOUS_RELEASE="$(readlink -f /opt/poprc/current 2>/dev/null || true)"
+PREVIOUS_RELEASE="$(readlink -f "$CURRENT_RELEASE_LINK" 2>/dev/null || true)"
 
 rollback_release() {
     trap - ERR
     if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
         echo "Restaurando release anterior: $PREVIOUS_RELEASE" >&2
-        ln -sfn "$PREVIOUS_RELEASE" /opt/poprc/current
+        ln -sfnT "$PREVIOUS_RELEASE" "$CURRENT_RELEASE_LINK"
         systemctl restart poprc-backend.service || true
         systemctl reload nginx || true
     fi
@@ -91,7 +106,7 @@ on_error() {
 }
 
 trap on_error ERR
-ln -sfn "$RELEASE_DIR" /opt/poprc/current
+ln -sfnT "$RELEASE_DIR" "$CURRENT_RELEASE_LINK"
 
 install -o root -g root -m 0644 "$PROJECT_ROOT/deploy/systemd/poprc-backend.service" /etc/systemd/system/poprc-backend.service
 install -o root -g root -m 0644 "$PROJECT_ROOT/deploy/systemd/poprc-backup.service" /etc/systemd/system/poprc-backup.service
