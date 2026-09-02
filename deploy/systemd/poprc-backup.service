@@ -1,0 +1,15 @@
+[Unit]
+Description=Backup do RC Operations Hub
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/poprc-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

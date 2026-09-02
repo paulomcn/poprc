@@ -11,6 +11,7 @@ tmp/
 .runtime/
 outputs/
 scripts/ngrok.yml
+deploy/env/*.env
 ~$*.docx
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

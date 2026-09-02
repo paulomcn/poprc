@@ -73,5 +73,8 @@ jobs:
           java-version: 25
           cache: maven
 
+      - name: Validar scripts de implantacao
+        run: bash -n deploy/scripts/*.sh
+
       - name: Executar testes
         run: ./mvnw --batch-mode test
