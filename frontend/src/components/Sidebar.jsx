@@ -9,6 +9,7 @@ import {
   ClipboardList,
   DollarSign,
   FileText,
+  Info,
   Layers,
   LayoutDashboard,
   LogOut,
@@ -21,6 +22,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { APP_VERSION_LABEL } from "../config/appVersion";
 
 const secoesMenu = [
   {
@@ -146,6 +148,16 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapsed 
         </nav>
 
         <div className={`border-t border-slate-800 p-3 ${collapsed ? "md:p-2" : ""}`}>
+          <div
+            aria-label={`Versão do sistema ${APP_VERSION_LABEL}`}
+            title={`Versão do sistema ${APP_VERSION_LABEL}`}
+            className={`mb-2 flex min-h-8 items-center gap-3 px-3 text-xs text-slate-500 ${
+              collapsed ? "md:justify-center md:gap-0 md:px-2" : ""
+            }`}
+          >
+            <Info size={15} className="shrink-0" aria-hidden="true" />
+            <span className={`truncate font-mono ${collapsed ? "md:hidden" : ""}`}>{APP_VERSION_LABEL}</span>
+          </div>
           {temPermissao(usuario?.perfil, PERMISSOES.PORTAL_TECNICO_VISUALIZAR) && (
             <NavLink
               to="/tecnico"

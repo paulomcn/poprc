@@ -159,3 +159,13 @@ journalctl -u poprc-backend -n 200 --no-pager
 ```
 
 No navegador, valide login, logout, criação de sessão, upload de uma evidência de teste e leitura da mesma evidência. Faça também o teste em outro computador antes de liberar usuários reais.
+
+## 11. Conferir a versao publicada
+
+A tela de login e o rodape da sidebar exibem a versao no formato `v0.1.0+abc12345`. O trecho depois de `+` deve coincidir com:
+
+```bash
+git rev-parse --short=8 HEAD
+```
+
+O sufixo `-local` indica que o frontend foi compilado com alteracoes ainda nao commitadas. Nesse caso, nao considere o build reproduzivel e publique novamente a partir de uma arvore Git limpa.

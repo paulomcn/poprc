@@ -7,6 +7,7 @@ import api, { getApiErrorMessage } from "../services/api";
 import { API_ORIGIN } from "../services/runtimeConfig";
 import { useTheme } from "../contexts/ThemeContext";
 import { formatarCpf } from "../utils/cpf";
+import { APP_VERSION_LABEL } from "../config/appVersion";
 
 export default function Login() {
   const { usuario, carregando, configuracao, login, loginDesenvolvimento, configurarAdministrador } = useAuth();
@@ -105,6 +106,9 @@ export default function Login() {
         </form>}
         {!configuracao.bootstrapRequired && configuracao.zohoEnabled && <div className="mt-4"><a href={`${API_ORIGIN}/oauth2/authorization/zoho`} className="flex w-full items-center justify-center gap-2 rounded border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><ShieldCheck size={18} /> Entrar com Zoho</a></div>}
         {!configuracao.bootstrapRequired && configuracao.devLoginEnabled && <div className="mt-5 border-t border-slate-200 pt-4"><button type="button" onClick={() => setDevAberto(!devAberto)} className="flex w-full items-center justify-between text-sm font-semibold text-slate-600"><span className="flex items-center gap-2"><User size={17} /> Ambiente de teste</span><ChevronDown size={16} /></button>{devAberto && <div className="mt-3 space-y-3"><select value={funcionarioId} onChange={(e) => setFuncionarioId(e.target.value)} className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm">{usuariosDev.map((item) => <option key={item.id} value={item.id}>{item.nome} - {item.perfil.replaceAll("_", " ")}</option>)}</select><button type="button" onClick={entrarDev} disabled={!funcionarioId || entrando} className="w-full rounded border border-blue-300 px-3 py-2 text-sm font-bold text-blue-700 disabled:opacity-50">Entrar como usuário selecionado</button></div>}</div>}
+        <p className="mt-5 border-t border-slate-200 pt-4 text-center font-mono text-xs text-slate-400 dark:border-slate-700" title="Versão do sistema">
+          {APP_VERSION_LABEL}
+        </p>
       </section>
     </main>
   );
