@@ -141,8 +141,10 @@ public class SecurityConfig {
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
                     authorize.requestMatchers("/api/campo/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
-                    authorize.requestMatchers("/api/documentos-internos/**")
+                    authorize.requestMatchers(HttpMethod.GET, "/api/documentos-internos/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO", "AUDITOR");
+                    authorize.requestMatchers("/api/documentos-internos/**")
+                            .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "TECNICO");
                     authorize.requestMatchers("/api/materiais/**", "/api/materiais-projeto/**")
                             .hasAnyRole("ADMIN", "SUPERVISOR_TECNICO", "ESTOQUE");
                     authorize.requestMatchers("/api/pendencias-operacionais/**")
@@ -208,8 +210,7 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(allowedOriginPatterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of(
-                "Content-Type", "Authorization", "X-Requested-With", "X-XSRF-TOKEN",
-                "X-Usuario-Atual"));
+                "Content-Type", "Authorization", "X-Requested-With", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

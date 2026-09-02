@@ -7,6 +7,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -86,6 +87,16 @@ class SecurityAuthorizationIntegrationTest {
     }
 
     @Test
+    void tecnicoNaoPodeAprovarAPropriaExecucaoPorChamadaDireta() throws Exception {
+        mockMvc.perform(put("/api/ordens-servico/999/status")
+                        .with(authentication(autenticacao("TECNICO")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"AGUARDANDO_DEVOLUCAO\",\"responsavel\":\"Outro usuário\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void tecnicoPodeConsultarAtividadesPadrao() throws Exception {
         int status = mockMvc.perform(get("/api/atividades-padrao")
                         .with(user("tecnico").roles("TECNICO")))
@@ -132,6 +143,20 @@ class SecurityAuthorizationIntegrationTest {
                         .content("{}"))
                 .andReturn().getResponse().getStatus();
         assertThat(status).isEqualTo(403);
+    }
+
+    @Test
+    void auditorPodeConsultarMasNaoAlterarDocumentosInternos() throws Exception {
+        mockMvc.perform(get("/api/documentos-internos/comarca/999")
+                        .with(user("auditor").roles("AUDITOR")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/documentos-internos/999/assinar")
+                        .with(user("auditor").roles("AUDITOR"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

@@ -11,10 +11,12 @@ import com.poprc.demo.service.AcessoOperacionalService;
 import com.poprc.demo.service.ArquivamentoService;
 import com.poprc.demo.service.FluxoOrdemServicoService;
 import com.poprc.demo.repository.OrdemServicoRepository;
+import com.poprc.demo.security.UsuarioAutenticado;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*; // 💥 Import simplificado para pegar o CrossOrigin
 
 import java.util.Map;
@@ -52,13 +54,27 @@ public class OrdemServicoController {
     public ResponseEntity<OrdemServico> atualizarStatus(@PathVariable Long id,
             @RequestBody StatusUpdateRequest request,
             Authentication authentication) {
+        UsuarioAutenticado usuario = usuarioAutenticado(authentication);
+        if ("TECNICO".equals(usuario.getPerfil())
+                && request.getStatus() != StatusOS.AGUARDANDO_VALIDACAO) {
+            throw new AccessDeniedException(
+                    "O técnico pode somente enviar a execução para validação do supervisor.");
+        }
         acessoOperacionalService.garantirAcessoOrdem(id, authentication);
         OrdemServico ordem = ordemServicoService.atualizarStatus(
-                id, request.getStatus(), request.getResponsavel());
+                id, request.getStatus(), usuario.getNome());
         if (ordem != null) {
             return ResponseEntity.ok(ordem);
         }
         return ResponseEntity.notFound().build();
+    }
+
+    private UsuarioAutenticado usuarioAutenticado(Authentication authentication) {
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof UsuarioAutenticado usuario)) {
+            throw new AccessDeniedException("Não foi possível identificar o usuário autenticado.");
+        }
+        return usuario;
     }
 
     @PutMapping("/{id}/checklist")

@@ -626,9 +626,7 @@ export default function GestaoComarcas() {
   const abrirDocumentoVistoria = async (comarca, tipo) => {
     let documentos = [];
     try {
-      const response = await api.get(`/documentos-internos/comarca/${comarca.id}`, {
-        headers: { "X-Usuario-Atual": USUARIO_ATUAL },
-      });
+      const response = await api.get(`/documentos-internos/comarca/${comarca.id}`);
       documentos = response.data || [];
     } catch (err) {
       console.error("Não foi possível carregar os documentos anteriores", err);
@@ -676,10 +674,9 @@ export default function GestaoComarcas() {
       return;
     }
     try {
-      const headers = { "X-Usuario-Atual": USUARIO_ATUAL };
       const [logsResponse, integridadeResponse] = await Promise.all([
-        api.get(`/documentos-internos/${documento.id}/assinaturas/log`, { headers }),
-        api.get(`/documentos-internos/${documento.id}/integridade`, { headers }),
+        api.get(`/documentos-internos/${documento.id}/assinaturas/log`),
+        api.get(`/documentos-internos/${documento.id}/integridade`),
       ]);
       setDocumentoAssinaturasLog(logsResponse.data || []);
       setDocumentoIntegridade(integridadeResponse.data || null);
@@ -707,7 +704,6 @@ export default function GestaoComarcas() {
       const response = await api.post(
         `/documentos-internos/${documentoAtual.id}/invalidar`,
         { motivo: motivo.trim() },
-        { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
       );
       const novaVersao = response.data;
       const documentoInvalidado = {
@@ -797,10 +793,9 @@ export default function GestaoComarcas() {
           documentoVistoriaForm.gerenteForum ||
           "Responsável da Unidade",
       };
-      const config = { headers: { "X-Usuario-Atual": USUARIO_ATUAL } };
       const response = documentoAtual?.id
-        ? await api.put(`/documentos-internos/${documentoAtual.id}/conteudo`, payload, config)
-        : await api.post("/documentos-internos/vistoria", payload, config);
+        ? await api.put(`/documentos-internos/${documentoAtual.id}/conteudo`, payload)
+        : await api.post("/documentos-internos/vistoria", payload);
       setDocumentoVistoria((prev) => ({ ...prev, documentoSalvo: response.data }));
       setDocumentoAssinaturasLog([]);
       setDocumentoIntegridade(null);
@@ -1477,7 +1472,6 @@ export default function GestaoComarcas() {
         const response = await api.patch(
           `/documentos-internos/${documentoAssinaturaAtual.id}/assinaturas/${papelAssinaturaAtual}`,
           { assinaturaBase64, nomeAssinante: nomeAssinanteAtual },
-          { headers: { "X-Usuario-Atual": USUARIO_ATUAL } },
         );
         setDocumentoVistoria((prev) => ({
           ...prev,

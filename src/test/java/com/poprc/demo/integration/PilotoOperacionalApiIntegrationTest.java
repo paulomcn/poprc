@@ -306,7 +306,7 @@ class PilotoOperacionalApiIntegrationTest {
 
     private MvcResult executar(Sessao sessao, AbstractMockHttpServletRequestBuilder<?> request) throws Exception {
         MvcResult result = mvc.perform(request.cookie(sessao.cookie(), sessao.csrf())
-                .header("X-XSRF-TOKEN", sessao.csrf().getValue()).header("X-Usuario-Atual", sessao.nome()))
+                .header("X-XSRF-TOKEN", sessao.csrf().getValue()))
                 .andExpect(status().is2xxSuccessful()).andReturn();
         entityManager.flush();
         entityManager.clear();

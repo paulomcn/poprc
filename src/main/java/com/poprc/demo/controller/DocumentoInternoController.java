@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -61,11 +60,9 @@ public class DocumentoInternoController {
     @GetMapping("/comarca/{comarcaId}")
     public ResponseEntity<List<DocumentoInterno>> listarPorComarca(
             @PathVariable Long comarcaId,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
         acessoOperacionalService.garantirAcessoComarca(comarcaId, authentication);
-        String usuarioAtual = usuarioAtual(principal, usuarioHeader);
+        String usuarioAtual = usuarioAtual(authentication);
         List<DocumentoInterno> documentos = documentoInternoRepository
                 .findByComarcaIdOrderByDataGeracaoDesc(comarcaId)
                 .stream()
@@ -78,8 +75,6 @@ public class DocumentoInternoController {
     @PostMapping("/vistoria")
     public ResponseEntity<DocumentoInterno> gerarDocumentoVistoria(
             @RequestBody DocumentoVistoriaRequest request,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
         acessoOperacionalService.garantirAcessoComarca(request.getComarcaId(), authentication);
         Comarca comarca = comarcaRepository.findById(request.getComarcaId())
@@ -90,7 +85,7 @@ public class DocumentoInternoController {
         documento.setStatus(STATUS_PENDENTE);
         documento.setComarca(comarca);
         documento.setConteudoJson(request.getConteudoJson());
-        documento.setCriadoPor(usuarioAtual(principal, usuarioHeader));
+        documento.setCriadoPor(usuarioAtual(authentication));
         documento.setRecebidoPor(normalizarRecebedor(request.getRecebidoPor()));
         documento.setDataGeracao(LocalDateTime.now());
         return ResponseEntity.ok(documentoInternoRepository.save(documento));
@@ -100,13 +95,11 @@ public class DocumentoInternoController {
     public ResponseEntity<DocumentoInterno> atualizarConteudoDocumento(
             @PathVariable Long id,
             @RequestBody DocumentoVistoriaRequest request,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
-        if (!podeVisualizar(documento, usuarioAtual(principal, usuarioHeader))) {
+        if (!podeVisualizar(documento, usuarioAtual(authentication))) {
             return ResponseEntity.status(403).build();
         }
         if (!STATUS_PENDENTE.equals(documento.getStatus())
@@ -129,10 +122,8 @@ public class DocumentoInternoController {
     public ResponseEntity<DocumentoInterno> invalidarECriarNovaVersao(
             @PathVariable Long id,
             @RequestBody InvalidacaoDocumentoRequest request,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
-        String usuarioAtual = usuarioAtual(principal, usuarioHeader);
+        String usuarioAtual = usuarioAtual(authentication);
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
@@ -173,10 +164,8 @@ public class DocumentoInternoController {
     public ResponseEntity<DocumentoInterno> assinarDocumento(
             @PathVariable Long id,
             @RequestBody AssinaturaDocumentoRequest request,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
-        String usuarioAtual = usuarioAtual(principal, usuarioHeader);
+        String usuarioAtual = usuarioAtual(authentication);
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
@@ -202,10 +191,8 @@ public class DocumentoInternoController {
             @PathVariable Long id,
             @PathVariable String papel,
             @RequestBody AssinaturaPapelRequest request,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
-        String usuarioAtual = usuarioAtual(principal, usuarioHeader);
+        String usuarioAtual = usuarioAtual(authentication);
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
@@ -261,13 +248,11 @@ public class DocumentoInternoController {
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> obterPdf(
             @PathVariable Long id,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
-        if (!podeVisualizar(documento, usuarioAtual(principal, usuarioHeader))) {
+        if (!podeVisualizar(documento, usuarioAtual(authentication))) {
             return ResponseEntity.status(403).build();
         }
         byte[] pdf = documentoPdfService.obterPdf(documento);
@@ -281,13 +266,11 @@ public class DocumentoInternoController {
     @GetMapping("/{id}/assinaturas/log")
     public ResponseEntity<List<AssinaturaLogResponse>> listarLogAssinaturas(
             @PathVariable Long id,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
-        if (!podeVisualizar(documento, usuarioAtual(principal, usuarioHeader))) {
+        if (!podeVisualizar(documento, usuarioAtual(authentication))) {
             return ResponseEntity.status(403).build();
         }
         return ResponseEntity.ok(assinaturaLogRepository.findByDocumentoIdOrderByRegistradoEmAsc(id).stream()
@@ -298,13 +281,11 @@ public class DocumentoInternoController {
     @GetMapping("/{id}/integridade")
     public ResponseEntity<Map<String, Object>> verificarIntegridade(
             @PathVariable Long id,
-            @AuthenticationPrincipal OAuth2User principal,
-            @RequestHeader(value = "X-Usuario-Atual", required = false) String usuarioHeader,
             Authentication authentication) {
         DocumentoInterno documento = documentoInternoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Documento não encontrado."));
         garantirAcessoDocumento(documento, authentication);
-        if (!podeVisualizar(documento, usuarioAtual(principal, usuarioHeader))) {
+        if (!podeVisualizar(documento, usuarioAtual(authentication))) {
             return ResponseEntity.status(403).build();
         }
         String hashCalculado = gerarHash(documento);
@@ -320,18 +301,27 @@ public class DocumentoInternoController {
                 "hashCalculado", hashCalculado));
     }
 
-    private String usuarioAtual(OAuth2User principal, String usuarioHeader) {
-        if (principal != null) {
-            Object email = principal.getAttribute("email");
-            Object nome = principal.getAttribute("nome");
-            Object fullName = principal.getAttribute("Full_Name");
-            Object id = principal.getAttribute("id");
+    private String usuarioAtual(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Não foi possível identificar o usuário autenticado.");
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof OAuth2User oauth2User) {
+            Object email = oauth2User.getAttribute("email");
+            Object nome = oauth2User.getAttribute("nome");
+            Object fullName = oauth2User.getAttribute("Full_Name");
+            Object id = oauth2User.getAttribute("id");
             if (email != null) return email.toString();
             if (nome != null) return nome.toString();
             if (fullName != null) return fullName.toString();
             if (id != null) return id.toString();
         }
-        return usuarioHeader != null && !usuarioHeader.isBlank() ? usuarioHeader.trim() : "Sistema";
+        String nomeAutenticado = authentication.getName();
+        if (nomeAutenticado == null || nomeAutenticado.isBlank()
+                || "anonymousUser".equalsIgnoreCase(nomeAutenticado)) {
+            throw new AccessDeniedException("Não foi possível identificar o usuário autenticado.");
+        }
+        return nomeAutenticado.trim();
     }
 
     private String normalizarRecebedor(String recebidoPor) {
@@ -339,9 +329,6 @@ public class DocumentoInternoController {
     }
 
     private boolean podeVisualizar(DocumentoInterno documento, String usuarioAtual) {
-        if ("Sistema".equals(usuarioAtual)) {
-            return true;
-        }
         return usuarioAtual.equalsIgnoreCase(documento.getCriadoPor())
                 || usuarioAtual.equalsIgnoreCase(documento.getRecebidoPor());
     }

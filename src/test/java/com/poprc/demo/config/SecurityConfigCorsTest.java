@@ -27,6 +27,7 @@ class SecurityConfigCorsTest {
         CorsConfiguration cors = securityConfig.corsConfigurationSource().getCorsConfiguration(request);
 
         assertThat(cors).isNotNull();
-        assertThat(cors.getAllowedHeaders()).contains("X-Usuario-Atual", "X-XSRF-TOKEN");
+        assertThat(cors.getAllowedHeaders()).contains("X-XSRF-TOKEN");
+        assertThat(cors.getAllowedHeaders()).doesNotContain("X-Usuario-Atual");
     }
 }

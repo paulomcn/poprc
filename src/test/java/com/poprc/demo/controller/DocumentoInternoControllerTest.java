@@ -5,11 +5,15 @@ import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.ComarcaRepository;
 import com.poprc.demo.repository.DocumentoAssinaturaLogRepository;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.security.UsuarioAutenticado;
 import com.poprc.demo.service.DocumentoPdfService;
 import com.poprc.demo.service.AcessoOperacionalService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -62,10 +66,10 @@ class DocumentoInternoControllerTest {
     void deveImpedirSubstituicaoDaAssinaturaDoMesmoPapel() {
         DocumentoInternoController.AssinaturaPapelRequest request = assinaturaPngValida();
 
-        controller.assinarDocumentoPorPapel(1L, "TECNICO", request, null, null, null);
+        controller.assinarDocumentoPorPapel(1L, "TECNICO", request, autenticacao("Sistema"));
 
         IllegalStateException erro = assertThrows(IllegalStateException.class,
-                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, null, null, null));
+                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, autenticacao("Sistema")));
         assertTrue(erro.getMessage().contains("não pode ser substituída"));
         verify(logRepository, times(1)).save(org.mockito.ArgumentMatchers.any());
     }
@@ -77,7 +81,7 @@ class DocumentoInternoControllerTest {
         request.setAssinaturaBase64("data:image/png;base64,bmFvLWUtaW1hZ2Vt");
 
         assertThrows(IllegalArgumentException.class,
-                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, null, null, null));
+                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, autenticacao("Sistema")));
     }
 
     @Test
@@ -88,14 +92,14 @@ class DocumentoInternoControllerTest {
         request.setAssinaturaBase64("data:image/png;base64,iVBORw0KGgo=");
 
         assertThrows(IllegalArgumentException.class,
-                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, null, null, null));
+                () -> controller.assinarDocumentoPorPapel(1L, "TECNICO", request, autenticacao("Sistema")));
     }
 
     @Test
     void deveConfirmarIntegridadeDepoisDaAssinatura() {
-        controller.assinarDocumentoPorPapel(1L, "TECNICO", assinaturaPngValida(), null, null, null);
+        controller.assinarDocumentoPorPapel(1L, "TECNICO", assinaturaPngValida(), autenticacao("Sistema"));
 
-        ResponseEntity<Map<String, Object>> response = controller.verificarIntegridade(1L, null, null, null);
+        ResponseEntity<Map<String, Object>> response = controller.verificarIntegridade(1L, autenticacao("Sistema"));
 
         assertEquals(Boolean.TRUE, response.getBody().get("integro"));
         assertEquals(Boolean.TRUE, response.getBody().get("verificavel"));
@@ -106,7 +110,7 @@ class DocumentoInternoControllerTest {
     void deveIdentificarDocumentoLegadoSemHashComoNaoVerificavel() {
         documento.setHashRegistro(null);
 
-        ResponseEntity<Map<String, Object>> response = controller.verificarIntegridade(1L, null, null, null);
+        ResponseEntity<Map<String, Object>> response = controller.verificarIntegridade(1L, autenticacao("Sistema"));
 
         assertEquals(Boolean.FALSE, response.getBody().get("integro"));
         assertEquals(Boolean.FALSE, response.getBody().get("verificavel"));
@@ -120,7 +124,7 @@ class DocumentoInternoControllerTest {
         request.setRecebidoPor("Responsavel Local");
 
         ResponseEntity<DocumentoInterno> response = controller.atualizarConteudoDocumento(
-                1L, request, null, null, null);
+                1L, request, autenticacao("Sistema"));
 
         assertEquals(request.getConteudoJson(), response.getBody().getConteudoJson());
         assertEquals("Responsavel Local", response.getBody().getRecebidoPor());
@@ -134,7 +138,7 @@ class DocumentoInternoControllerTest {
         request.setConteudoJson("{}");
 
         IllegalStateException erro = assertThrows(IllegalStateException.class,
-                () -> controller.atualizarConteudoDocumento(1L, request, null, null, null));
+                () -> controller.atualizarConteudoDocumento(1L, request, autenticacao("Sistema")));
 
         assertTrue(erro.getMessage().contains("não pode ser alterado"));
     }
@@ -147,9 +151,9 @@ class DocumentoInternoControllerTest {
         when(comarcaRepository.findById(10L)).thenReturn(Optional.of(comarca));
 
         DocumentoInterno inicial = controller.gerarDocumentoVistoria(
-                documentoRequest(10L, "VISTORIA_INICIAL_OS"), null, "Gestor Teste", null).getBody();
+                documentoRequest(10L, "VISTORIA_INICIAL_OS"), autenticacao("Gestor Teste")).getBody();
         DocumentoInterno finalizacao = controller.gerarDocumentoVistoria(
-                documentoRequest(10L, "ENCERRAMENTO_OS"), null, "Gestor Teste", null).getBody();
+                documentoRequest(10L, "ENCERRAMENTO_OS"), autenticacao("Gestor Teste")).getBody();
 
         assertEquals("VISTORIA_INICIAL_OS", inicial.getTipo());
         assertEquals("ENCERRAMENTO_OS", finalizacao.getTipo());
@@ -169,7 +173,7 @@ class DocumentoInternoControllerTest {
         request.setMotivo("Descrição técnica incorreta");
 
         DocumentoInterno novaVersao = controller
-                .invalidarECriarNovaVersao(1L, request, null, "Sistema", null)
+                .invalidarECriarNovaVersao(1L, request, autenticacao("Sistema"))
                 .getBody();
 
         assertEquals("INVALIDADO", documento.getStatus());
@@ -190,9 +194,20 @@ class DocumentoInternoControllerTest {
         request.setMotivo("Tentativa tardia");
 
         IllegalStateException erro = assertThrows(IllegalStateException.class,
-                () -> controller.invalidarECriarNovaVersao(1L, request, null, "Sistema", null));
+                () -> controller.invalidarECriarNovaVersao(1L, request, autenticacao("Sistema")));
 
         assertTrue(erro.getMessage().contains("obra está concluída"));
+    }
+
+    @Test
+    void deveRecusarDocumentoSemIdentidadeAutenticada() {
+        Comarca comarca = new Comarca();
+        comarca.setId(10L);
+        when(comarcaRepository.findById(10L)).thenReturn(Optional.of(comarca));
+
+        assertThrows(AccessDeniedException.class,
+                () -> controller.gerarDocumentoVistoria(
+                        documentoRequest(10L, "VISTORIA_INICIAL_OS"), null));
     }
 
     private DocumentoInternoController.AssinaturaPapelRequest assinaturaPngValida() {
@@ -221,5 +236,11 @@ class DocumentoInternoControllerTest {
         request.setConteudoJson("{}");
         request.setRecebidoPor("Responsável Local");
         return request;
+    }
+
+    private Authentication autenticacao(String nome) {
+        UsuarioAutenticado usuario = new UsuarioAutenticado(
+                1L, nome, null, "ADMIN", "CPF_SENHA", false);
+        return new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
     }
 }

@@ -17,6 +17,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,7 @@ import com.poprc.demo.model.DocumentoAssinaturaLog;
 import com.poprc.demo.model.DocumentoInterno;
 import com.poprc.demo.repository.DocumentoAssinaturaLogRepository;
 import com.poprc.demo.repository.DocumentoInternoRepository;
+import com.poprc.demo.security.UsuarioAutenticado;
 
 import jakarta.persistence.EntityManager;
 
@@ -81,13 +84,14 @@ class DocumentoAssinaturaLogImutabilidadeIntegrationTest {
                 new DocumentoInternoController.AssinaturaPapelRequest();
         request.setNomeAssinante("Assinatura de homologacao");
         request.setAssinaturaBase64(gerarAssinaturaPng());
+        Authentication authentication = autenticacaoSistema();
         documentoController.assinarDocumentoPorPapel(
-                documento.getId(), "TECNICO", request, null, null, null);
+                documento.getId(), "TECNICO", request, authentication);
         entityManager.flush();
         entityManager.clear();
 
         ResponseEntity<Map<String, Object>> resposta = documentoController.verificarIntegridade(
-                documento.getId(), null, null, null);
+                documento.getId(), authentication);
 
         assertEquals(Boolean.TRUE, resposta.getBody().get("integro"));
         assertEquals("INTEGRO", resposta.getBody().get("situacao"));
@@ -123,5 +127,11 @@ class DocumentoAssinaturaLogImutabilidadeIntegrationTest {
         } catch (Exception ex) {
             throw new IllegalStateException("Nao foi possivel preparar a assinatura do teste.", ex);
         }
+    }
+
+    private Authentication autenticacaoSistema() {
+        UsuarioAutenticado usuario = new UsuarioAutenticado(
+                1L, "Sistema", null, "ADMIN", "CPF_SENHA", false);
+        return new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
     }
 }
