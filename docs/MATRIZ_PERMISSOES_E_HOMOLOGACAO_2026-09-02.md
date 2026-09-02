@@ -83,6 +83,6 @@ Esta etapa fica tecnicamente concluída quando as suítes de backend e frontend 
 
 ## Incidente do CI no GitHub
 
-- O job Backend falhou porque uma asserção do teste de piloto comparava o caminho absoluto de uploads de forma dependente do ambiente. A verificação passou a validar o sufixo portátil `target/test-uploads`, preservando o isolamento entre teste e dados reais.
+- O job Backend revelou que o runner Linux não recebeu o diretório isolado de uploads pela configuração do Maven e tentou usar `/home/runner/rc_uploads`. O workflow agora define `APP_UPLOAD_DIR` explicitamente e o teste valida o sufixo portátil `target/test-uploads`, impedindo gravações fora da pasta de testes.
 - O job Frontend falhou porque `browserslist` possuía uma vulnerabilidade transitiva de severidade alta. O `package-lock.json` foi atualizado sem alterações incompatíveis de versão principal.
 - A correção integral dos avisos moderados do React Router exige migração para a versão 7 e será tratada separadamente, com testes de navegação e autorização.
