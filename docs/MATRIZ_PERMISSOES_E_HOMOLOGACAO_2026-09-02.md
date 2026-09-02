@@ -59,10 +59,15 @@ Escopo: autorização por perfil, identidade auditável e transições da Ordem 
 ## Pendências de aceite
 
 - Executar o roteiro manual com uma conta real de cada perfil em computador e celular.
-- Confirmar com o time se Estoque deve continuar visualizando a lista básica de funcionários para rastreabilidade.
-- Confirmar se Auditor deve visualizar Gestão de Obras ou somente Auditoria e documentos associados.
 - Definir os novos perfis antes de transformar a matriz fixa em permissões configuráveis pelo Administrador.
 - Manter Zoho e permissões dinâmicas para uma fase posterior, conforme decisão já registrada no cronograma.
+
+## Decisões operacionais confirmadas
+
+- O perfil Estoque continuará visualizando a lista básica de funcionários para fins de rastreabilidade, sem permissão para gerenciar cadastros.
+- O perfil Auditor visualizará Gestão de Obras e os documentos associados, sem permissão para executar a obra ou alterar seus documentos.
+- A integração com Zoho e a configuração dinâmica de permissões pelo Administrador permanecem adiadas para uma fase posterior.
+- O aceite manual deve seguir o roteiro `ROTEIRO_ACEITE_PERFIS_2026-09-02.md`.
 
 ## Critério de conclusão
 
@@ -73,4 +78,11 @@ Esta etapa fica tecnicamente concluída quando as suítes de backend e frontend 
 - Backend: 261 testes aprovados no banco isolado `poprc_test`.
 - Frontend: 23 testes aprovados.
 - Build de produção do frontend: concluído com sucesso.
+- Auditoria de dependências: nenhuma vulnerabilidade alta; duas vulnerabilidades moderadas do React Router permanecem para uma migração controlada da versão 6 para a 7.
 - Resultado: homologação técnica automatizada aprovada; aceite manual em dispositivos reais pendente.
+
+## Incidente do CI no GitHub
+
+- O job Backend falhou porque uma asserção do teste de piloto comparava o caminho absoluto de uploads de forma dependente do ambiente. A verificação passou a validar o sufixo portátil `target/test-uploads`, preservando o isolamento entre teste e dados reais.
+- O job Frontend falhou porque `browserslist` possuía uma vulnerabilidade transitiva de severidade alta. O `package-lock.json` foi atualizado sem alterações incompatíveis de versão principal.
+- A correção integral dos avisos moderados do React Router exige migração para a versão 7 e será tratada separadamente, com testes de navegação e autorização.

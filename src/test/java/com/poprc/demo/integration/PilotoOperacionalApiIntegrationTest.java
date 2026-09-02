@@ -89,7 +89,9 @@ class PilotoOperacionalApiIntegrationTest {
     @ParameterizedTest(name = "Ciclo autenticado com {0} unidade(s) devolvida(s) por material")
     @ValueSource(ints = {0, 1})
     void executaPilotoComUploadsAssinaturasPdfESaldoConciliado(int devolvida) throws Exception {
-        assertThat(UploadStorage.root().startsWith(Path.of("target/test-uploads").toAbsolutePath())).isTrue();
+        assertThat(UploadStorage.root().endsWith(Path.of("target", "test-uploads")))
+                .as("uploads de teste devem permanecer isolados em target/test-uploads: %s", UploadStorage.root())
+                .isTrue();
         Funcionario admin = usuario("Admin piloto", "12345678909", PerfilAcesso.ADMIN);
         Funcionario supervisor = usuario("Supervisor piloto", "39053344705", PerfilAcesso.SUPERVISOR_TECNICO);
         Funcionario tecnico = usuario("Tecnico piloto", "16899535009", PerfilAcesso.TECNICO);
