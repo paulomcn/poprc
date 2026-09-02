@@ -204,6 +204,7 @@ public class OrdemRetiradaService implements OrdemRetiradaPort {
                         saldoLocalService.debitarDistribuido(material, quantidade));
             }
 
+            saldoLocalService.sincronizarReservas(material);
             item.setQuantidadeRetirada(quantidade);
             MaterialItem materialItem = item.getMaterialItem();
             if (materialItem != null) {

@@ -1,6 +1,9 @@
 package com.poprc.demo.service;
 
 import com.poprc.demo.model.SaldoMaterialLocal;
+import com.poprc.demo.model.Material;
+import com.poprc.demo.model.TipoControleEstoque;
+import com.poprc.demo.exception.SaldoInsuficienteException;
 import com.poprc.demo.repository.LocalEstoqueRepository;
 import com.poprc.demo.repository.MaterialRepository;
 import com.poprc.demo.repository.SaldoMaterialLocalRepository;
@@ -8,14 +11,38 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 
 class SaldoLocalServiceTest {
+
+    @Test
+    void rejeitaReservaMaiorQueSaldoLocalSemSalvarEspelhoParcial() {
+        SaldoMaterialLocalRepository repository = mock(SaldoMaterialLocalRepository.class);
+        MaterialRepository materiais = mock(MaterialRepository.class);
+        SaldoLocalService service = new SaldoLocalService(mock(LocalEstoqueRepository.class), repository, materiais);
+        Material material = new Material();
+        material.setId(1L);
+        material.setNome("Material teste");
+        material.setTipoControle(TipoControleEstoque.UNIDADE);
+        material.setQuantidadeReservada(6);
+        SaldoMaterialLocal saldo = new SaldoMaterialLocal();
+        saldo.setMaterial(material);
+        saldo.setQuantidadeDisponivel(5);
+        when(materiais.findByIdForUpdate(1L)).thenReturn(Optional.of(material));
+        when(repository.findByMaterialIdForUpdate(1L)).thenReturn(List.of(saldo));
+
+        assertThrows(SaldoInsuficienteException.class, () -> service.sincronizarReservas(material));
+
+        verify(repository, never()).save(any());
+    }
 
     @Test
     void deveSalvarMinimoLocalEPermitirRetornoAoPadraoGlobal() {

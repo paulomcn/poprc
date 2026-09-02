@@ -295,6 +295,7 @@ public class EstoqueService {
             java.util.List<SaldoLocalService.MovimentoLocal> origens =
                     saldoLocalService.debitarDistribuido(material, valorAjuste);
             movimentacao.setEstoqueOrigem(saldoLocalService.descreverMovimentos(origens));
+            saldoLocalService.sincronizarReservas(material);
         }
         movimentacao.setCustoUnitario(material.getCustoMedio());
         movimentacao.setValorTotalMovimentacao(

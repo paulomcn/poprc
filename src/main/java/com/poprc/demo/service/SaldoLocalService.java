@@ -79,12 +79,36 @@ public class SaldoLocalService {
     }
 
     @Transactional
+    public void sincronizarReservas(Material material) {
+        Material bloqueado = bloquearMaterial(material);
+        List<SaldoMaterialLocal> saldos = saldoRepository.findByMaterialIdForUpdate(bloqueado.getId());
+        BigDecimal restante = controlaMetragem(bloqueado)
+                ? valor(bloqueado.getMetragemReservada())
+                : BigDecimal.valueOf(valor(bloqueado.getQuantidadeReservada()));
+        BigDecimal totalLocal = saldos.stream().map(saldo -> saldoValor(bloqueado, saldo))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (restante.signum() < 0 || restante.compareTo(totalLocal) > 0) {
+            throw new SaldoInsuficienteException(
+                    "Saldo dos depósitos insuficiente para a reserva de " + bloqueado.getNome() + ".");
+        }
+        // A OS reserva no total geral; o espelho local segue a capacidade e a ordem dos depositos.
+        for (SaldoMaterialLocal saldo : saldos) {
+            BigDecimal reservado = saldoValor(bloqueado, saldo).min(restante);
+            saldo.setQuantidadeReservada(controlaMetragem(bloqueado) ? 0 : reservado.intValueExact());
+            saldo.setMetragemReservada(controlaMetragem(bloqueado) ? reservado : BigDecimal.ZERO);
+            saldoRepository.save(saldo);
+            restante = restante.subtract(reservado);
+        }
+    }
+
+    @Transactional
     public LocalEstoque creditar(Material material, Long localId, BigDecimal valorCredito) {
         material = bloquearMaterial(material);
         LocalEstoque local = localId != null ? buscarLocal(localId) : resolverOuCriar(material.getLocalizacao());
         SaldoMaterialLocal saldo = obterOuCriar(material, local);
         atualizarSaldo(saldo, saldoValor(material, saldo).add(valorCredito));
         saldoRepository.save(saldo);
+        sincronizarReservas(material);
         return local;
     }
 
@@ -109,6 +133,7 @@ public class SaldoLocalService {
         }
         atualizarSaldo(saldo, disponivel.subtract(valorDebito));
         saldoRepository.save(saldo);
+        sincronizarReservas(material);
         return local;
     }
 
@@ -162,6 +187,7 @@ public class SaldoLocalService {
         SaldoMaterialLocal saldoDestino = obterOuCriar(material, destino);
         atualizarSaldo(saldoDestino, saldoValor(material, saldoDestino).add(valorTransferido));
         saldoRepository.save(saldoDestino);
+        sincronizarReservas(material);
         return new TransferenciaLocal(origem, destino);
     }
 

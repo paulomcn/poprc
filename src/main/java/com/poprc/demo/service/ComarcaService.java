@@ -66,6 +66,7 @@ public class ComarcaService {
     private final DocumentoInternoRepository documentoInternoRepository;
     private final ProjetoRepository projetoRepository;
     private final FluxoOrdemServicoService fluxoOrdemServicoService;
+    private final SaldoLocalService saldoLocalService;
 
     public Optional<Comarca> obterPorId(Long id) {
         return comarcaRepository.findById(id);
@@ -905,6 +906,7 @@ public class ComarcaService {
         }
         materialRepository.save(material);
 
+        saldoLocalService.sincronizarReservas(material);
         registrarMovimentacaoEstoque(comarca, material, quantidade, TipoMovimentacao.RESERVA,
                 montarObservacaoReserva(comarca, item));
 
@@ -927,6 +929,7 @@ public class ComarcaService {
         }
         materialRepository.save(material);
 
+        saldoLocalService.sincronizarReservas(material);
         registrarMovimentacaoEstoque(comarca, material, quantidade, TipoMovimentacao.ESTORNO_RESERVA,
                 montarObservacaoReserva(comarca, item));
 
