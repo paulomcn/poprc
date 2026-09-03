@@ -10,10 +10,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 $criticalTests = @(
+    "PilotoOperacionalApiIntegrationTest",
     "FluxoOperacionalIntegrationTest",
     "DocumentoAssinaturaLogImutabilidadeIntegrationTest",
     "OrdemRetiradaDocumentoImutabilidadeIntegrationTest",
+    "OrdemRetiradaConcorrenciaIntegrationTest",
     "EstoqueConcorrenciaIntegrationTest",
+    "SaldoLocalReservaIntegrationTest",
     "SecurityAuthorizationIntegrationTest"
 ) -join ","
 

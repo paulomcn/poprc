@@ -55,14 +55,17 @@ cat > "$STAGE/manifest.txt" <<EOF
 created_at_utc=$TIMESTAMP
 database=$DB_NAME
 upload_directory=$APP_UPLOAD_DIR
-git_revision=$(readlink -f /opt/poprc/current 2>/dev/null || echo desconhecida)
+git_revision=$(git -C /opt/poprc/current rev-parse HEAD 2>/dev/null || echo desconhecida)
 EOF
 
 (
     cd "$STAGE"
     find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+    sha256sum --check SHA256SUMS
     tar -czf "$ARCHIVE_TMP" .
 )
+
+tar -tzf "$ARCHIVE_TMP" >/dev/null
 
 mv "$ARCHIVE_TMP" "$ARCHIVE"
 chmod 0600 "$ARCHIVE"
