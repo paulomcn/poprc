@@ -56,6 +56,24 @@ export const quantidadePlanilhaParaEstoque = (nome, quantidade) => {
     : valor;
 };
 
+export const interpretarSaldoPlanilha = (nome, quantidade) => {
+  const saldoInformado = quantidadePlanilhaParaEstoque(nome, quantidade);
+  if (!Number.isFinite(saldoInformado)) {
+    return {
+      valido: false,
+      saldoInformado,
+      saldo: 0,
+      quantidadeFaltante: 0,
+    };
+  }
+  return {
+    valido: true,
+    saldoInformado,
+    saldo: arredondarQuantidadeEstoque(Math.max(0, saldoInformado)),
+    quantidadeFaltante: arredondarQuantidadeEstoque(Math.max(0, -saldoInformado)),
+  };
+};
+
 export const custoPlanilhaParaEstoque = (nome, custoUnitario) => {
   const valor = Number(custoUnitario);
   if (!Number.isFinite(valor)) return valor;
@@ -199,11 +217,12 @@ export const extrairSincronizacaoSaldos = (workbook, materiais = []) => {
     if (!chave || chave.startsWith("valor total") || chave === "total geral") continue;
 
     const celulaSaldo = origem.getCell(linha, cabecalho.quantidade);
-    const saldoInformado = quantidadePlanilhaParaEstoque(nome, valorDaCelula(celulaSaldo));
+    const saldoInterpretado = interpretarSaldoPlanilha(nome, valorDaCelula(celulaSaldo));
+    const { saldoInformado } = saldoInterpretado;
     const correspondencias = materiaisPorNome.get(chave) || [];
     const material = correspondencias.length === 1 ? correspondencias[0] : null;
     const erros = [];
-    if (!Number.isFinite(saldoInformado)) erros.push("Saldo inválido");
+    if (!saldoInterpretado.valido) erros.push("Saldo inválido");
     if (nomesLidos.has(chave)) erros.push("Material repetido na planilha");
     nomesLidos.add(chave);
     if (correspondencias.length === 0) erros.push("Material não cadastrado no estoque");
@@ -212,9 +231,7 @@ export const extrairSincronizacaoSaldos = (workbook, materiais = []) => {
       erros.push("Bobina/rolo rastreável exige conferência por unidade física");
     }
 
-    const saldoDesejado = Number.isFinite(saldoInformado)
-      ? arredondarQuantidadeEstoque(Math.max(0, saldoInformado))
-      : 0;
+    const saldoDesejado = saldoInterpretado.saldo;
     const saldoAtual = material ? saldoTotalMaterial(material) : 0;
     const saldoReservado = material ? saldoReservadoMaterial(material) : 0;
     const controlaFracao = material && ["FRACIONADO", "METRAGEM"]
@@ -245,9 +262,7 @@ export const extrairSincronizacaoSaldos = (workbook, materiais = []) => {
       saldoReservado,
       saldoInformado: Number.isFinite(saldoInformado) ? saldoInformado : 0,
       saldo: saldoDesejado,
-      quantidadeFaltante: Number.isFinite(saldoInformado) && saldoInformado < 0
-        ? arredondarQuantidadeEstoque(Math.abs(saldoInformado))
-        : 0,
+      quantidadeFaltante: saldoInterpretado.quantidadeFaltante,
       diferenca,
       custoUnitario,
       valorAnterior: Number((saldoAtual * custoUnitario).toFixed(2)),

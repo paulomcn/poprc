@@ -7,6 +7,7 @@ import {
   extrairAtualizacaoCustos,
   extrairSincronizacaoSaldos,
   extrairOrdensRetiradaAvulsas,
+  interpretarSaldoPlanilha,
   quantidadePlanilhaParaEstoque,
   localizarCabecalhoEstoque,
   resolverSaldoBaseCadastro,
@@ -14,6 +15,22 @@ import {
   saldoCadastroIncluiRetornos,
   valorDaCelula,
 } from "./planilhaEstoque.js";
+
+test("interpreta saldo negativo como falta sem criar estoque negativo", () => {
+  assert.deepEqual(interpretarSaldoPlanilha("PORCA GAIOLA", -15), {
+    valido: true,
+    saldoInformado: -15,
+    saldo: 0,
+    quantidadeFaltante: 15,
+  });
+  assert.deepEqual(interpretarSaldoPlanilha("CAIXA DE CABO CAT6A", -0.1), {
+    valido: true,
+    saldoInformado: -30.5,
+    saldo: 0,
+    quantidadeFaltante: 30.5,
+  });
+  assert.equal(interpretarSaldoPlanilha("VELCRO", "sem saldo").valido, false);
+});
 
 test("separa os bloqueios da importação completa dos bloqueios das ORs", () => {
   const apenasCadastro = resumirAvisosImportacao(

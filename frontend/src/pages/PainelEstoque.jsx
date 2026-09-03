@@ -36,6 +36,7 @@ import {
   extrairAtualizacaoCustos,
   extrairSincronizacaoSaldos,
   extrairOrdensRetiradaAvulsas,
+  interpretarSaldoPlanilha,
   localizarCabecalhoEstoque,
   normalizarTextoPlanilha,
   quantidadePlanilhaParaEstoque,
@@ -672,7 +673,7 @@ export default function PainelEstoque() {
         }
         const celulaSaldo = origem.getCell(linha, cabecalho.quantidade);
         const celulaCusto = origem.getCell(linha, cabecalho.custo);
-        const saldo = quantidadePlanilhaParaEstoque(
+        const saldoInterpretado = interpretarSaldoPlanilha(
           nome,
           valorDaCelula(celulaSaldo),
         );
@@ -680,7 +681,7 @@ export default function PainelEstoque() {
           nome,
           valorDaCelula(celulaCusto),
         );
-        if (!Number.isFinite(saldo) || saldo < 0) {
+        if (!saldoInterpretado.valido) {
           if (!celulaPossuiFormulaSemResultado(celulaSaldo)) {
             avisos.push(`Linha ${linha}: saldo inválido para ${nome}.`);
           }
@@ -692,7 +693,13 @@ export default function PainelEstoque() {
           }
           continue;
         }
-        itens.push({ nome, saldo, custoUnitario, linhaOrigem: linha });
+        itens.push({
+          nome,
+          saldo: saldoInterpretado.saldo,
+          quantidadeFaltante: saldoInterpretado.quantidadeFaltante,
+          custoUnitario,
+          linhaOrigem: linha,
+        });
       }
       const estoqueAtualPorMaterial = new Map(
         itens.map((item) => [normalizarTextoPlanilha(item.nome), item]),
@@ -1075,7 +1082,8 @@ export default function PainelEstoque() {
           ? quantidadePlanilhaParaEstoque(existente.nome, saldoAtualBruto)
           : saldoAtualBruto;
         const saldoCalculado = Math.max(0, saldoHistoricoPorMaterial.get(chave) ?? item.saldoBase);
-        const consolidadoInformado = estoqueAtualPorMaterial.get(chave)?.saldo;
+        const itemConsolidado = estoqueAtualPorMaterial.get(chave);
+        const consolidadoInformado = itemConsolidado?.saldo;
         if (Number.isFinite(consolidadoInformado)
           && Math.abs(consolidadoInformado - saldoCalculado) > 0.001) {
           avisos.push(`ESTOQUE ATUAL: saldo não confere para ${item.nome}.`);
@@ -1083,6 +1091,7 @@ export default function PainelEstoque() {
         return {
           nome: item.nome,
           saldo: saldoCalculado,
+          quantidadeFaltante: itemConsolidado?.quantidadeFaltante || 0,
           custoUnitario: item.custoUnitario,
           linhaOrigem: item.linhaOrigem,
           materialId: existente?.id,
