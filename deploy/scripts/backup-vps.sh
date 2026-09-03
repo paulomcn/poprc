@@ -13,6 +13,38 @@ set -a
 source "$ENV_FILE"
 set +a
 
+DATABASE_URL="${DB_URL:-${SPRING_DATASOURCE_URL:-}}"
+if [[ -n "$DATABASE_URL" ]]; then
+    if [[ "$DATABASE_URL" != jdbc:postgresql://* ]]; then
+        echo "DB_URL/SPRING_DATASOURCE_URL deve usar jdbc:postgresql://" >&2
+        exit 1
+    fi
+    JDBC_ADDRESS="${DATABASE_URL#jdbc:postgresql://}"
+    JDBC_AUTHORITY="${JDBC_ADDRESS%%/*}"
+    JDBC_DATABASE="${JDBC_ADDRESS#*/}"
+    JDBC_DATABASE="${JDBC_DATABASE%%\?*}"
+
+    if [[ "$JDBC_AUTHORITY" =~ ^\[([^]]+)\](:([0-9]+))?$ ]]; then
+        JDBC_HOST="${BASH_REMATCH[1]}"
+        JDBC_PORT="${BASH_REMATCH[3]:-5432}"
+    else
+        JDBC_HOST="${JDBC_AUTHORITY%%:*}"
+        if [[ "$JDBC_AUTHORITY" == *:* ]]; then
+            JDBC_PORT="${JDBC_AUTHORITY##*:}"
+        else
+            JDBC_PORT="5432"
+        fi
+    fi
+
+    DB_HOST="${DB_HOST:-$JDBC_HOST}"
+    DB_PORT="${DB_PORT:-$JDBC_PORT}"
+    DB_NAME="${DB_NAME:-$JDBC_DATABASE}"
+fi
+
+DB_USERNAME="${DB_USERNAME:-${SPRING_DATASOURCE_USERNAME:-}}"
+DB_PASSWORD="${DB_PASSWORD:-${SPRING_DATASOURCE_PASSWORD:-}}"
+APP_UPLOAD_DIR="${APP_UPLOAD_DIR:-/var/lib/poprc/uploads}"
+
 : "${DB_HOST:?DB_HOST nao configurado}"
 : "${DB_PORT:?DB_PORT nao configurado}"
 : "${DB_NAME:?DB_NAME nao configurado}"
@@ -24,6 +56,7 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/poprc}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 install -d -m 0700 "$BACKUP_DIR"
+BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd -P)"
 STAGE="$(mktemp -d "${BACKUP_DIR}/.stage-${TIMESTAMP}-XXXXXX")"
 ARCHIVE_TMP="${BACKUP_DIR}/.poprc-${TIMESTAMP}.tar.gz.tmp"
 ARCHIVE="${BACKUP_DIR}/poprc-${TIMESTAMP}.tar.gz"
