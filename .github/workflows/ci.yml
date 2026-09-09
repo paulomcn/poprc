@@ -78,3 +78,29 @@ jobs:
 
       - name: Executar testes
         run: ./mvnw --batch-mode test
+
+  containers:
+    name: Containers Dokploy
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: jdbc:postgresql://postgres:5432/poprc
+      DB_USERNAME: poprc
+      DB_PASSWORD: senha-de-validacao-do-compose
+      APP_PUBLIC_URL: https://homologacao.exemplo.com.br
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validar Docker Compose
+        run: docker compose -f compose.dokploy.yml config --quiet
+
+      - name: Construir imagem do backend
+        run: docker build --file deploy/docker/backend.Dockerfile --tag poprc-backend:ci .
+
+      - name: Construir imagem do frontend
+        run: >-
+          docker build
+          --file deploy/docker/frontend.Dockerfile
+          --build-arg VITE_APP_REVISION=${GITHUB_SHA::8}
+          --tag poprc-frontend:ci
+          .

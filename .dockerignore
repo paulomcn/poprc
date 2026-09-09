@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+.runtime
+backups
+docs
+outputs
+rc_uploads
+target
+frontend/dist
+frontend/node_modules
+*.log
+.env
+.env.*
+application-local.properties
+scripts/ngrok.yml

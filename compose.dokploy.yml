@@ -1,0 +1,72 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8085
+      FORWARD_HEADERS_STRATEGY: framework
+      DB_URL: ${DB_URL:?Configure a URL JDBC interna do PostgreSQL}
+      DB_USERNAME: ${DB_USERNAME:?Configure o usuario do PostgreSQL}
+      DB_PASSWORD: ${DB_PASSWORD:?Configure a senha do PostgreSQL}
+      APP_UPLOAD_DIR: /var/lib/poprc/uploads
+      APP_SECURITY_ENABLED: "true"
+      DEV_LOGIN_ENABLED: "false"
+      ZOHO_ENABLED: "false"
+      REAUTHENTICATION_MINUTES: ${REAUTHENTICATION_MINUTES:-5}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-8h}
+      SESSION_COOKIE_SECURE: "true"
+      FRONTEND_URL: ${APP_PUBLIC_URL:?Configure a URL publica HTTPS}
+      APP_CORS_ALLOWED_ORIGIN_PATTERNS: ${APP_PUBLIC_URL:?Configure a URL publica HTTPS}
+      JPA_SHOW_SQL: "false"
+      ALERT_EMAIL_ENABLED: ${ALERT_EMAIL_ENABLED:-false}
+      MAIL_HOST: ${MAIL_HOST:-localhost}
+      MAIL_PORT: ${MAIL_PORT:-25}
+      MAIL_USERNAME: ${MAIL_USERNAME:-nao-configurado}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-nao-configurado}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-false}
+      MAIL_STARTTLS_ENABLED: ${MAIL_STARTTLS_ENABLED:-false}
+    volumes:
+      - poprc_uploads:/var/lib/poprc/uploads
+    expose:
+      - "8085"
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-1g}
+    cpus: ${BACKEND_CPU_LIMIT:-1.0}
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+      - dokploy-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        VITE_APP_VERSION: ${APP_VERSION:-0.1.0}
+        VITE_APP_REVISION: ${APP_REVISION:-dokploy}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "8080"
+    mem_limit: ${FRONTEND_MEMORY_LIMIT:-128m}
+    cpus: ${FRONTEND_CPU_LIMIT:-0.5}
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+      - dokploy-network
+
+volumes:
+  poprc_uploads:
+
+networks:
+  internal:
+    internal: true
+  dokploy-network:
+    external: true
